@@ -545,6 +545,18 @@
   ],
   "verified": true
  },
+ "jcode": {
+  "install": "curl -fsSL https://jcode.sh/install | bash",
+  "method": "script",
+  "os": [
+   "macos",
+   "linux",
+   "windows"
+  ],
+  "requires_cwd": true,
+  "tip": "First run: `jcode login --provider claude` (or openai/gemini/copilot) to sign in, then `jcode` opens the TUI. macOS with Homebrew can instead `brew tap 1jehuang/jcode && brew install jcode`.",
+  "verified": true
+ },
  "Kilo Code": {
   "install": "npm install -g @kilocode/cli",
   "method": "npm",

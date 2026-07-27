@@ -93,6 +93,13 @@
   "homepage": "https://hermes-agent.nousresearch.com"
  },
  {
+  "name": "jcode",
+  "bin": "jcode",
+  "category": "AI",
+  "description": "RAM-efficient AI coding agent harness written in Rust, with an interactive TUI, non-interactive runs, and a persistent server/client mode across many LLM providers.",
+  "homepage": "https://jcode.sh"
+ },
+ {
   "name": "Kilo Code",
   "bin": "kilo",
   "category": "AI",
