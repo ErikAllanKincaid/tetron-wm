@@ -1,0 +1,92 @@
+# tuiui (NRO fork) configuration — ~/.config/tuiui/config.toml
+#
+# Every option is shown with its DEFAULT value and left commented out: with no
+# config file at all, these exact defaults apply, so you only need a config.toml
+# to change something. Uncomment a line and edit it to override.
+#
+# Full explanations: docs/CONFIG.md.
+
+## ── Window behavior ───────────────────────────────────────────────────────
+# Drag a window to a screen edge to snap it there. (NRO default: off.)
+#snapping_enabled = false
+# Distance in cells from the edge that triggers a snap (1–10). Only matters when
+# snapping_enabled = true.
+#snap_threshold = 3
+# Draw drop shadows behind windows. (NRO default: off.)
+#window_shadows = false
+# Open new app windows maximized (filling the work area).
+#launch_maximized = false
+
+## ── Tiling ────────────────────────────────────────────────────────────────
+# Auto-arrange all windows into the tiling grid as they open/close.
+#auto_tile = false
+# Tiling grid size (each 1–6). Used by auto-tile and "send to cell".
+#grid_rows = 2
+#grid_cols = 2
+# Cells of gutter between tiled windows.
+#tile_gap = 0
+
+## ── Appearance ────────────────────────────────────────────────────────────
+# Color theme: "midnight", "nord", "gruvbox", or "dracula". (NRO default: nord.)
+#theme = "nord"
+
+## ── Files / working directories ───────────────────────────────────────────
+# Directory the working-directory picker opens at (default: your home).
+#default_project_dir = "/home/you"
+# Show hidden (dot) directories in the picker by default.
+#show_hidden_dirs = false
+# File-manager view: "icon" or "list".
+#filemanager_view = "list"
+# recent_dirs is maintained by the app (most-recent working dirs); not hand-set.
+#recent_dirs = []
+
+## ── Desktop ───────────────────────────────────────────────────────────────
+# Show icons on the wallpaper/desktop.
+#desktop_enabled = true
+# Pinned desktop shortcuts (see [[desktop_pins]] below). Defaults to Files + Store.
+# desktop_positions (icon grid placement) is saved by the app, not hand-set.
+
+## ── Assistant (the ✦ panel) ───────────────────────────────────────────────
+# Agent CLI the assistant runs (default: opencode).
+#assistant_command = "opencode"
+# Extra arguments for the assistant CLI.
+#assistant_args = []
+# How it opens: "panel" (right-docked) or "window" (floating).
+#assistant_mode = "panel"
+
+## ── Updates ───────────────────────────────────────────────────────────────
+# Branch the in-app updater tracks: "main" (stable prebuilt) or "dev".
+#update_branch = "main"
+
+## ── Apps, launcher, dock ──────────────────────────────────────────────────
+# Apps auto-started at launch and shown in the dock. Each entry is a table.
+# Fields: name (titlebar/dock label), command (executable), args (list),
+# category (launcher grouping), requires_cwd (bool), cwd (start dir),
+# cli (bool: wrap a CLI tool so it doesn't exit instantly), warn (confirm text).
+#[[apps]]
+#name = "Shell"
+#command = "bash"
+#args = []
+
+# Apps offered in the launcher menu / spotlight. If empty, the launcher falls
+# back to the `apps` list above. Same entry fields as [[apps]].
+#[[launcher]]
+#name = "htop"
+#command = "htop"
+#cli = true
+
+# Pinned desktop shortcuts (same fields as [[apps]]). Default: Files + Store.
+#[[desktop_pins]]
+#name = "Files"
+#command = "@files"
+
+# File-role → handler map for "open with" (role name = handler command).
+#[default_apps]
+#text = "hx"
+#image = "chafa"
+
+# Per-app dock badge colors: keyword (case-insensitive substring of the app
+# name/command) → color (a named color or #rrggbb). Default: claude=orange, kilo=yellow.
+#[dock_badges]
+#claude = "orange"
+#kilo = "yellow"

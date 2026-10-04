@@ -132,15 +132,18 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            snapping_enabled: true,
+            // NRO fork defaults: no drag-to-edge snapping and no window drop
+            // shadows, so a box with no config.toml behaves the way we want out
+            // of the box. (Upstream tuiui defaults both of these to true.)
+            snapping_enabled: false,
             snap_threshold: 3,
-            window_shadows: true,
+            window_shadows: false,
             grid_rows: 2,
             grid_cols: 2,
             tile_gap: 0,
             auto_tile: false,
             launch_maximized: false,
-            theme: "midnight".into(),
+            theme: "nord".into(),
             default_project_dir: None,
             recent_dirs: Vec::new(),
             show_hidden_dirs: false,
@@ -178,7 +181,7 @@ fn default_dock_badges() -> std::collections::BTreeMap<String, String> {
         .iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
-fn default_theme() -> String { "midnight".into() }
+fn default_theme() -> String { "nord".into() }
 fn default_assistant_mode() -> String { "panel".into() }
 fn default_update_branch() -> String { "main".into() }
 
