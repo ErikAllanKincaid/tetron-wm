@@ -20,6 +20,84 @@ use crate::compositor::Layer;
 use crate::config::{AppEntry, Config};
 use crate::geometry::{Point, Rect, SnapZone};
 use crate::input::{route_mouse, MouseKind, Hit, Action};
+
+/// An in-progress or finished mouse text-selection inside an app (terminal)
+/// window's content area, used for select + middle-click paste — the standard
+/// X11 "primary selection" behaviour that Linux users expect in a terminal.
+///
+/// `anchor` and `head` are content-relative cell coordinates (column, row);
+/// `cr` is the window's content rect captured at press time so a drag maps to
+/// the same grid even if geometry shifts, and `aid` is the app whose grid the
+/// text is read from. `dragging` is true only between press and release.
+#[derive(Clone, Copy)]
+struct TextSel {
+    win: WindowId,
+    aid: AppId,
+    cr: Rect,
+    anchor: (i32, i32),
+    head: (i32, i32),
+    dragging: bool,
+}
+
+/// Order the two endpoints of a selection top-to-bottom then left-to-right, so
+/// extraction/highlighting can walk rows in a single forward direction
+/// regardless of which way the user dragged.
+fn ordered(a: (i32, i32), b: (i32, i32)) -> ((i32, i32), (i32, i32)) {
+    // Compare by (row, col): a selection that starts lower on the screen, or on
+    // the same row further right, is the "end".
+    if (a.1, a.0) <= (b.1, b.0) { (a, b) } else { (b, a) }
+}
+
+/// Extract the selected text from a window's rendered grid as a linear
+/// (xterm-style) selection: full intermediate rows, partial first/last rows,
+/// trailing blanks trimmed per line, rows joined with newlines. Returns the
+/// plain text to place in the primary buffer.
+fn extract_text(buf: &crate::buffer::CellBuffer, a: (i32, i32), b: (i32, i32)) -> String {
+    let (s, e) = ordered(a, b);
+    let w = buf.width();
+    let mut out = String::new();
+    for row in s.1..=e.1 {
+        // First row starts at the anchor column; last row ends at the head
+        // column; middle rows span the full width.
+        let c0 = if row == s.1 { s.0 } else { 0 };
+        let c1 = if row == e.1 { e.0 } else { w - 1 };
+        let mut line = String::new();
+        for col in c0..=c1 {
+            if let Some(cell) = buf.get(col, row) {
+                line.push(cell.ch);
+            }
+        }
+        // Trim trailing padding so selecting a short line does not grab the
+        // blank cells that fill the rest of the terminal row.
+        out.push_str(line.trim_end());
+        if row != e.1 {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Paint the selection highlight onto a window's content buffer in place, so the
+/// composited frame shows what is selected. Uses the theme's accent as the
+/// selection background with the contrasting close-foreground, matching the
+/// calendar "today" highlight.
+fn highlight_selection(buf: &mut crate::buffer::CellBuffer, a: (i32, i32), b: (i32, i32)) {
+    let t = crate::theme::current();
+    let (s, e) = ordered(a, b);
+    let w = buf.width();
+    for row in s.1..=e.1 {
+        let c0 = if row == s.1 { s.0 } else { 0 };
+        let c1 = if row == e.1 { e.0 } else { w - 1 };
+        for col in c0..=c1 {
+            if let Some(cell) = buf.get(col, row) {
+                let mut c = *cell;
+                c.bg = t.accent;
+                c.fg = t.close_fg;
+                buf.set(col, row, c);
+            }
+        }
+    }
+}
 use crate::apphost::{AppHost, AppId, LocalAppHost};
 use crate::launcher::Launcher;
 use crate::settings::Settings;
@@ -107,6 +185,9 @@ pub enum ClientMsg {
     MouseDrag(Point),
     /// Left-button release at screen coordinates `p`.
     MouseUp(Point),
+    /// Middle-button press at `p`: paste the primary (mouse-selected) text into
+    /// the terminal app under the pointer (classic X11 primary-selection paste).
+    MousePaste(Point),
     /// Raw input bytes to forward to the focused app.
     Key(Vec<u8>),
     /// Terminal was resized to `w` × `h` cells.
@@ -364,6 +445,11 @@ pub struct SessionCore {
     wm: WindowManager,
     contents: HashMap<WindowId, WinContent>,
     apphost: Box<dyn AppHost>,
+    /// Active or last mouse text-selection in an app window (for middle paste).
+    selection: Option<TextSel>,
+    /// Primary selection buffer: the text of the last mouse selection, pasted on
+    /// a middle click. Separate from any OSC-52 clipboard the apps themselves set.
+    primary: String,
     /// The store window's id, if open (so it can be re-focused, not re-opened).
     store_win: Option<WindowId>,
     /// The settings window's id, if open.
@@ -495,6 +581,8 @@ impl SessionCore {
             wm: WindowManager::new(work),
             contents: HashMap::new(),
             apphost,
+            selection: None,
+            primary: String::new(),
             store_win: None,
             settings_win: None,
             filemanager_win: None,
@@ -1533,9 +1621,21 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             ClientMsg::MouseDown(p) => {
                 self.cursor = p;
+                // A press inside a terminal window's content starts a text
+                // selection (consumed here); clicks on chrome/desktop fall
+                // through to normal window routing.
+                if self.mouse_select(MouseKind::Down, p) {
+                    return;
+                }
                 self.handle_mouse(MouseKind::Down, p);
             }
             ClientMsg::MouseDrag(p) => {
+                // An active text selection owns drags (extend the selection).
+                if self.selection.map(|s| s.dragging).unwrap_or(false) {
+                    self.cursor = p;
+                    self.mouse_select(MouseKind::Drag, p);
+                    return;
+                }
                 // While dragging a window, drop a "teleport" report — a motion
                 // event that jumps more than half the screen vertically in one
                 // step. You can't teleport mid-drag, so this is a spurious/garbage
@@ -1549,11 +1649,31 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.handle_mouse(MouseKind::Drag, p);
             }
             ClientMsg::MouseUp(p) => {
+                // Finish a text selection (capture its text into the primary
+                // buffer) before any window-drag release handling.
+                if self.selection.map(|s| s.dragging).unwrap_or(false) {
+                    self.cursor = p;
+                    self.mouse_select(MouseKind::Up, p);
+                    return;
+                }
                 // End a drag at the last good position if the release coordinate
                 // is itself a spurious teleport (don't snap the window to it).
                 let p = if self.drag.is_some() && self.is_spurious_jump(p) { self.cursor } else { p };
                 self.cursor = p;
                 self.handle_mouse(MouseKind::Up, p);
+            }
+            ClientMsg::MousePaste(p) => {
+                // Middle-click: write the primary selection to the terminal app
+                // under the pointer, via the same PTY-input path as keystrokes.
+                if !self.primary.is_empty() {
+                    if let Some((id, _)) = self.topmost_window_content_at(p) {
+                        if let Some(WinContent::App(aid)) = self.contents.get(&id) {
+                            let aid = *aid;
+                            let bytes = self.primary.clone().into_bytes();
+                            self.apphost.input(aid, &bytes);
+                        }
+                    }
+                }
             }
             ClientMsg::Key(bytes) => {
                 if let Some(id) = self.wm.focused() {
@@ -2915,6 +3035,90 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     /// Route a mouse event through dock hit-testing then the WM input router.
+    /// True while any modal overlay/menu owns the pointer. Selection must not
+    /// start under these (a click should dismiss the overlay instead), so
+    /// `mouse_select` defers to `handle_mouse` when one is open.
+    fn overlay_active(&self) -> bool {
+        self.help_open
+            || self.compat_dialog
+            || self.dock_ctx.is_some()
+            || self.dirpicker.is_some()
+            || self.power_menu.is_open()
+            || self.confirm_close.is_open()
+            || self.launch_warn.is_open()
+            || self.launcher.is_open()
+    }
+
+    /// Mouse text-selection for terminal (app) windows: select by left-drag over
+    /// a window's content, for middle-click paste. Returns true when the event
+    /// is consumed as a selection interaction, so normal window routing is
+    /// skipped. Engages only inside an App window's content area with no overlay
+    /// open; chrome, borders, desktop and widget windows fall through unchanged.
+    fn mouse_select(&mut self, kind: MouseKind, p: Point) -> bool {
+        match kind {
+            MouseKind::Down => {
+                // A press elsewhere (or under an overlay) ends any shown
+                // selection and does not start a new one.
+                if self.overlay_active() {
+                    return false;
+                }
+                let Some((id, cr)) = self.topmost_window_content_at(p) else {
+                    self.selection = None;
+                    return false;
+                };
+                let Some(WinContent::App(aid)) = self.contents.get(&id) else {
+                    self.selection = None;
+                    return false;
+                };
+                let aid = *aid;
+                // Focus/raise the window we are selecting in, then anchor the
+                // selection at the pressed cell (content-relative).
+                self.wm.raise(id);
+                let cell = (p.x - cr.x, p.y - cr.y);
+                self.selection = Some(TextSel {
+                    win: id,
+                    aid,
+                    cr,
+                    anchor: cell,
+                    head: cell,
+                    dragging: true,
+                });
+                true
+            }
+            MouseKind::Drag => {
+                let Some(sel) = self.selection.as_mut() else { return false };
+                if !sel.dragging {
+                    return false;
+                }
+                // Clamp the moving end to the content rect captured at press.
+                let cr = sel.cr;
+                sel.head = (
+                    (p.x - cr.x).clamp(0, (cr.w - 1).max(0)),
+                    (p.y - cr.y).clamp(0, (cr.h - 1).max(0)),
+                );
+                true
+            }
+            MouseKind::Up => {
+                let Some(mut sel) = self.selection else { return false };
+                if !sel.dragging {
+                    return false;
+                }
+                sel.dragging = false;
+                self.selection = Some(sel); // keep the highlight shown after release
+                // Read the selected text from the app's current grid snapshot and
+                // stash it as the primary selection for the next middle click.
+                if let Some(buf) = self.apphost.snapshot(sel.aid) {
+                    let text = extract_text(&buf, sel.anchor, sel.head);
+                    if !text.is_empty() {
+                        self.primary = text;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn handle_mouse(&mut self, kind: MouseKind, p: Point) {
         // The help overlay is modal: any click dismisses it.
         if kind == MouseKind::Down && self.help_open {
@@ -3560,9 +3764,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 continue; // hidden to the dock
             }
             let cr = w.content_rect();
-            let content = self.contents.get(&w.id)
+            let mut content = self.contents.get(&w.id)
                 .map(|c| c.render(self.apphost.as_ref(), cr.w, cr.h))
                 .unwrap_or_else(|| crate::buffer::CellBuffer::new(cr.w, cr.h));
+            // Paint the mouse text-selection highlight onto this window's grid.
+            if let Some(sel) = self.selection {
+                if sel.win == w.id {
+                    highlight_selection(&mut content, sel.anchor, sel.head);
+                }
+            }
             layers.extend(render_window(w, &content, Some(w.id) == focused, self.cfg.window_shadows));
         }
 

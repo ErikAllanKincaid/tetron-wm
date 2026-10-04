@@ -462,7 +462,10 @@ pub(crate) fn route_mouse(
 ) -> std::io::Result<()> {
     use crate::mouse::{MouseAction as A, MouseButton as B};
     let p = Point::new(ev.col, ev.row);
-    if f.app_area.map(|r| r.contains(p)).unwrap_or(false) {
+    // When the focused app is grabbing the mouse, pass events straight through —
+    // unless Shift is held, which forces tuiui's own text-selection/paste over
+    // the app (the classic xterm override, so you can still copy from vim/htop).
+    if f.app_area.map(|r| r.contains(p)).unwrap_or(false) && !ev.mods.shift {
         return send(out, &ClientMsg::MouseInput(ev));
     }
     match (ev.button, ev.action) {
@@ -482,6 +485,8 @@ pub(crate) fn route_mouse(
         (B::Right, A::Down) => send(out, &ClientMsg::MouseRightDown(p))?,
         (B::Left, A::Drag) => send(out, &ClientMsg::MouseDrag(p))?,
         (B::Left, A::Up) => send(out, &ClientMsg::MouseUp(p))?,
+        // Middle-button press: primary-selection paste into the app under `p`.
+        (B::Middle, A::Down) => send(out, &ClientMsg::MousePaste(p))?,
         (_, A::Move) => send(out, &ClientMsg::MouseDrag(p))?,
         (_, A::ScrollUp) if f.store_focused => send(out, &ClientMsg::StoreUp)?,
         (_, A::ScrollDown) if f.store_focused => send(out, &ClientMsg::StoreDown)?,
