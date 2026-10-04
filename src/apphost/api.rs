@@ -85,6 +85,11 @@ pub trait AppHost: Send {
     /// The app's current terminal mouse mode (default = no mouse).
     fn mouse_mode(&self, id: AppId) -> crate::mouse::AppMouse { let _ = id; crate::mouse::AppMouse::default() }
 
+    /// The app's text cursor as a visible `(col, row)` in snapshot coordinates,
+    /// or `None` when hidden/scrolled away. Default `None` (e.g. remote hosts
+    /// that do not yet relay it); the local host overrides it.
+    fn cursor(&self, id: AppId) -> Option<(u16, u16)> { let _ = id; None }
+
     /// Stop the underlying app host process, if any (default no-op for the
     /// in-process host). The frontend calls this on full shutdown.
     fn shutdown_host(&mut self) {}

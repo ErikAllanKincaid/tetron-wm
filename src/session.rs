@@ -98,6 +98,16 @@ fn highlight_selection(buf: &mut crate::buffer::CellBuffer, a: (i32, i32), b: (i
         }
     }
 }
+
+/// Paint a text cursor at `(x, y)` by inverting the cell there (swap fg/bg),
+/// so the character under the caret stays legible. A no-op if out of bounds.
+fn draw_cursor_cell(buf: &mut crate::buffer::CellBuffer, x: i32, y: i32) {
+    if let Some(cell) = buf.get(x, y) {
+        let mut c = *cell;
+        std::mem::swap(&mut c.fg, &mut c.bg);
+        buf.set(x, y, c);
+    }
+}
 use crate::apphost::{AppHost, AppId, LocalAppHost};
 use crate::launcher::Launcher;
 use crate::settings::Settings;
@@ -3907,6 +3917,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                     highlight_selection(&mut content, sel.anchor, sel.head);
                 }
             }
+            // Draw the focused terminal's text cursor (the frame's `cursor` field
+            // is the mouse pointer, so the caret must be painted into the grid).
+            if Some(w.id) == focused {
+                if let Some(WinContent::App(aid)) = self.contents.get(&w.id) {
+                    if let Some((cx, cy)) = self.apphost.cursor(*aid) {
+                        draw_cursor_cell(&mut content, cx as i32, cy as i32);
+                    }
+                }
+            }
             layers.extend(render_window(w, &content, Some(w.id) == focused, self.cfg.window_shadows));
         }
 
@@ -4121,7 +4140,12 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Focused window full-screen (no chrome), or a hint when nothing is open.
         if let Some(fid) = focused {
             if let Some(content) = self.contents.get(&fid) {
-                let buf = content.render(self.apphost.as_ref(), wa.w, wa.h);
+                let mut buf = content.render(self.apphost.as_ref(), wa.w, wa.h);
+                if let WinContent::App(aid) = content {
+                    if let Some((cx, cy)) = self.apphost.cursor(*aid) {
+                        draw_cursor_cell(&mut buf, cx as i32, cy as i32);
+                    }
+                }
                 layers.push(Layer { z: 1, origin: Point::new(wa.x, wa.y), buf, opacity: 1.0, scissor: None });
             }
         } else {

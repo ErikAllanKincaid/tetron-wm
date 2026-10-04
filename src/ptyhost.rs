@@ -361,6 +361,28 @@ impl AppInstance {
         }
     }
 
+    /// The emulator's text cursor as a visible `(col, row)`, or `None` when the
+    /// app hid it (DECTCEM) or it is scrolled out of view. Row is in the same
+    /// coordinate space as [`snapshot`](Self::snapshot): a visible row `y` shows
+    /// grid `Line(y - display_offset)`, so the active-screen cursor line `L`
+    /// appears at `y = L + display_offset` (and is hidden once scrolled back).
+    pub fn cursor(&self) -> Option<(u16, u16)> {
+        use alacritty_terminal::term::TermMode;
+        let t = self.term.lock().unwrap_or_else(|e| e.into_inner());
+        if !t.mode().contains(TermMode::SHOW_CURSOR) {
+            return None;
+        }
+        let grid = t.grid();
+        let off = grid.display_offset() as i32;
+        let p = grid.cursor.point;
+        let x = p.column.0 as i32;
+        let y = p.line.0 + off;
+        if x < 0 || x >= self.cols as i32 || y < 0 || y >= self.rows as i32 {
+            return None;
+        }
+        Some((x as u16, y as u16))
+    }
+
     /// Kill the child process.
     pub fn kill(&mut self) {
         let _ = self.child.kill();

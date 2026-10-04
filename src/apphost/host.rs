@@ -149,6 +149,10 @@ impl AppHost for LocalAppHost {
         self.apps.get(&id).map(|a| a.mouse_mode()).unwrap_or_default()
     }
 
+    fn cursor(&self, id: AppId) -> Option<(u16, u16)> {
+        self.apps.get(&id).and_then(|a| a.cursor())
+    }
+
     fn inject_test_image(&self, id: AppId, png: &[u8]) {
         if let Some(app) = self.apps.get(&id) {
             let mut g = app.graphics();
