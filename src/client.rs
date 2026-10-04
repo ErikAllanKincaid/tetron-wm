@@ -499,7 +499,7 @@ pub(crate) fn route_mouse(
         (B::Left, A::Up) => send(out, &ClientMsg::MouseUp(p))?,
         // Middle-button press: primary-selection paste into the app under `p`.
         (B::Middle, A::Down) => send(out, &ClientMsg::MousePaste(p))?,
-        (_, A::Move) => send(out, &ClientMsg::MouseDrag(p))?,
+        (_, A::Move) => send(out, &ClientMsg::MouseMove(p))?,
         (_, A::ScrollUp) if f.store_focused => send(out, &ClientMsg::StoreUp)?,
         (_, A::ScrollDown) if f.store_focused => send(out, &ClientMsg::StoreDown)?,
         (_, A::ScrollUp) if f.filemanager_focused => send(out, &ClientMsg::FileManagerUp)?,

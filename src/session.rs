@@ -185,6 +185,11 @@ pub enum ClientMsg {
     MouseDrag(Point),
     /// Left-button release at screen coordinates `p`.
     MouseUp(Point),
+    /// Pointer motion with NO button held (hover). Kept distinct from `MouseDrag`
+    /// so a bare move can never *extend* a text selection, and in fact *ends* a
+    /// selection drag if one is still active — self-healing a missed release so
+    /// the selection can't get "stuck on" and grow as the mouse moves untouched.
+    MouseMove(Point),
     /// Middle-button press at `p`: paste the primary (mouse-selected) text into
     /// the terminal app under the pointer (classic X11 primary-selection paste).
     MousePaste(Point),
@@ -1632,6 +1637,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::MouseDown(_)
                 | ClientMsg::MouseUp(_)
                 | ClientMsg::MouseDrag(_)
+                | ClientMsg::MouseMove(_)
                 | ClientMsg::MouseInput(_)
                 | ClientMsg::Resize { .. }
                 | ClientMsg::Key(_)
@@ -1699,6 +1705,21 @@ or a remote-side error — its authorized_keys was left untouched)",
                 let p = if self.drag.is_some() && self.is_spurious_jump(p) { self.cursor } else { p };
                 self.cursor = p;
                 self.handle_mouse(MouseKind::Up, p);
+            }
+            ClientMsg::MouseMove(p) => {
+                // A no-button move ends any active text selection (self-heals a
+                // missed release), then behaves like the previous bare-move path
+                // (hover / drag-preview via handle_mouse).
+                if self.selection.map(|s| s.dragging).unwrap_or(false) {
+                    self.cursor = p;
+                    self.mouse_select(MouseKind::Up, p);
+                    return;
+                }
+                if self.drag.is_some() && self.is_spurious_jump(p) {
+                    return;
+                }
+                self.cursor = p;
+                self.handle_mouse(MouseKind::Drag, p);
             }
             ClientMsg::MousePaste(p) => {
                 // Middle-click: write the primary selection to the terminal app
