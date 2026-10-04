@@ -202,6 +202,11 @@ pub enum ClientMsg {
     CopySelection,
     /// Ctrl+Shift+V: paste the clipboard into the focused app.
     PasteClipboard,
+    /// Shift+PageUp / Shift+PageDown: scroll the focused app's scrollback by one
+    /// page. Sign is direction: +1 = back into history, -1 = toward the live
+    /// bottom. Device-independent scroll, since a touchpad under kmscon does not
+    /// emit a wheel (two-finger scroll is a gesture kmscon does not translate).
+    ScrollFocused(i32),
     /// Raw input bytes to forward to the focused app.
     Key(Vec<u8>),
     /// Terminal was resized to `w` × `h` cells.
@@ -1750,6 +1755,24 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // Ctrl+Shift+V: paste the clipboard into the focused app.
                 let text = self.clipboard.clone();
                 self.paste_to_focused(&text);
+            }
+            ClientMsg::ScrollFocused(dir) => {
+                // Keyboard scrollback for the focused terminal, one page at a
+                // time (the focused window's content height, minus a line of
+                // overlap). Uses the same apphost scroll path as the wheel.
+                if let Some(id) = self.wm.focused() {
+                    if let Some(WinContent::App(aid)) = self.contents.get(&id) {
+                        let aid = *aid;
+                        let page = self
+                            .wm
+                            .z_ordered()
+                            .into_iter()
+                            .find(|w| w.id == id)
+                            .map(|w| (w.content_rect().h - 1).max(1))
+                            .unwrap_or(10);
+                        self.apphost.scroll(aid, dir * page);
+                    }
+                }
             }
             ClientMsg::Key(bytes) => {
                 if let Some(id) = self.wm.focused() {

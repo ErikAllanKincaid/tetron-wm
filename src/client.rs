@@ -143,6 +143,10 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                         send(&mut out_stream, &ClientMsg::CopySelection)?;
                     } else if ctrl && shift && matches!(k.code, KeyCode::Char('v') | KeyCode::Char('V')) {
                         send(&mut out_stream, &ClientMsg::PasteClipboard)?;
+                    } else if shift && k.code == KeyCode::PageUp {
+                        send(&mut out_stream, &ClientMsg::ScrollFocused(1))?;
+                    } else if shift && k.code == KeyCode::PageDown {
+                        send(&mut out_stream, &ClientMsg::ScrollFocused(-1))?;
                     } else if f.confirm_close {
                         // The confirm-close dialog is modal: Enter/y confirm, Esc/n cancel.
                         leader = false;
