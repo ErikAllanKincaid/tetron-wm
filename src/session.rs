@@ -1023,10 +1023,25 @@ impl SessionCore {
     fn scroll_app_at(&mut self, p: Point, lines: i32) {
         // "Natural" scrolling inverts the wheel: down goes back into history.
         let lines = if self.cfg.natural_scroll { -lines } else { lines };
-        if let Some((id, _)) = self.topmost_window_content_at(p) {
-            if let Some(WinContent::App(aid)) = self.contents.get(&id) {
-                self.apphost.scroll(*aid, lines);
+        let Some((id, _)) = self.topmost_window_content_at(p) else { return };
+        match self.contents.get(&id) {
+            Some(WinContent::App(aid)) => {
+                let aid = *aid;
+                self.apphost.scroll(aid, lines);
             }
+            // The native file manager has no history to scroll; move the
+            // selection like the arrow keys instead, which drags the view with
+            // it (see filemanager::follow_scroll). Positive `lines` = toward the
+            // top, matching the app-pane convention above.
+            Some(WinContent::FileManager(_)) => {
+                if let Some(WinContent::FileManager(f)) = self.contents.get_mut(&id) {
+                    let dir = if lines > 0 { -1 } else { 1 };
+                    for _ in 0..lines.unsigned_abs().min(100) {
+                        f.move_cursor(0, dir);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

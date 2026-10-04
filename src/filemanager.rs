@@ -92,6 +92,10 @@ pub struct FileManager<F: FsOps = StdFs> {
     action: Option<FileManagerAction>,
     /// Tiles per row in the last Icon render; navigation uses it. Updated by render.
     cols_per_row: std::cell::Cell<i32>,
+    /// Entry rows visible in the content area in the last render (view-dependent:
+    /// list/columns = text rows, icon = tile rows). `move_cursor` uses it to keep
+    /// the cursor on screen by updating the active tab's `scroll` offset.
+    vis_rows: std::cell::Cell<i32>,
 }
 
 impl FileManager<StdFs> {
@@ -131,6 +135,7 @@ impl<F: FsOps> FileManager<F> {
             status: String::new(),
             action: None,
             cols_per_row: std::cell::Cell::new(1),
+            vis_rows: std::cell::Cell::new(1),
         };
         me.reload();
         me
@@ -296,16 +301,18 @@ impl<F: FsOps> FileManager<F> {
         let area_w = (content.w - SIDEBAR_W - self.preview_reserve(content.w)).max(1);
         let cols = icon_cols(area_w);
         let visible_rows = icon_visible_rows(top, content.h);
+        let off = self.scroll_rows();
+        let eff_top = top - off * TILE_H; // match render's scrolled grid origin
         let mut out = Vec::new();
         for (&idx, &id) in &self.tab().thumbs {
             if idx >= self.tab().entries.len() {
                 continue;
             }
-            let row = idx as i32 / cols;
-            if row >= visible_rows {
-                continue; // below the viewport
+            let row = idx as i32 / cols - off;
+            if row < 0 || row >= visible_rows {
+                continue; // outside the viewport
             }
-            let tile = icon_tile_rect(content.x + area_x, content.y + top, cols, idx);
+            let tile = icon_tile_rect(content.x + area_x, content.y + eff_top, cols, idx);
             let rect = icon_image_rect(tile);
             out.push(crate::protocol::ImagePlacement {
                 id,
@@ -333,6 +340,49 @@ impl<F: FsOps> FileManager<F> {
             }
         };
         self.tab_mut().cursor = next.clamp(0, n - 1) as usize;
+        self.follow_scroll();
+    }
+
+    /// Entries drawn per content row for the current view (1 for list/columns,
+    /// `cols_per_row` for icon). Used to map a cursor index to its screen row.
+    fn per_row(&self) -> i32 {
+        match self.tab().view {
+            ViewMode::Icon => self.cols_per_row.get().max(1),
+            _ => 1,
+        }
+    }
+
+    /// The scroll offset (in content rows) to apply when drawing/hit-testing the
+    /// current tab, clamped to a valid range for the current geometry. Read by
+    /// render/hit_test/thumbnail_placements so they agree even if the stored
+    /// `scroll` is momentarily stale (e.g. right after a resize or view toggle).
+    fn scroll_rows(&self) -> i32 {
+        let per_row = self.per_row();
+        let vis = self.vis_rows.get().max(1);
+        let n = self.tab().entries.len() as i32;
+        let total_rows = (n + per_row - 1) / per_row; // ceil
+        let max_off = (total_rows - vis).max(0);
+        self.tab().scroll.clamp(0, max_off)
+    }
+
+    /// After the cursor moves, scroll the view the minimum amount needed to keep
+    /// the cursor's row on screen. Without this the cursor walks off the bottom
+    /// of the viewport invisibly and the list never scrolls (the original bug).
+    fn follow_scroll(&mut self) {
+        let per_row = self.per_row();
+        let vis = self.vis_rows.get().max(1);
+        let n = self.tab().entries.len() as i32;
+        let total_rows = (n + per_row - 1) / per_row;
+        let max_off = (total_rows - vis).max(0);
+        let cursor_row = self.tab().cursor as i32 / per_row;
+        let t = self.tab_mut();
+        let mut off = t.scroll;
+        if cursor_row < off {
+            off = cursor_row;
+        } else if cursor_row >= off + vis {
+            off = cursor_row - vis + 1;
+        }
+        t.scroll = off.clamp(0, max_off);
     }
 
     /// Select entry `idx`. `ctrl` toggles it into the set; `shift` selects the
@@ -789,10 +839,21 @@ impl<F: FsOps> FileManager<F> {
         let area_right = (w - preview_w).max(area_x + 1);
         let area_w = (area_right - SIDEBAR_W).max(1);
 
+        // Cache the view's visible entry-row count so navigation (`move_cursor`)
+        // can keep the cursor on screen via the `scroll` offset.
+        let list_rows = (h - 1 - top).max(1);
+        self.vis_rows.set(match t.view {
+            ViewMode::Icon => icon_visible_rows(top, h).max(1),
+            _ => list_rows,
+        });
+
         match t.view {
             ViewMode::List => {
+                let off = self.scroll_rows();
                 for (i, e) in t.entries.iter().enumerate() {
-                    let y = top + i as i32;
+                    let row = i as i32 - off;
+                    if row < 0 { continue; } // scrolled above the viewport
+                    let y = top + row;
                     if y >= h - 1 { break; }
                     let selected = t.selection.contains(&i);
                     let focused = i == t.cursor;
@@ -809,10 +870,16 @@ impl<F: FsOps> FileManager<F> {
                 let cols = icon_cols(area_w);
                 self.cols_per_row.set(cols);
                 let visible_rows = icon_visible_rows(top, h);
+                let off = self.scroll_rows();
+                // Shift the grid origin up by `off` tile-rows so scrolled-in rows
+                // land in the viewport; `icon_tile_rect` then places every tile
+                // relative to this origin (render/hit_test/thumbnails share it).
+                let eff_top = top - off * TILE_H;
                 for (i, e) in t.entries.iter().enumerate() {
-                    let row = i as i32 / cols;
+                    let row = i as i32 / cols - off;
+                    if row < 0 { continue; } // scrolled above the viewport
                     if row >= visible_rows { break; } // below the viewport: don't draw a clipped tile
-                    let tile = icon_tile_rect(area_x, top, cols, i);
+                    let tile = icon_tile_rect(area_x, eff_top, cols, i);
                     let ir = icon_image_rect(tile);
                     let selected = t.selection.contains(&i);
                     let focused = i == t.cursor;
@@ -894,8 +961,11 @@ impl<F: FsOps> FileManager<F> {
         }
 
         // Middle: current entries, cursor highlighted.
+        let off = self.scroll_rows();
         for (i, e) in t.entries.iter().enumerate() {
-            let y = top + i as i32;
+            let row = i as i32 - off;
+            if row < 0 { continue; } // scrolled above the viewport
+            let y = top + row;
             if y >= h - 1 { break; }
             let selected = t.selection.contains(&i);
             let focused = i == t.cursor;
@@ -940,9 +1010,12 @@ impl<F: FsOps> FileManager<F> {
         let area_x = SIDEBAR_W;
         let area_right = (w - self.preview_reserve(w)).max(area_x + 1);
         let area_w = (area_right - SIDEBAR_W).max(1);
+        // Scrolled rows shift which entry sits under a given screen row; add the
+        // offset so clicks hit the same entry the render drew (shared geometry).
+        let off = self.scroll_rows();
         match t.view {
             ViewMode::List => {
-                let i = (p.y - top) as usize;
+                let i = (p.y - top + off) as usize;
                 if p.y >= top && i < t.entries.len() { Some(Target::Entry(i)) } else { None }
             }
             ViewMode::Columns => {
@@ -952,7 +1025,7 @@ impl<F: FsOps> FileManager<F> {
                 if p.y < top || p.x < mid_x || p.x >= mid_x + col_w {
                     return None;
                 }
-                let i = (p.y - top) as usize;
+                let i = (p.y - top + off) as usize;
                 if i < t.entries.len() { Some(Target::Entry(i)) } else { None }
             }
             ViewMode::Icon => {
@@ -962,7 +1035,7 @@ impl<F: FsOps> FileManager<F> {
                 let col = (p.x - area_x) / TILE_W;
                 let row = (p.y - top) / TILE_H;
                 if col < 0 || col >= cols || row < 0 || row >= visible_rows { return None; }
-                let i = (row * cols + col) as usize;
+                let i = ((row + off) * cols + col) as usize;
                 if i < t.entries.len() { Some(Target::Entry(i)) } else { None }
             }
         }
