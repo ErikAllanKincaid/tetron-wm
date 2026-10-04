@@ -14,9 +14,10 @@
 #snap_threshold = 3
 # Draw drop shadows behind windows. (NRO default: off.)
 #window_shadows = false
-# Invert scroll direction ("natural"): scrolling down goes back into history.
-# Wheel/touchpad only; does not affect Shift+PageUp/PageDown. (Default: off.)
-#natural_scroll = false
+# Scroll direction ("natural"): scrolling down goes back into history.
+# Wheel/touchpad only; does not affect Shift+PageUp/PageDown. (NRO default: on.)
+# Set false for traditional scrolling (wheel up = back into history).
+#natural_scroll = true
 # Open new app windows maximized (filling the work area).
 #launch_maximized = false
 

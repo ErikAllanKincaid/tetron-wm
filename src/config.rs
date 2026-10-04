@@ -49,7 +49,7 @@ pub struct Config {
     /// Invert mouse-wheel / touchpad scroll direction ("natural" scrolling):
     /// scrolling down goes back into history instead of toward the live bottom.
     /// Affects the wheel only, not the Shift+PageUp/PageDown keys.
-    #[serde(default)]
+    /// (No per-field serde default: inherit the struct Default, which is true.)
     pub natural_scroll: bool,
     /// Tiling grid rows (1..=6).
     #[serde(default = "default_grid_rows")]
@@ -143,7 +143,7 @@ impl Default for Config {
             snapping_enabled: false,
             snap_threshold: 3,
             window_shadows: false,
-            natural_scroll: false,
+            natural_scroll: true,
             grid_rows: 2,
             grid_cols: 2,
             tile_gap: 0,
