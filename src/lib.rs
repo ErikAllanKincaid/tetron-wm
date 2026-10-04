@@ -90,6 +90,16 @@ pub fn dbg_log(msg: &str) {
 /// one log — truncating here is what made update failures invisible (the new
 /// daemon wiped the evidence). `dbg_log`'s size cap keeps the file bounded.
 pub fn dbg_init() {
+    // Route every panic into the debug log before the default handler runs. The
+    // daemon/apphost stderr is not captured (the console is torn down on exit),
+    // so without this a panic leaves no trace — which is exactly why an earlier
+    // pane-induced crash was invisible. Chains to the default hook so behaviour
+    // is otherwise unchanged.
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        dbg_log(&format!("PANIC: {info}"));
+        default(info);
+    }));
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "?".into());

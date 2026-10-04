@@ -175,27 +175,43 @@ impl AppInstance {
                     Ok(0) | Err(_) => break,
                     Ok(n) => n,
                 };
-                let split = tap.feed(&buf[..n]);
-                if let Ok(mut t) = tclone.lock() {
-                    parser.advance(&mut *t, &split.passthrough);
-                    if !split.commands.is_empty() {
-                        let (col, row) = cursor_cell(&t);
-                        if let Ok(mut g) = gclone.lock() {
-                            for cmd in &split.commands {
-                                g.apply(cmd, col, row);
-                            }
-                            // Answer any `a=q` support queries on the PTY so apps
-                            // proceed to actually transmit graphics.
-                            if !g.queries.is_empty() {
-                                if let Ok(mut w) = wclone.lock() {
-                                    for q in g.queries.drain(..) {
-                                        let _ = w.write_all(&q);
+                // A misbehaving or crashing child (e.g. carbonyl aborting on
+                // resize) can emit malformed/pathological escape sequences that
+                // panic the emulator parser. That panic MUST NOT propagate: it
+                // runs while holding the `term` lock, so an unguarded panic here
+                // poisons the lock and the next `snapshot()` in the daemon then
+                // panics too, taking the whole WM down. Contain it to this pane:
+                // log it and stop reading (the dead pane is reaped normally).
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let split = tap.feed(&buf[..n]);
+                    if let Ok(mut t) = tclone.lock() {
+                        parser.advance(&mut *t, &split.passthrough);
+                        if !split.commands.is_empty() {
+                            let (col, row) = cursor_cell(&t);
+                            if let Ok(mut g) = gclone.lock() {
+                                for cmd in &split.commands {
+                                    g.apply(cmd, col, row);
+                                }
+                                // Answer any `a=q` support queries on the PTY so apps
+                                // proceed to actually transmit graphics.
+                                if !g.queries.is_empty() {
+                                    if let Ok(mut w) = wclone.lock() {
+                                        for q in g.queries.drain(..) {
+                                            let _ = w.write_all(&q);
+                                        }
+                                        let _ = w.flush();
                                     }
-                                    let _ = w.flush();
                                 }
                             }
                         }
                     }
+                }));
+                if outcome.is_err() {
+                    crate::dbg_log(
+                        "ptyhost: reader thread caught a panic parsing child output; \
+                         stopping this pane's reader (WM unaffected)",
+                    );
+                    break;
                 }
             }
         });
@@ -215,7 +231,11 @@ impl AppInstance {
 
     /// Convert the current emulator grid into a Tuiui [`CellBuffer`].
     pub fn snapshot(&self) -> CellBuffer {
-        let t = self.term.lock().unwrap();
+        use alacritty_terminal::grid::Dimensions;
+        // Recover a poisoned lock instead of unwrapping: if some other code path
+        // ever panicked while holding `term`, we render the (stale) grid
+        // best-effort rather than letting the poison cascade and kill the WM.
+        let t = self.term.lock().unwrap_or_else(|e| e.into_inner());
         let grid = t.grid();
         // `Grid`'s `Index<Line>` reads raw storage WITHOUT applying the display
         // offset, so we must subtract it ourselves: at offset 0 the visible row
@@ -223,10 +243,27 @@ impl AppInstance {
         // Line(y - N), i.e. N lines up into history. Without this, scrolling
         // changed the offset but the snapshot never moved (no visible scroll).
         let off = grid.display_offset() as i32;
+        // Clamp every index to the grid's ACTUAL geometry. Our cached
+        // `self.cols/self.rows` can momentarily disagree with the grid during a
+        // resize, and indexing a Line/Column out of range panics inside
+        // alacritty — which would take the daemon down. Valid line range is
+        // -(history) ..= screen_lines-1; valid columns are 0..grid.columns().
+        let gcols = grid.columns() as i32;
+        let gscreen = grid.screen_lines() as i32;
+        let ghist = grid.total_lines() as i32 - gscreen; // scrollback depth
         let mut buf = CellBuffer::new(self.cols as i32, self.rows as i32);
         for y in 0..self.rows as i32 {
+            let line = y - off;
+            // Outside the grid's line range -> leave the row blank.
+            if line < -ghist || line >= gscreen {
+                continue;
+            }
             for x in 0..self.cols as usize {
-                let cell = &grid[Line(y - off)][Column(x)];
+                // Past the grid's last column -> leave the rest of the row blank.
+                if x as i32 >= gcols {
+                    break;
+                }
+                let cell = &grid[Line(line)][Column(x)];
                 let ch = if cell.c == '\0' { ' ' } else { cell.c };
                 let flags = cell.flags;
                 buf.set(
@@ -310,7 +347,7 @@ impl AppInstance {
     /// The app's current terminal mouse mode (what it asked the terminal for).
     pub fn mouse_mode(&self) -> crate::mouse::AppMouse {
         use alacritty_terminal::term::TermMode;
-        let guard = self.term.lock().unwrap();
+        let guard = self.term.lock().unwrap_or_else(|e| e.into_inner());
         let mode = guard.mode();
         crate::mouse::AppMouse {
             report_click: mode.contains(TermMode::MOUSE_REPORT_CLICK),
@@ -347,7 +384,7 @@ impl AppInstance {
     /// Lock and return this app's captured Kitty-graphics state (placements +
     /// decoded images), for the session to turn into image placements.
     pub fn graphics(&self) -> std::sync::MutexGuard<'_, crate::kittygfx::GraphicsState> {
-        self.graphics.lock().unwrap()
+        self.graphics.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
