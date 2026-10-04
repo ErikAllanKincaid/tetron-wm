@@ -837,6 +837,31 @@ impl SessionCore {
             .next_back()
     }
 
+    /// The App window whose **content** a point lands in, respecting occlusion:
+    /// it is the *topmost* window overall (by full frame, so a higher window's
+    /// titlebar/border blocks windows beneath) and only when `p` is in that
+    /// window's own content area and it hosts an app. Returns None when the top
+    /// window under `p` is chrome, a non-app widget, or nothing — so callers do
+    /// NOT leak a click through to a lower window. Used for text selection and
+    /// middle-click paste, which must never click through a titlebar.
+    fn topmost_app_content_at(&self, p: Point) -> Option<(WindowId, AppId, Rect)> {
+        // z_ordered() is bottom-to-top; the last (topmost) window whose full
+        // frame contains the point is the one the user is actually clicking.
+        let top = self
+            .wm
+            .z_ordered()
+            .into_iter()
+            .rev()
+            .find(|w| !w.minimized && w.rect.contains(p))?;
+        if !top.content_rect().contains(p) {
+            return None; // the point is on this window's chrome, not content
+        }
+        match self.contents.get(&top.id) {
+            Some(WinContent::App(aid)) => Some((top.id, *aid, top.content_rect())),
+            _ => None,
+        }
+    }
+
     /// Fire any pending Updates-section action (Check / Install), from either
     /// the keyboard or the mouse path.
     fn drain_settings_action(&mut self) {
@@ -1679,12 +1704,11 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // Middle-click: write the primary selection to the terminal app
                 // under the pointer, via the same PTY-input path as keystrokes.
                 if !self.primary.is_empty() {
-                    if let Some((id, _)) = self.topmost_window_content_at(p) {
-                        if let Some(WinContent::App(aid)) = self.contents.get(&id) {
-                            let aid = *aid;
-                            let bytes = self.primary.clone().into_bytes();
-                            self.apphost.input(aid, &bytes);
-                        }
+                    // Occlusion-aware so a middle-click on a titlebar does not
+                    // paste into a window hidden beneath it.
+                    if let Some((_id, aid, _cr)) = self.topmost_app_content_at(p) {
+                        let bytes = self.primary.clone().into_bytes();
+                        self.apphost.input(aid, &bytes);
                     }
                 }
             }
@@ -3093,15 +3117,13 @@ or a remote-side error — its authorized_keys was left untouched)",
                 if self.overlay_active() {
                     return false;
                 }
-                let Some((id, cr)) = self.topmost_window_content_at(p) else {
+                // Occlusion-aware: only the topmost window's own content starts a
+                // selection; a click on a titlebar/border (chrome) returns None
+                // and must NOT fall through to a window underneath.
+                let Some((id, aid, cr)) = self.topmost_app_content_at(p) else {
                     self.selection = None;
                     return false;
                 };
-                let Some(WinContent::App(aid)) = self.contents.get(&id) else {
-                    self.selection = None;
-                    return false;
-                };
-                let aid = *aid;
                 // Focus/raise the window we are selecting in, then anchor the
                 // selection at the pressed cell (content-relative).
                 self.wm.raise(id);
