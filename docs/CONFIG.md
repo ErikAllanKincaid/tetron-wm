@@ -13,6 +13,7 @@ Each row is the TOML key, its type, the fork default, and what it does.
 | `snapping_enabled` | bool | `false` (upstream: true) | Drag a window to a screen edge to snap it there. |
 | `snap_threshold` | int | `3` | Cells from the edge that trigger a snap (1–10); only applies when snapping is on. |
 | `window_shadows` | bool | `false` (upstream: true) | Draw drop shadows behind windows. |
+| `natural_scroll` | bool | `false` | Invert wheel/touchpad scroll ("natural"): down goes back into history. Does not affect Shift+PageUp/PageDown. |
 | `launch_maximized` | bool | `false` | Open new app windows maximized (filling the work area). |
 | `auto_tile` | bool | `false` | Auto-arrange all windows into the tiling grid as they open and close. |
 | `grid_rows` | int | `2` | Tiling grid rows (1–6). |

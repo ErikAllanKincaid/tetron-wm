@@ -1021,6 +1021,8 @@ impl SessionCore {
     /// Scroll the scrollback of the PTY app window under `p`. No-op when the
     /// pointer isn't over an app window (native widgets handle their own scroll).
     fn scroll_app_at(&mut self, p: Point, lines: i32) {
+        // "Natural" scrolling inverts the wheel: down goes back into history.
+        let lines = if self.cfg.natural_scroll { -lines } else { lines };
         if let Some((id, _)) = self.topmost_window_content_at(p) {
             if let Some(WinContent::App(aid)) = self.contents.get(&id) {
                 self.apphost.scroll(*aid, lines);
