@@ -217,10 +217,16 @@ impl AppInstance {
     pub fn snapshot(&self) -> CellBuffer {
         let t = self.term.lock().unwrap();
         let grid = t.grid();
+        // `Grid`'s `Index<Line>` reads raw storage WITHOUT applying the display
+        // offset, so we must subtract it ourselves: at offset 0 the visible row
+        // y is storage Line(y) (the active screen); scrolled back by N, row y is
+        // Line(y - N), i.e. N lines up into history. Without this, scrolling
+        // changed the offset but the snapshot never moved (no visible scroll).
+        let off = grid.display_offset() as i32;
         let mut buf = CellBuffer::new(self.cols as i32, self.rows as i32);
         for y in 0..self.rows as i32 {
             for x in 0..self.cols as usize {
-                let cell = &grid[Line(y)][Column(x)];
+                let cell = &grid[Line(y - off)][Column(x)];
                 let ch = if cell.c == '\0' { ' ' } else { cell.c };
                 let flags = cell.flags;
                 buf.set(
