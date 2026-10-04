@@ -3560,7 +3560,9 @@ or a remote-side error — its authorized_keys was left untouched)",
         match action {
             Action::BeginMove(id) => {
                 self.wm.raise(id);
-                let r = self.wm.get(id).unwrap().rect;
+                // Guard against a window that vanished between hit-test and here
+                // (its app may have just died); drop the move instead of panicking.
+                let Some(r) = self.wm.get(id).map(|w| w.rect) else { return };
                 self.drag = Some(Hit::Moving {
                     id,
                     grab_dx: p.x - r.x,
@@ -3610,7 +3612,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                     self.drag_armed = true;
                 }
-                let r = self.wm.get(id).unwrap().rect;
+                // The window may have been closed mid-drag (e.g. its app crashed
+                // between mouse-down and this motion event). A stale id is not a
+                // bug — just drop the resize rather than unwrap a None.
+                let Some(r) = self.wm.get(id).map(|w| w.rect) else { return };
                 self.wm.resize_to(id, w - r.x + 1, h - r.y + 1);
                 self.sync_app_size(id);
             }
