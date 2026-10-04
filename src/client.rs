@@ -130,8 +130,20 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
                     let ctrl_alt = ctrl && k.modifiers.contains(KeyModifiers::ALT);
                     let is_leader = (ctrl && k.code == KeyCode::Char(' ')) || k.code == KeyCode::Null;
+                    let shift = k.modifiers.contains(KeyModifiers::SHIFT);
 
-                    if f.confirm_close {
+                    // Global clipboard shortcuts (classic terminal bindings),
+                    // handled before any mode routing so they work everywhere:
+                    //   Shift+Insert  -> paste the primary (mouse) selection
+                    //   Ctrl+Shift+C  -> copy the selection (clipboard + host OSC 52)
+                    //   Ctrl+Shift+V  -> paste the clipboard
+                    if shift && k.code == KeyCode::Insert {
+                        send(&mut out_stream, &ClientMsg::PastePrimary)?;
+                    } else if ctrl && shift && matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
+                        send(&mut out_stream, &ClientMsg::CopySelection)?;
+                    } else if ctrl && shift && matches!(k.code, KeyCode::Char('v') | KeyCode::Char('V')) {
+                        send(&mut out_stream, &ClientMsg::PasteClipboard)?;
+                    } else if f.confirm_close {
                         // The confirm-close dialog is modal: Enter/y confirm, Esc/n cancel.
                         leader = false;
                         match k.code {

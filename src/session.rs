@@ -188,6 +188,15 @@ pub enum ClientMsg {
     /// Middle-button press at `p`: paste the primary (mouse-selected) text into
     /// the terminal app under the pointer (classic X11 primary-selection paste).
     MousePaste(Point),
+    /// Shift+Insert: paste the primary (mouse) selection into the focused app —
+    /// the keyboard equivalent of middle-click, for devices without a middle
+    /// button (e.g. a buttonless clickpad).
+    PastePrimary,
+    /// Ctrl+Shift+C: copy the current selection to the clipboard (internal, for
+    /// Ctrl+Shift+V) and push it to the host terminal clipboard via OSC 52.
+    CopySelection,
+    /// Ctrl+Shift+V: paste the clipboard into the focused app.
+    PasteClipboard,
     /// Raw input bytes to forward to the focused app.
     Key(Vec<u8>),
     /// Terminal was resized to `w` × `h` cells.
@@ -450,6 +459,9 @@ pub struct SessionCore {
     /// Primary selection buffer: the text of the last mouse selection, pasted on
     /// a middle click. Separate from any OSC-52 clipboard the apps themselves set.
     primary: String,
+    /// Explicit clipboard buffer: set by Ctrl+Shift+C, pasted by Ctrl+Shift+V.
+    /// Distinct from `primary` (the mouse selection), mirroring the X11 split.
+    clipboard: String,
     /// The store window's id, if open (so it can be re-focused, not re-opened).
     store_win: Option<WindowId>,
     /// The settings window's id, if open.
@@ -583,6 +595,7 @@ impl SessionCore {
             apphost,
             selection: None,
             primary: String::new(),
+            clipboard: String::new(),
             store_win: None,
             settings_win: None,
             filemanager_win: None,
@@ -1674,6 +1687,24 @@ or a remote-side error — its authorized_keys was left untouched)",
                         }
                     }
                 }
+            }
+            ClientMsg::PastePrimary => {
+                // Shift+Insert: paste the mouse (primary) selection into focus.
+                let text = self.primary.clone();
+                self.paste_to_focused(&text);
+            }
+            ClientMsg::CopySelection => {
+                // Ctrl+Shift+C: promote the current mouse selection to the
+                // clipboard (for Ctrl+Shift+V) and out to the host via OSC 52.
+                if !self.primary.is_empty() {
+                    self.clipboard = self.primary.clone();
+                    self.pending_clipboard = Some(self.primary.clone());
+                }
+            }
+            ClientMsg::PasteClipboard => {
+                // Ctrl+Shift+V: paste the clipboard into the focused app.
+                let text = self.clipboard.clone();
+                self.paste_to_focused(&text);
             }
             ClientMsg::Key(bytes) => {
                 if let Some(id) = self.wm.focused() {
@@ -3116,6 +3147,21 @@ or a remote-side error — its authorized_keys was left untouched)",
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Write `text` to the focused app's PTY (the keyboard-paste target), via the
+    /// same input path as keystrokes. No-op if nothing is focused or the text is
+    /// empty. Used by Shift+Insert (primary) and Ctrl+Shift+V (clipboard).
+    fn paste_to_focused(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        if let Some(id) = self.wm.focused() {
+            if let Some(WinContent::App(aid)) = self.contents.get(&id) {
+                let aid = *aid;
+                self.apphost.input(aid, text.as_bytes());
+            }
         }
     }
 
