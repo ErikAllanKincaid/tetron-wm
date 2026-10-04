@@ -283,6 +283,7 @@ fn serve_client(
             detach: core.quit_requested(),
             reload: core.reload_requested(),
             app_area: core.app_mouse_area(),
+            app_cursor: core.app_cursor_keys(),
         };
         // Send PNG bytes once per image id (base64); later frames carry only the
         // small placement list.

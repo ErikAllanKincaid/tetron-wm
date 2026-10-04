@@ -102,6 +102,11 @@ pub struct Flags {
     /// client routes events inside it as `ClientMsg::MouseInput` (passthrough);
     /// `None` keeps all mouse on the normal chrome/WM path.
     pub app_area: Option<Rect>,
+    /// The focused app has application cursor-key mode (DECCKM) enabled, so the
+    /// client must encode arrows as `ESC O A..D` rather than `ESC [ A..D`.
+    /// Apps that read xterm terminfo (e.g. midnight commander) bind only the
+    /// application form, so without this their arrow keys do nothing.
+    pub app_cursor: bool,
     /// A window rename is in progress; the client should forward typed
     /// characters to the rename buffer rather than the focused app.
     pub renaming: bool,

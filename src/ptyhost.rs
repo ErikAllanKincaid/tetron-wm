@@ -357,6 +357,7 @@ impl AppInstance {
             utf8: mode.contains(TermMode::UTF8_MOUSE),
             alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
+            app_cursor: mode.contains(TermMode::APP_CURSOR),
         }
     }
 

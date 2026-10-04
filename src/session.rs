@@ -4242,6 +4242,19 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// The focused app's content rect IFF that app currently captures the
     /// pointer (wants mouse, or alt-scroll). Used by the client to route
     /// in-app mouse events. `None` → all mouse stays on the chrome/WM path.
+    /// Whether the focused window is an app that has application cursor-key mode
+    /// (DECCKM) enabled. The client uses this to encode arrows as `ESC O A..D`
+    /// so apps that bind only the application form (e.g. midnight commander)
+    /// get working arrow keys. `false` when no app is focused.
+    pub fn app_cursor_keys(&self) -> bool {
+        let Some(fid) = self.wm.focused() else { return false };
+        let aid = match self.contents.get(&fid) {
+            Some(WinContent::App(aid)) => *aid,
+            _ => return false,
+        };
+        self.apphost.mouse_mode(aid).app_cursor
+    }
+
     pub fn app_mouse_area(&self) -> Option<crate::geometry::Rect> {
         // Any open overlay/menu (launcher, power menu, help, dir-picker, tray
         // popover, desktop menu) owns the mouse via the normal chrome path. Never

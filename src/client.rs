@@ -375,10 +375,10 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             KeyCode::Down => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
                             KeyCode::Left => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             KeyCode::Right => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
-                            _ => send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers)))?,
+                            _ => send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers, f.app_cursor)))?,
                         }
                     } else {
-                        send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers)))?;
+                        send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers, f.app_cursor)))?;
                     }
                 }
                 Event::Mouse(me) => {
@@ -556,7 +556,16 @@ fn send(stream: &mut UnixStream, msg: &ClientMsg) -> std::io::Result<()> {
 }
 
 /// Encode a key into the bytes forwarded to the focused PTY app.
-fn encode_key(code: KeyCode, mods: KeyModifiers) -> Vec<u8> {
+fn encode_key(code: KeyCode, mods: KeyModifiers, app_cursor: bool) -> Vec<u8> {
+    // Cursor keys (arrows + Home/End) have two encodings: the CSI form
+    // `ESC [ x` in normal mode, and the SS3 form `ESC O x` when the focused app
+    // enabled application cursor-key mode (DECCKM). Apps that read xterm
+    // terminfo bind only the application form (mc's kcuu1 = `\EOA`), so sending
+    // the CSI form leaves their arrow keys dead. `app_cursor` is the focused
+    // app's DECCKM state, relayed from the emulator via `Flags::app_cursor`.
+    let seq = |c: u8| -> Vec<u8> {
+        if app_cursor { vec![0x1b, b'O', c] } else { vec![0x1b, b'[', c] }
+    };
     match code {
         KeyCode::Char(c) => {
             if mods.contains(KeyModifiers::CONTROL) {
@@ -569,10 +578,12 @@ fn encode_key(code: KeyCode, mods: KeyModifiers) -> Vec<u8> {
         KeyCode::Backspace => vec![0x7f],
         KeyCode::Tab => vec![b'\t'],
         KeyCode::Esc => vec![0x1b],
-        KeyCode::Up => b"\x1b[A".to_vec(),
-        KeyCode::Down => b"\x1b[B".to_vec(),
-        KeyCode::Right => b"\x1b[C".to_vec(),
-        KeyCode::Left => b"\x1b[D".to_vec(),
+        KeyCode::Up => seq(b'A'),
+        KeyCode::Down => seq(b'B'),
+        KeyCode::Right => seq(b'C'),
+        KeyCode::Left => seq(b'D'),
+        KeyCode::Home => seq(b'H'),
+        KeyCode::End => seq(b'F'),
         _ => vec![],
     }
 }
