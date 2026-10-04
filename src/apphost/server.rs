@@ -88,6 +88,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
     let mut last_grid: HashMap<AppId, crate::buffer::CellBuffer> = HashMap::new();
     let mut last_placements: HashMap<AppId, Vec<crate::kittygfx::Placement>> = HashMap::new();
     let mut last_mouse: HashMap<AppId, crate::mouse::AppMouse> = HashMap::new();
+    let mut last_cursor: HashMap<AppId, Option<(u16, u16)>> = HashMap::new();
     let mut sent_images: HashMap<AppId, HashSet<u32>> = HashMap::new();
 
     loop {
@@ -155,12 +156,14 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 last_grid.remove(&id);
                 last_placements.remove(&id);
                 last_mouse.remove(&id);
+                last_cursor.remove(&id);
                 sent_images.remove(&id);
                 continue;
             }
             let Some(grid) = local.snapshot(id) else { continue };
             let placements = local.placements(id);
             let mouse = local.mouse_mode(id);
+            let cursor = local.cursor(id);
 
             // New image blobs (not yet sent to this frontend).
             let seen = sent_images.entry(id).or_default();
@@ -179,14 +182,18 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
             let grid_changed = last_grid.get(&id) != Some(&grid);
             let placements_changed = last_placements.get(&id) != Some(&placements);
             let mouse_changed = last_mouse.get(&id) != Some(&mouse);
-            if grid_changed || placements_changed || mouse_changed || !images.is_empty() || bells > 0 || clip.is_some() {
-                let evt = HostEvt::Frame { app: id.0, grid: grid.clone(), placements: placements.clone(), images, alive: true, mouse, bells, clip };
+            // A bare cursor move (e.g. arrow keys in a shell) changes no cells,
+            // so it must be tracked separately or the caret would never update.
+            let cursor_changed = last_cursor.get(&id) != Some(&cursor);
+            if grid_changed || placements_changed || mouse_changed || cursor_changed || !images.is_empty() || bells > 0 || clip.is_some() {
+                let evt = HostEvt::Frame { app: id.0, grid: grid.clone(), placements: placements.clone(), images, alive: true, mouse, cursor, bells, clip };
                 if send(&mut writer, &evt).is_err() {
                     return;
                 }
                 last_grid.insert(id, grid);
                 last_placements.insert(id, placements);
                 last_mouse.insert(id, mouse);
+                last_cursor.insert(id, cursor);
             }
         }
 

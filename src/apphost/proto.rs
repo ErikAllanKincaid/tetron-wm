@@ -82,6 +82,10 @@ pub enum HostEvt {
         images: Vec<ImgBlob>,
         alive: bool,
         mouse: crate::mouse::AppMouse,
+        /// The app's text cursor `(col, row)` in grid coords, or `None` when
+        /// hidden/scrolled away (default `None` across version skew).
+        #[serde(default)]
+        cursor: Option<(u16, u16)>,
         /// Bell rings since the previous frame (default 0 across version skew).
         #[serde(default)]
         bells: u32,
@@ -244,6 +248,7 @@ mod tests {
             images: vec![ImgBlob { image_id: 1, png_b64: "QUJD".into() }],
             alive: true,
             mouse: Default::default(),
+            cursor: Some((1, 0)),
             bells: 2,
             clip: Some("copied".into()),
         };
@@ -252,13 +257,14 @@ mod tests {
         let mut r = std::io::BufReader::new(&buf[..]);
         let back: HostEvt = recv(&mut r).unwrap().unwrap();
         match back {
-            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, bells, clip } => {
+            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, cursor, bells, clip } => {
                 assert_eq!(app, 5);
                 assert_eq!(g, grid);
                 assert_eq!(placements.len(), 1);
                 assert_eq!(images[0].png_b64, "QUJD");
                 assert!(alive);
                 assert_eq!(mouse, Default::default());
+                assert_eq!(cursor, Some((1, 0)));
                 assert_eq!(bells, 2);
                 assert_eq!(clip.as_deref(), Some("copied"));
             }

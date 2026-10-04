@@ -21,6 +21,8 @@ struct Cached {
     images: HashMap<u32, Vec<u8>>,
     alive: bool,
     mouse: crate::mouse::AppMouse,
+    /// The app's text cursor `(col, row)`, or `None` when hidden/scrolled away.
+    cursor: Option<(u16, u16)>,
     /// Bell rings accumulated since the frontend last drained them.
     bells: u32,
     /// The app's latest OSC-52 clipboard store, not yet forwarded.
@@ -144,13 +146,14 @@ fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, infligh
                 let _ = tx.send(Err(error));
             }
         }
-        HostEvt::Frame { app, grid, placements, images, alive, mouse, bells, clip } => {
+        HostEvt::Frame { app, grid, placements, images, alive, mouse, cursor, bells, clip } => {
             let mut c = cache.lock().unwrap();
             let entry = c.apps.entry(AppId(app)).or_default();
             entry.grid = Some(grid);
             entry.placements = placements;
             entry.alive = alive;
             entry.mouse = mouse;
+            entry.cursor = cursor;
             entry.bells = entry.bells.saturating_add(bells);
             if clip.is_some() {
                 entry.clip = clip;
@@ -312,6 +315,10 @@ impl AppHost for RemoteAppHost {
 
     fn mouse_mode(&self, id: AppId) -> crate::mouse::AppMouse {
         self.cache.lock().unwrap().apps.get(&id).map(|c| c.mouse).unwrap_or_default()
+    }
+
+    fn cursor(&self, id: AppId) -> Option<(u16, u16)> {
+        self.cache.lock().unwrap().apps.get(&id).and_then(|c| c.cursor)
     }
 }
 
