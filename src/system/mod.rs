@@ -159,6 +159,10 @@ pub enum ControlIntent {
     /// that network. Handled by the session (sends to the tetron daemon),
     /// not the OS backend.
     TetronSetActive { network: Option<String>, active: bool },
+    /// Open a terminal window showing `tetron status`, then an interactive
+    /// shell where the full tetron CLI (invite/join/admin/…) is available.
+    /// Handled by the session (launches a shell), not the OS backend.
+    TetronOpenTerminal,
     /// Step the menubar calendar popover a month back/forward. Handled by the
     /// session's tray state, not the OS backend.
     CalendarPrev,

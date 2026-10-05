@@ -355,8 +355,9 @@ impl Tray {
         let t = crate::theme::current();
         let ti = &st.tetron;
         let nets: Vec<_> = ti.networks.iter().take(8).cloned().collect();
+        let rows = nets.len().max(1) as i32; // network rows (or the "(no networks)" line)
         let box_w = 40;
-        let box_h = 3 + nets.len().max(1) as i32;
+        let box_h = 3 + rows + 1; // +1 for the "Open terminal" action row
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);
@@ -382,6 +383,14 @@ impl Tray {
                 intent: ControlIntent::TetronSetActive { network: Some(n.name.clone()), active: !n.active },
             });
         }
+        // Action row: open a terminal on `tetron status` + an interactive shell
+        // (the full tetron CLI). The thin dashboard until the tetron-tui lands.
+        let term_y = 2 + rows;
+        buf.write_str(2, term_y, "⌨ Open terminal", t.accent, t.window_bg);
+        hits.push(PopoverHit {
+            rect: Rect::new(origin.x + 1, origin.y + term_y, box_w - 2, 1),
+            intent: ControlIntent::TetronOpenTerminal,
+        });
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 

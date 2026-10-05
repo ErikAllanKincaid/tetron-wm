@@ -1316,6 +1316,22 @@ impl SessionCore {
                 }
                 return;
             }
+            I::TetronOpenTerminal => {
+                // Show status immediately, then drop to the user's interactive
+                // shell so the whole tetron CLI (invite/join/admin/…) is to hand
+                // -- the thin, native "dashboard" for a CLI-first tool.
+                self.tray.close();
+                self.launch_in(
+                    "Tetron".to_string(),
+                    "sh".to_string(),
+                    vec![
+                        "-lc".to_string(),
+                        "tetron status; exec \"${SHELL:-sh}\" -i".to_string(),
+                    ],
+                    None,
+                );
+                return;
+            }
             _ => {}
         }
         if let Ok(mut s) = self.tray_state.write() {
