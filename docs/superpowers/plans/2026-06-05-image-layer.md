@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Display real raster images inside tuiui windows via the Kitty graphics protocol, with a native image-viewer window as the first consumer.
+**Goal:** Display real raster images inside tetron-wm windows via the Kitty graphics protocol, with a native image-viewer window as the first consumer.
 
 **Architecture:** The daemon attaches image **placements** (id + screen rect + visibility) to each frame and ships PNG bytes once per attach; the thin client emits Kitty graphics transmit/place/delete escapes, gated on terminal capability, with a cell **placeholder** as the universal fallback. Images are decoded/downscaled/hashed by an `ImageStore`.
 
@@ -37,7 +37,7 @@ In `Cargo.toml` `[dependencies]`: `image = { version = "0.25", default-features 
 - [ ] **Step 2: Write the failing test** (`tests/imagestore_tests.rs`):
 
 ```rust
-use tuiui::imagestore::ImageStore;
+use tetron_wm::imagestore::ImageStore;
 
 /// A 20×20 solid-red PNG, encoded at test time via the `image` crate.
 fn red_png(w: u32, h: u32) -> Vec<u8> {
@@ -147,7 +147,7 @@ git commit -m "image: ImageStore — decode/downscale/hash/cache (image crate)"
 - [ ] **Step 1: Write the failing test** (`tests/kitty_tests.rs`):
 
 ```rust
-use tuiui::kitty::{b64, delete, place, transmit};
+use tetron_wm::kitty::{b64, delete, place, transmit};
 
 #[test]
 fn base64_matches_known_vectors() {
@@ -257,8 +257,8 @@ git commit -m "image: Kitty graphics escape builders (transmit/place/delete) + b
 - [ ] **Step 1: Write the failing test** (`tests/protocol_image_tests.rs`):
 
 ```rust
-use tuiui::geometry::Rect;
-use tuiui::protocol::{ImageBlob, ImagePlacement};
+use tetron_wm::geometry::Rect;
+use tetron_wm::protocol::{ImageBlob, ImagePlacement};
 
 #[test]
 fn placement_round_trips() {
@@ -343,7 +343,7 @@ git commit -m "image: ImagePlacement/ImageBlob protocol types + Caps.kitty_graph
 - [ ] **Step 1: Write the failing test** (`tests/imageview_tests.rs`):
 
 ```rust
-use tuiui::imageview::ImageView;
+use tetron_wm::imageview::ImageView;
 
 #[test]
 fn placeholder_shows_filename() {
@@ -635,7 +635,7 @@ git commit -m "image: client reconcile (transmit-once / place / delete) gated on
 ### Task 7: Final verification + manual smoke
 
 - [ ] `cargo build --offline && cargo clippy --offline --all-targets && cargo test --offline` → builds, 0 warnings, all pass.
-- [ ] Reinstall: `cargo install --path . --root ~/.local --force`; on the mini `tuiui kill ; tuiui`.
+- [ ] Reinstall: `cargo install --path . --root ~/.local --force`; on the mini `tetron-wm kill ; tetron-wm`.
 - [ ] In Ghostty: add a launcher entry `[[launcher]] name="Photo" command="@image" args=["~/Pictures/some.png"]` (or trigger `OpenImage`), open it → the photo renders in the window; move the window → it follows; cover it with another window → it hides (placeholder shows); close it → it disappears.
 - [ ] Commit any fixups.
 

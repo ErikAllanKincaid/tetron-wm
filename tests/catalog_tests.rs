@@ -1,4 +1,4 @@
-use tuiui::catalog::{catalog, category_for, detect_installed};
+use tetron_wm::catalog::{catalog, category_for, detect_installed};
 
 #[test]
 fn catalog_loads_full_awesome_tuis_list() {
@@ -27,7 +27,7 @@ fn detect_returns_categorized_entries() {
 
 #[test]
 fn os_filtering_never_hides_unknown_apps() {
-    use tuiui::catalog::{current_os, runs_on_current_os};
+    use tetron_wm::catalog::{current_os, runs_on_current_os};
     // current OS is a known token
     assert!(["macos","linux","windows"].contains(&current_os()) || !current_os().is_empty());
     // an app with no recipe is shown everywhere (never falsely hidden)
@@ -36,8 +36,8 @@ fn os_filtering_never_hides_unknown_apps() {
 
 #[test]
 fn ai_tools_require_cwd() {
-    assert!(tuiui::catalog::recipe("Claude Code").unwrap().requires_cwd);
-    assert!(!tuiui::catalog::recipe("btop").map(|r| r.requires_cwd).unwrap_or(false));
+    assert!(tetron_wm::catalog::recipe("Claude Code").unwrap().requires_cwd);
+    assert!(!tetron_wm::catalog::recipe("btop").map(|r| r.requires_cwd).unwrap_or(false));
 }
 
 /// A catalog entry with no `"cli"` key parses with the field defaulting to
@@ -45,7 +45,7 @@ fn ai_tools_require_cwd() {
 #[test]
 fn cli_flag_defaults_to_false_when_absent() {
     let json = r#"{"name":"Foo","bin":"foo","category":"Cat","description":"d","homepage":"https://example.com"}"#;
-    let app: tuiui::catalog::CatalogApp = serde_json::from_str(json).unwrap();
+    let app: tetron_wm::catalog::CatalogApp = serde_json::from_str(json).unwrap();
     assert!(!app.cli);
 }
 
@@ -53,7 +53,7 @@ fn cli_flag_defaults_to_false_when_absent() {
 #[test]
 fn cli_flag_parses_when_present() {
     let json = r#"{"name":"Foo","bin":"foo","category":"Cat","description":"d","homepage":"https://example.com","cli":true}"#;
-    let app: tuiui::catalog::CatalogApp = serde_json::from_str(json).unwrap();
+    let app: tetron_wm::catalog::CatalogApp = serde_json::from_str(json).unwrap();
     assert!(app.cli);
 }
 
@@ -62,7 +62,7 @@ fn cli_flag_parses_when_present() {
 /// bundled entries are flagged yet — the catalog-data sweep ships separately).
 #[test]
 fn is_cli_lookup_by_name_or_bin() {
-    use tuiui::catalog::is_cli;
+    use tetron_wm::catalog::is_cli;
     assert!(!is_cli("definitely-not-a-real-app-xyz"));
     assert!(!is_cli("btop"));
 }
@@ -75,7 +75,7 @@ fn app_entry_cli_field_defaults_to_none() {
     let toml = r#"name = "Foo"
 command = "foo"
 "#;
-    let entry: tuiui::config::AppEntry = toml::from_str(toml).unwrap();
+    let entry: tetron_wm::config::AppEntry = toml::from_str(toml).unwrap();
     assert_eq!(entry.cli, None);
 }
 
@@ -87,14 +87,14 @@ fn app_entry_warn_field_defaults_to_none_and_round_trips() {
     let toml = r#"name = "Foo"
 command = "foo"
 "#;
-    let entry: tuiui::config::AppEntry = toml::from_str(toml).unwrap();
+    let entry: tetron_wm::config::AppEntry = toml::from_str(toml).unwrap();
     assert_eq!(entry.warn, None);
 
     let toml = r#"name = "Foo"
 command = "foo"
 warn = "careful?"
 "#;
-    let entry: tuiui::config::AppEntry = toml::from_str(toml).unwrap();
+    let entry: tetron_wm::config::AppEntry = toml::from_str(toml).unwrap();
     assert_eq!(entry.warn.as_deref(), Some("careful?"));
 }
 
@@ -103,7 +103,7 @@ warn = "careful?"
 #[test]
 fn variants_default_to_empty_when_absent() {
     let json = r#"{"name":"Foo","bin":"foo","category":"Cat","description":"d","homepage":"https://example.com"}"#;
-    let app: tuiui::catalog::CatalogApp = serde_json::from_str(json).unwrap();
+    let app: tetron_wm::catalog::CatalogApp = serde_json::from_str(json).unwrap();
     assert!(app.variants.is_empty());
 }
 
@@ -112,7 +112,7 @@ fn variants_default_to_empty_when_absent() {
 fn variants_parse_from_json() {
     let json = r#"{"name":"Foo","bin":"foo","category":"Cat","description":"d","homepage":"https://example.com",
         "variants":[{"suffix":"⚠️","args":["--x"],"warn":"careful"}]}"#;
-    let app: tuiui::catalog::CatalogApp = serde_json::from_str(json).unwrap();
+    let app: tetron_wm::catalog::CatalogApp = serde_json::from_str(json).unwrap();
     assert_eq!(app.variants.len(), 1);
     assert_eq!(app.variants[0].suffix, "\u{26a0}\u{fe0f}");
     assert_eq!(app.variants[0].args, vec!["--x".to_string()]);
@@ -124,7 +124,7 @@ fn variants_parse_from_json() {
 #[test]
 fn variant_args_and_warn_default_when_absent() {
     let json = r#"{"suffix":"x"}"#;
-    let v: tuiui::catalog::Variant = serde_json::from_str(json).unwrap();
+    let v: tetron_wm::catalog::Variant = serde_json::from_str(json).unwrap();
     assert!(v.args.is_empty());
     assert_eq!(v.warn, None);
 }

@@ -1,8 +1,8 @@
 use std::fs;
-use tuiui::fileops::{FsOps, StdFs};
+use tetron_wm::fileops::{FsOps, StdFs};
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-fo-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-fo-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -27,7 +27,7 @@ fn list_sorts_dirs_first_then_name_and_hides_dotfiles() {
     let alpha = shown.iter().find(|e| e.name == "alpha.txt").unwrap();
     assert!(!alpha.is_dir);
     assert_eq!(alpha.size, 2);
-    assert_eq!(alpha.role, tuiui::openwith::Role::Text);
+    assert_eq!(alpha.role, tetron_wm::openwith::Role::Text);
 
     let _ = fs::remove_dir_all(&d);
 }
@@ -82,7 +82,7 @@ fn copy_is_recursive_for_directories() {
 
 #[test]
 fn unique_destination_suffixes_extension_correctly() {
-    use tuiui::fileops::unique_destination;
+    use tetron_wm::fileops::unique_destination;
     let d = tmp("uniq");
     fs::write(d.join("note.md"), b"x").unwrap();
     let p = unique_destination(&d, "note.md");
@@ -96,7 +96,7 @@ fn unique_destination_suffixes_extension_correctly() {
 
 #[test]
 fn trash_dir_is_os_appropriate() {
-    use tuiui::fileops::trash_dir;
+    use tetron_wm::fileops::trash_dir;
     let p = trash_dir().expect("home dir resolvable in test env");
     let s = p.to_string_lossy();
     if cfg!(target_os = "macos") {
@@ -112,7 +112,7 @@ fn trash_moves_file_out_of_source_dir() {
     // real OS trash but immediately clean up our marker file from it.
     let d = tmp("trash");
     let fs_ops = StdFs;
-    let marker = format!("tuiui-trash-marker-{}.txt", std::process::id());
+    let marker = format!("tetron-wm-trash-marker-{}.txt", std::process::id());
     let victim = d.join(&marker);
     fs::write(&victim, b"bye").unwrap();
 
@@ -120,7 +120,7 @@ fn trash_moves_file_out_of_source_dir() {
     assert!(!victim.exists(), "source file should be gone after trashing");
 
     // Clean our marker out of the real trash so we don't litter.
-    if let Some(td) = tuiui::fileops::trash_dir() {
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
         let _ = fs::remove_file(td.join(&marker));
         let _ = fs::remove_file(td.join(format!("{marker} copy")));
     }
@@ -136,12 +136,12 @@ fn info_reports_size_and_permissions() {
     fs::write(&f, b"abcd").unwrap();
     fs::set_permissions(&f, fs::Permissions::from_mode(0o640)).unwrap();
 
-    let info = tuiui::fileops::info(&f).unwrap();
+    let info = tetron_wm::fileops::info(&f).unwrap();
     assert_eq!(info.size, 4);
     assert!(!info.is_dir);
     assert!(!info.is_symlink);
     assert_eq!(info.mode & 0o777, 0o640);
-    assert_eq!(tuiui::fileops::mode_rwx(info.mode), "rw-r-----");
+    assert_eq!(tetron_wm::fileops::mode_rwx(info.mode), "rw-r-----");
 
     let _ = fs::remove_dir_all(&d);
 }
@@ -155,7 +155,7 @@ fn info_follows_symlink_reports_target() {
     let link = d.join("alias.txt");
     std::os::unix::fs::symlink(&target, &link).unwrap();
 
-    let info = tuiui::fileops::info(&link).unwrap();
+    let info = tetron_wm::fileops::info(&link).unwrap();
     assert!(info.is_symlink);
     assert_eq!(info.link_target.as_deref(), Some(target.as_path()));
 
@@ -169,7 +169,7 @@ fn set_permissions_changes_mode() {
     let d = tmp("chmod");
     let f = d.join("s.sh");
     fs::write(&f, b"#!/bin/sh\n").unwrap();
-    tuiui::fileops::StdFs.set_mode(&f, 0o755).unwrap();
+    tetron_wm::fileops::StdFs.set_mode(&f, 0o755).unwrap();
     let m = fs::metadata(&f).unwrap().permissions().mode();
     assert_eq!(m & 0o777, 0o755);
     let _ = fs::remove_dir_all(&d);

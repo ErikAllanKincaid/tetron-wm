@@ -16,13 +16,13 @@ added the instrumentation needed to pinpoint it. Re-ask:
    bypasses the broken in-app path):
    ```sh
    curl -fsSL https://raw.githubusercontent.com/jaylfc/tuiui/main/install.sh | sh
-   tuiui reload
+   tetron-wm reload
    ```
    Confirm Settings → Updates shows `v0.2.9`.
 2. **Trigger the update from Settings → Updates → Install**, let it run, then
    paste the tail:
    ```sh
-   tail -40 ~/tuiui-debug.log
+   tail -40 ~/tetron-wm-debug.log
    ```
 3. **When it's "stuck", what exactly happens** — update window hangs open?
    screen freezes? drops back to the desktop unchanged?
@@ -33,17 +33,17 @@ The 0.2.9 log is persistent across reloads and records version+binary per
 start. Expected healthy chain:
 ```
 update: install -> '…/.local/bin'
-update: install.sh ok; reloading via '…/.local/bin/tuiui'
+update: install.sh ok; reloading via '…/.local/bin/tetron-wm'
 daemon: reload — exiting to restart, apphost preserved
 client: daemon reload — …respawning
-daemon: spawning '…/.local/bin/tuiui' --daemon
-=== tuiui session start (v0.2.9 → vNEW, git …, exe …) ===
+daemon: spawning '…/.local/bin/tetron-wm' --daemon
+=== tetron-wm session start (v0.2.9 → vNEW, git …, exe …) ===
 ```
 | Symptom in log | Diagnosis |
 |---|---|
 | no `update: install -> …` | Install button not firing the action |
 | `update: FAILED …` | install.sh/cargo failed (line says which) |
-| `…install.sh ok` but no `daemon: reload — exiting` | `tuiui reload` didn't reach the daemon |
+| `…install.sh ok` but no `daemon: reload — exiting` | `tetron-wm reload` didn't reach the daemon |
 | reload happens but no new `=== … session start …` banner | client didn't respawn the daemon |
 | new banner shows the **same** version/exe | **respawn ran a stale binary** ← prime suspect |
 | new banner shows a **newer** version | update worked → "stuck" is a repaint/UI issue (different fix) |
@@ -52,7 +52,7 @@ daemon: spawning '…/.local/bin/tuiui' --daemon
 - macOS `current_exe()` after `tar` overwrites the running binary: confirm the
   client respawns the **new inode**. `spawn_daemon()` (`src/main.rs`) uses
   `std::env::current_exe()`. If the user launched via a **symlink** (e.g.
-  `~/.local/bin/tuiui` → `~/.cargo/bin/tuiui`), `current_exe()` canonicalizes
+  `~/.local/bin/tetron-wm` → `~/.cargo/bin/tetron-wm`), `current_exe()` canonicalizes
   and `exe_dir` may differ from where they think the binary lives.
 - The reload tears down the daemon but the client doesn't detect the socket
   drop / doesn't return `ClientExit::Reload` (frozen screen case).
@@ -65,7 +65,7 @@ daemon: spawning '…/.local/bin/tuiui' --daemon
 |---|---|
 | **0.2.5** | Fixed the update **loop**: v0.2.4 was tagged on the 0.2.3 commit, so its binaries reported 0.2.3 → perpetual "update available". Re-released from the right commit. |
 | **0.2.6** | **Dock right-click context menu** (#32, port from dev #11/#20) + **activity-monitor/apphost follow-ups** (#33, re-landed from stale #16). |
-| **0.2.7** | **In-app update fix**: reload via the installed binary's **absolute path** (bare `tuiui reload` could miss `$PATH` in `sh -lc`) + `update:` logging. |
+| **0.2.7** | **In-app update fix**: reload via the installed binary's **absolute path** (bare `tetron-wm reload` could miss `$PATH` in `sh -lc`) + `update:` logging. |
 | **0.2.8** | **Switchable assistant agent** (#37): Settings → Assistant flips opencode ⇄ hermes (stored in `assistant_command`). |
 | **0.2.9** | **Debug log persists across reloads** (was truncating on every daemon start, wiping the update trace) + reload→respawn seam logging. Diagnostic build for the stuck-update bug. |
 
@@ -93,9 +93,9 @@ already-merged squash commits between PRs).
 
 ## Environment facts about the user (macOS)
 - Apple Silicon, **ghostty** terminal, truecolor + kitty-graphics.
-- Binary at `/Volumes/NVMe/Users/jay/.local/bin/tuiui` (single, on `$PATH`);
+- Binary at `/Volumes/NVMe/Users/jay/.local/bin/tetron-wm` (single, on `$PATH`);
   prebuilt arm64 binary runs fine (no signing/`Killed: 9` issue).
-- Config: `~/.config/tuiui/config.toml` had a stale `assistant_command =
+- Config: `~/.config/tetron-wm/config.toml` had a stale `assistant_command =
   "hermes"` (why the ✦ panel launched hermes, not opencode) — the new agent
   switch reflects/flips it.
 - Manual `install.sh` works perfectly; only the **in-app** update is stuck.

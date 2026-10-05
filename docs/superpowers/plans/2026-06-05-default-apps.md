@@ -37,7 +37,7 @@ This plan produces a working, testable resolver + Settings panel. The file manag
 
 ```rust
 use std::path::Path;
-use tuiui::openwith::{classify, Role};
+use tetron_wm::openwith::{classify, Role};
 
 #[test]
 fn classifies_by_extension() {
@@ -172,7 +172,7 @@ git commit -m "openwith: Role classification (extension + MIME fallback)"
 
 ```rust
 use std::collections::BTreeMap;
-use tuiui::openwith::{resolve, OpenAction};
+use tetron_wm::openwith::{resolve, OpenAction};
 
 fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
@@ -209,7 +209,7 @@ use std::collections::BTreeMap;
 pub enum OpenAction {
     /// A directory the file manager should navigate into.
     Navigate,
-    /// A built-in tuiui viewer, e.g. "@image".
+    /// A built-in tetron-wm viewer, e.g. "@image".
     Builtin(&'static str),
     /// Launch a terminal app with the file path appended.
     RunApp { command: String, args: Vec<String> },

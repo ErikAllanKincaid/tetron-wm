@@ -1,4 +1,4 @@
-use tuiui::imagestore::ImageStore;
+use tetron_wm::imagestore::ImageStore;
 
 /// A solid-red PNG of `w × h`, encoded at test time via the `image` crate.
 fn red_png(w: u32, h: u32) -> Vec<u8> {

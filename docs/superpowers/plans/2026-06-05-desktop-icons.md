@@ -19,7 +19,7 @@
 - `src/session.rs`: `build_frame(&self)` pushes window layers (from `wm.z_ordered()`), then chrome (`render_menubar`, `render_dock`), then launcher/dirpicker/help/images. `handle_mouse(&mut self, kind: MouseKind, p: Point)` checks help/dirpicker/launcher/tray/menubar/dock, then `route_mouse(kind, p, &windows, self.drag)` → `self.exec(action, p)`. `MouseKind::{Down,Drag,Up}`. The FM effect dispatch is `drain_fm_action` + `focused_fm_cwd`; thumbnails via `refresh_fm_thumbnails` (loads into `self.images: ImageStore`, hands ids back). `open_image(path: String)`, `launch_in(name, command, args, cwd: Option<PathBuf>)`, `launch_entry(AppEntry)` (handles `@files`/`@store`/`@settings`/`@image`), `open_filemanager_root(root: PathBuf)` (private; opens Files at a dir). `picker_root()` → the `~`/configured root. `fully_unobstructed(&self, win)` exists for windows.
 - `src/openwith.rs`: `classify(&Path, is_dir) -> Role`, `resolve(&Path, is_dir, &BTreeMap<String,String>) -> OpenAction` (`Navigate/Builtin(&str)/RunApp{command,args}/OpenWithMenu`), `Role` + `Role::label()`.
 - `src/fileops.rs`: `Entry { name, path, is_dir, size, modified, role }`, `StdFs`/`FsOps` (`list/mkdir/rename/copy/move_to/trash`), `unique_destination`, `trash_dir`.
-- `src/config.rs`: `Config` derives `Clone, Debug, Deserialize, Serialize`, `#[serde(default)]` on the struct + explicit `impl Default`. `AppEntry { name, command, args, category, requires_cwd, cwd }`. `Config::save()` writes `~/.config/tuiui/config.toml`.
+- `src/config.rs`: `Config` derives `Clone, Debug, Deserialize, Serialize`, `#[serde(default)]` on the struct + explicit `impl Default`. `AppEntry { name, command, args, category, requires_cwd, cwd }`. `Config::save()` writes `~/.config/tetron-wm/config.toml`.
 - `src/protocol.rs`: `ImagePlacement { id, rect, cols, rows, visible }`; `Flags` (`#[serde(default)]`) has the focus flags incl. `filemanager_focused/_editing`.
 - `src/client.rs`: mouse arm sends left-only (`MouseEventKind::Down(MouseButton::Left) => ClientMsg::MouseDown`, etc.); imports `MouseButton`. `Point::new(col, row)`.
 - `src/buffer.rs` / `src/cell.rs`: `CellBuffer::{new,width,height,fill,set,write_str}`, `Cell { ch, fg, bg, attrs }`, `Rgba { r,g,b,a }`. `src/geometry.rs`: `Rect::new`, `Rect::contains(Point)`, `Rect::intersect`.
@@ -103,12 +103,12 @@ git commit -m "config: [desktop] enabled + pins + positions (Files/Store default
 ```rust
 use std::collections::BTreeMap;
 use std::fs;
-use tuiui::config::AppEntry;
-use tuiui::desktop::{DesktopIcons, DesktopAction, IconSource};
-use tuiui::geometry::Point;
+use tetron_wm::config::AppEntry;
+use tetron_wm::desktop::{DesktopIcons, DesktopAction, IconSource};
+use tetron_wm::geometry::Point;
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-dt-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-dt-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -436,7 +436,7 @@ mod tests {
     use std::fs;
 
     fn tmp(tag: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("tuiui-dtr-{}-{}", tag, std::process::id()));
+        let d = std::env::temp_dir().join(format!("tetron-wm-dtr-{}-{}", tag, std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -634,8 +634,8 @@ git commit -m "desktop: drag-to-snap, nearest-free-cell, positions + clean up"
 ```rust
 #[test]
 fn new_mouse_messages_roundtrip() {
-    use tuiui::session::ClientMsg;
-    use tuiui::geometry::Point;
+    use tetron_wm::session::ClientMsg;
+    use tetron_wm::geometry::Point;
     for msg in [ClientMsg::MouseDouble(Point::new(3, 4)), ClientMsg::MouseRightDown(Point::new(5, 6))] {
         let s = serde_json::to_string(&msg).unwrap();
         let back: ClientMsg = serde_json::from_str(&s).unwrap();
@@ -710,7 +710,7 @@ git commit -m "protocol: MouseDouble + MouseRightDown + desktop_editing; client 
 ```rust
 #[test]
 fn desktop_click_selects_and_double_click_opens_files() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskwire-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskwire-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::create_dir(dir.join("proj")).unwrap();
@@ -719,7 +719,7 @@ fn desktop_click_selects_and_double_click_opens_files() {
     let mut core = SessionCore::new(100, 30, Config { desktop_pins: vec![], ..Config::default() });
     core.set_desktop_dir_for_test(dir.clone()); // reloads desktop at `dir`
     // "proj" is at cell (0,0): tile glyph at (7,1); click then double-click.
-    let p = tuiui::geometry::Point::new(2, 1);
+    let p = tetron_wm::geometry::Point::new(2, 1);
     core.apply(ClientMsg::MouseDown(p));
     assert_eq!(core.desktop_selection_len_for_test(), 1);
     let before = core.window_count();
@@ -855,7 +855,7 @@ git commit -m "desktop: session wiring — render layer, fall-through clicks, op
 ```rust
 #[test]
 fn right_click_opens_context_and_menu_targets() {
-    use tuiui::desktop::DesktopOverlay;
+    use tetron_wm::desktop::DesktopOverlay;
     let d = tmp("ctx");
     fs::write(d.join("a.txt"), b"x").unwrap();
     let mut dt = DesktopIcons::new(d.clone());
@@ -1001,12 +1001,12 @@ pub enum DesktopMenuItem { Open, OpenWith, Rename, Trash, Unpin, NewFolder, Clea
 ```rust
 #[test]
 fn desktop_new_folder_via_menu_creates_dir() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskmk-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskmk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let mut core = SessionCore::new(100, 30, Config { desktop_pins: vec![], ..Config::default() });
     core.set_desktop_dir_for_test(dir.clone());
-    core.apply(ClientMsg::MouseRightDown(tuiui::geometry::Point::new(60, 20))); // empty desktop menu
+    core.apply(ClientMsg::MouseRightDown(tetron_wm::geometry::Point::new(60, 20))); // empty desktop menu
     // Drive new-folder directly via the editing messages (menu click tested in unit tests):
     core.begin_desktop_new_folder_for_test();
     for c in "Stuff".chars() { core.apply(ClientMsg::DesktopChar(c)); }
@@ -1037,7 +1037,7 @@ git commit -m "desktop: context menus, rename/new-folder/trash, drag persistence
 ```rust
 #[test]
 fn desktop_image_icon_emits_thumbnail_placement() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskthumb-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskthumb-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([9, 9, 9, 255]));
@@ -1124,7 +1124,7 @@ git commit -m "desktop: image thumbnails via A1 placements"
 ### Task 9: Manual verification + docs
 
 - [ ] **Step 1:** Full gate green.
-- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tuiui kill ; tuiui`. Verify: `~/Desktop` files + the Files/Store pins show as icons; double-click a folder opens **Files** there, a file opens its default app, a pin launches; drag an icon → it snaps and the position survives a restart; right-click an icon → Open/Rename/Trash, right-click empty → New Folder/Clean Up; an image on the Desktop shows a thumbnail (Ghostty/Kitty).
+- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tetron-wm kill ; tetron-wm`. Verify: `~/Desktop` files + the Files/Store pins show as icons; double-click a folder opens **Files** there, a file opens its default app, a pin launches; drag an icon → it snaps and the position survives a restart; right-click an icon → Open/Rename/Trash, right-click empty → New Folder/Clean Up; an image on the Desktop shows a thumbnail (Ghostty/Kitty).
 - [ ] **Step 3:** Update `README.md` — add desktop icons to the features list + the roadmap line (`✅ Desktop icons`), and a one-line controls note (double-click opens, drag to arrange, right-click for the menu). Commit:
 
 ```bash

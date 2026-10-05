@@ -1,4 +1,4 @@
-use tuiui::store::Store;
+use tetron_wm::store::Store;
 
 #[test]
 fn store_has_all_category_first_and_lists_apps() {
@@ -40,7 +40,7 @@ fn render_returns_sized_buffer() {
 
 #[test]
 fn click_selects_category_and_row() {
-    use tuiui::geometry::Point;
+    use tetron_wm::geometry::Point;
     let mut s = Store::new();
     // sidebar: category at y = 2 + index; click "Dashboards" (index 1)
     let _ = s.handle_click(Point::new(2, 3), 96, 22);

@@ -1,4 +1,4 @@
-use tuiui::help::{help_sections, render_help};
+use tetron_wm::help::{help_sections, render_help};
 
 #[test]
 fn help_lists_the_tiling_shortcuts() {

@@ -33,7 +33,7 @@ pub struct AppEntry {
     pub warn: Option<String>,
 }
 
-/// Top-level configuration for tuiui.
+/// Top-level configuration for tetron-wm.
 ///
 /// All fields have sensible defaults; missing keys in the TOML file
 /// fall back to [`Default::default`].
@@ -201,8 +201,8 @@ fn default_grid_cols() -> u8 { 2 }
 /// `<home>/.config`, on every platform.
 ///
 /// Note: we deliberately do **not** use `dirs::config_dir()` — on macOS that
-/// returns `~/Library/Application Support`, but tuiui standardises on the
-/// XDG-style `~/.config/tuiui/config.toml` across all platforms.
+/// returns `~/Library/Application Support`, but tetron-wm standardises on the
+/// XDG-style `~/.config/tetron-wm/config.toml` across all platforms.
 fn config_file_path(
     xdg_config_home: Option<std::ffi::OsString>,
     home: Option<std::path::PathBuf>,
@@ -210,14 +210,14 @@ fn config_file_path(
     let base = xdg_config_home
         .map(std::path::PathBuf::from)
         .or_else(|| home.map(|h| h.join(".config")))?;
-    Some(base.join("tuiui").join("config.toml"))
+    Some(base.join("tetron-wm").join("config.toml"))
 }
 
 impl Config {
     /// Parse a `Config` from a TOML string.
     pub fn from_toml_str(s: &str) -> Result<Config, toml::de::Error> { toml::from_str(s) }
 
-    /// Load from `$XDG_CONFIG_HOME/tuiui/config.toml` (or `~/.config/tuiui/config.toml`),
+    /// Load from `$XDG_CONFIG_HOME/tetron-wm/config.toml` (or `~/.config/tetron-wm/config.toml`),
     /// falling back to defaults on any error.
     pub fn load() -> Config {
         let path = config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir());
@@ -229,8 +229,8 @@ impl Config {
         Config::default()
     }
 
-    /// Write the config back to `$XDG_CONFIG_HOME/tuiui/config.toml` (or
-    /// `~/.config/tuiui/config.toml`), creating the directory if needed.
+    /// Write the config back to `$XDG_CONFIG_HOME/tetron-wm/config.toml` (or
+    /// `~/.config/tetron-wm/config.toml`), creating the directory if needed.
     ///
     /// Note: this serialises the live config, so any hand-written comments in the
     /// file are not preserved.
@@ -253,12 +253,12 @@ mod tests {
     #[test]
     fn config_path_prefers_xdg_config_home() {
         let p = config_file_path(Some("/x/cfg".into()), Some(PathBuf::from("/home/u")));
-        assert_eq!(p.unwrap(), PathBuf::from("/x/cfg/tuiui/config.toml"));
+        assert_eq!(p.unwrap(), PathBuf::from("/x/cfg/tetron-wm/config.toml"));
     }
 
     #[test]
     fn config_path_falls_back_to_dotconfig_on_all_platforms() {
         let p = config_file_path(None, Some(PathBuf::from("/home/u")));
-        assert_eq!(p.unwrap(), PathBuf::from("/home/u/.config/tuiui/config.toml"));
+        assert_eq!(p.unwrap(), PathBuf::from("/home/u/.config/tetron-wm/config.toml"));
     }
 }

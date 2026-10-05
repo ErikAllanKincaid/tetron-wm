@@ -35,9 +35,9 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
     let mut out_stream = stream.try_clone()?;
     send(&mut out_stream, &ClientMsg::Resize { w, h })?;
 
-    // A per-system theme rides over ssh as TUIUI_THEME: apply it to this
+    // A per-system theme rides over ssh as TETRON_WM_THEME: apply it to this
     // daemon's config as soon as we attach.
-    if let Ok(theme) = std::env::var("TUIUI_THEME") {
+    if let Ok(theme) = std::env::var("TETRON_WM_THEME") {
         if !theme.is_empty() {
             send(&mut out_stream, &ClientMsg::SetTheme(theme))?;
         }
@@ -479,7 +479,7 @@ pub(crate) fn route_mouse(
     use crate::mouse::{MouseAction as A, MouseButton as B};
     let p = Point::new(ev.col, ev.row);
     // When the focused app is grabbing the mouse, pass events straight through —
-    // unless Shift is held, which forces tuiui's own text-selection/paste over
+    // unless Shift is held, which forces tetron-wm's own text-selection/paste over
     // the app (the classic xterm override, so you can still copy from vim/htop).
     if f.app_area.map(|r| r.contains(p)).unwrap_or(false) && !ev.mods.shift {
         return send(out, &ClientMsg::MouseInput(ev));

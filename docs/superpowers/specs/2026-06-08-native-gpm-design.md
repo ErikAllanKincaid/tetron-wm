@@ -5,10 +5,10 @@
 ## Problem / goal
 
 On a bare Linux virtual console (no X/Wayland, no GUI terminal), the kernel VT does not emit
-xterm mouse escape sequences, so `crossterm` (and thus tuiui) gets no mouse. `gpm` provides
-mouse events via its own socket, not as stdin escapes. Goal: make tuiui talk to gpm's socket
+xterm mouse escape sequences, so `crossterm` (and thus tetron-wm) gets no mouse. `gpm` provides
+mouse events via its own socket, not as stdin escapes. Goal: make tetron-wm talk to gpm's socket
 **directly** (no `libgpm` link → no GPL contamination of our MIT license), so a bare console +
-the `gpm` daemon gives mouse that flows through tuiui's existing mouse pipeline (incl. the new
+the `gpm` daemon gives mouse that flows through tetron-wm's existing mouse pipeline (incl. the new
 in-app passthrough). The bare-console experience then matches GUI-SSH **mouse-wise** (images
 still can't render on a raw VT — that's unchanged and unrelated).
 
@@ -20,7 +20,7 @@ still can't render on a raw VT — that's unchanged and unrelated).
 - **Cannot be live-tested on the dev Mac.** Pure parsing/mapping is unit-tested cross-platform;
   the actual gpm connection is verified by the user on the Debian console. So the implementation
   is defensive (never panics, fails silent-but-logged) and logs connection/VC/events under
-  `TUIUI_DEBUG` for on-device debugging.
+  `TETRON_WM_DEBUG` for on-device debugging.
 - **ABI reproduction.** We reproduce gpm's C structs by byte offset (no `libgpm`). Target
   x86_64/aarch64 Linux. Parse defensively (fixed struct size, parse by offset, ignore trailing).
 
@@ -46,7 +46,7 @@ gpm only forwards events for the connecting client's VC. Determine it from stdin
   we're not on a VT → **don't start gpm** (no-op).
 - VC number: `fstat(0)`; for char-major 4 with minor `N>0`, VC = `N` (`/dev/ttyN`); for minor 0
   (`/dev/tty0`/current), `ioctl(0, VT_GETSTATE, &vt_stat)` → `v_active`.
-- Override: `TUIUI_GPM=0` forces gpm off; `TUIUI_GPM=1` forces an attempt even if detection is
+- Override: `TETRON_WM_GPM=0` forces gpm off; `TETRON_WM_GPM=1` forces an attempt even if detection is
   unsure (debug aid). Default = auto (start only when on a VT and `/dev/gpmctl` connects).
 
 ## Architecture
@@ -63,8 +63,8 @@ gpm only forwards events for the connecting client's VC. Determine it from stdin
   - `encode_connect(pid, vc) -> [u8; 16]`.
 - **Linux glue (`#[cfg(target_os = "linux")]`):**
   - `detect_vc() -> Option<i32>` (the ioctl/fstat logic above).
-  - `start(flags: Arc<Mutex<Flags>>, out: UnixStream)`: if `TUIUI_GPM != "0"` and (`detect_vc()`
-    is `Some` or `TUIUI_GPM == "1"`) and `/dev/gpmctl` connects, spawn a thread that writes the
+  - `start(flags: Arc<Mutex<Flags>>, out: UnixStream)`: if `TETRON_WM_GPM != "0"` and (`detect_vc()`
+    is `Some` or `TETRON_WM_GPM == "1"`) and `/dev/gpmctl` connects, spawn a thread that writes the
     connect record then loops reading 28-byte events, maps each via `to_mouse_input` (tracking
     the previous button mask), and calls the shared `route_mouse` (below) on its own `out`
     clone + its own `last_click`. Logs status via `crate::dbg_log`.
@@ -104,8 +104,8 @@ experience (minus images, which a raw VT can't display anyway).
   cases); `encode_connect` (16 bytes, correct fields).
 - **Build:** must compile on macOS (gpm glue cfg'd out → `start` no-op) and Linux.
 - **Manual (user, Debian console):** `apt install gpm` (+ ensure `gpm` service running on the
-  VT), run `tuiui` on the bare console; verify the mouse moves/clicks drive tuiui chrome + apps.
-  `TUIUI_DEBUG=1` logs gpm connect/VC and a sample of events to `~/tuiui-debug.log` if it misbehaves.
+  VT), run `tetron-wm` on the bare console; verify the mouse moves/clicks drive tetron-wm chrome + apps.
+  `TETRON_WM_DEBUG=1` logs gpm connect/VC and a sample of events to `~/tetron-wm-debug.log` if it misbehaves.
 
 ## Out of scope
 

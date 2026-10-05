@@ -421,7 +421,7 @@ impl Settings {
                 self.row(&mut buf, cx, 3, 0, "Open as", format!("\u{25C2} {} \u{25B8}", self.cfg.assistant_mode));
                 self.row(&mut buf, cx, 4, 1, "Agent", format!("\u{25C2} {agent} \u{25B8}{mark}"));
                 buf.write_str(cx, 6, "The \u{2726} menubar button opens the assistant.", DIM, BG);
-                buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tuiui/assistant", DIM, BG);
+                buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tetron-wm/assistant", DIM, BG);
                 buf.write_str(cx, 8, "Extra args: assistant_args in config.toml.", DIM, BG);
             }
             4 => {
@@ -432,8 +432,8 @@ impl Settings {
                 }
             }
             _ => {
-                buf.write_str(cx, 3, "tuiui — a desktop environment for the terminal", FG, BG);
-                buf.write_str(cx, 5, "Settings are saved to ~/.config/tuiui/config.toml", DIM, BG);
+                buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", FG, BG);
+                buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", DIM, BG);
                 buf.write_str(cx, 6, "github.com/ErikAllanKincaid/tetron-wm", DIM, BG);
             }
         }

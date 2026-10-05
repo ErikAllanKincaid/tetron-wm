@@ -1,8 +1,8 @@
-use tuiui::session::ClientMsg;
-use tuiui::protocol::{FrameMsg, Flags};
-use tuiui::compositor::CellChange;
-use tuiui::cell::{Cell, Rgba};
-use tuiui::geometry::Point;
+use tetron_wm::session::ClientMsg;
+use tetron_wm::protocol::{FrameMsg, Flags};
+use tetron_wm::compositor::CellChange;
+use tetron_wm::cell::{Cell, Rgba};
+use tetron_wm::geometry::Point;
 
 #[test]
 fn client_msg_roundtrips_json() {
@@ -28,7 +28,7 @@ fn frame_msg_roundtrips_json() {
         image_data: Vec::new(),
         clear: true,
         clipboard: Some("copied text".into()),
-        switch_to: Some(tuiui::systems::SwitchSpec {
+        switch_to: Some(tetron_wm::systems::SwitchSpec {
             name: "pi".into(),
             host: "pi@10.0.0.2".into(),
             port: Some(2222),
@@ -61,8 +61,8 @@ fn frame_msg_clear_defaults_off_for_older_daemons() {
 
 #[test]
 fn new_mouse_messages_roundtrip() {
-    use tuiui::session::ClientMsg;
-    use tuiui::geometry::Point;
+    use tetron_wm::session::ClientMsg;
+    use tetron_wm::geometry::Point;
     for msg in [ClientMsg::MouseDouble(Point::new(3, 4)), ClientMsg::MouseRightDown(Point::new(5, 6))] {
         let s = serde_json::to_string(&msg).unwrap();
         let back: ClientMsg = serde_json::from_str(&s).unwrap();
@@ -72,7 +72,7 @@ fn new_mouse_messages_roundtrip() {
 
 #[test]
 fn launcher_left_right_roundtrip() {
-    use tuiui::session::ClientMsg;
+    use tetron_wm::session::ClientMsg;
     for msg in [ClientMsg::LauncherLeft, ClientMsg::LauncherRight] {
         let s = serde_json::to_string(&msg).unwrap();
         let back: ClientMsg = serde_json::from_str(&s).unwrap();

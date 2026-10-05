@@ -4,7 +4,7 @@
 menu that replaces the launcher's flat multi-column dropdown. Spotlight search is
 unchanged.
 
-**Goal:** The `✦ tuiui` menu (and leader `a`) opens a vertical menu of categories;
+**Goal:** The `✦ tetron-wm` menu (and leader `a`) opens a vertical menu of categories;
 hovering or arrowing onto a category flies out a submenu of its apps to the right,
 exactly like the classic Start → Programs ▸ cascade. Navigable by **both** mouse
 (hover to open, click to launch) **and** keyboard (`↑/↓` move, `→` descend, `←`

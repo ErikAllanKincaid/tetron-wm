@@ -103,7 +103,7 @@ git commit -m "tray: scaffold system/poller/tray modules + sysinfo dep"
 Create `tests/system_tests.rs`:
 
 ```rust
-use tuiui::system::{bars_glyph, volume_glyph, mem_pct, VolumeInfo};
+use tetron_wm::system::{bars_glyph, volume_glyph, mem_pct, VolumeInfo};
 
 #[test]
 fn signal_bars_fill_left_to_right() {
@@ -337,7 +337,7 @@ Append to `tests/system_tests.rs`:
 ```rust
 #[cfg(target_os = "macos")]
 mod macos_argv {
-    use tuiui::system::macos::*;
+    use tetron_wm::system::macos::*;
 
     #[test]
     fn set_volume_builds_osascript() {
@@ -371,7 +371,7 @@ mod macos_argv {
 - [ ] **Step 2: Run to verify it fails**
 
 Run (on a macOS host): `cargo test --offline --test system_tests`
-Expected: FAIL — `tuiui::system::macos` functions not found.
+Expected: FAIL — `tetron_wm::system::macos` functions not found.
 
 - [ ] **Step 3: Implement `src/system/macos.rs`**
 
@@ -512,7 +512,7 @@ Append:
 ```rust
 #[cfg(target_os = "linux")]
 mod linux_argv {
-    use tuiui::system::linux::*;
+    use tetron_wm::system::linux::*;
 
     #[test]
     fn set_volume_builds_wpctl() {
@@ -536,7 +536,7 @@ mod linux_argv {
 - [ ] **Step 2: Run to verify it fails**
 
 Run (Linux host): `cargo test --offline --test system_tests`
-Expected: FAIL — `tuiui::system::linux` not found.
+Expected: FAIL — `tetron_wm::system::linux` not found.
 
 - [ ] **Step 3: Implement `src/system/linux.rs`**
 
@@ -788,12 +788,12 @@ git commit -m "tray: SystemPoller — throttled shared SystemState refresh"
 Create `tests/tray_tests.rs`:
 
 ```rust
-use tuiui::system::{SystemState, VolumeInfo, WifiInfo, MemInfo};
-use tuiui::tray::{tray_segments, SegmentKind};
+use tetron_wm::system::{SystemState, VolumeInfo, WifiInfo, MemInfo};
+use tetron_wm::tray::{tray_segments, SegmentKind};
 
 fn sample() -> SystemState {
     SystemState {
-        clock: tuiui::system::ClockInfo { time: "09:41".into(), date: "Wed 04 Jun".into(), uptime_secs: 0 },
+        clock: tetron_wm::system::ClockInfo { time: "09:41".into(), date: "Wed 04 Jun".into(), uptime_secs: 0 },
         cpu_pct: 32.0,
         mem: MemInfo { used: 6, total: 10 },
         wifi: Some(WifiInfo { ssid: "wlan".into(), signal: 3, enabled: true }),
@@ -922,7 +922,7 @@ pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Se
     let t = crate::theme::current();
     let mut buf = CellBuffer::new(width, 1);
     buf.fill(crate::cell::Cell { ch: ' ', fg: t.text, bg: t.menubar_bg, attrs: Default::default() });
-    buf.write_str(1, 0, "\u{2726} Tuiui", t.accent, t.menubar_bg);
+    buf.write_str(1, 0, "\u{2726} Tetron-wm", t.accent, t.menubar_bg);
     // Focused app name (truncate so it never overlaps the left-most segment).
     let app_limit = segments.iter().map(|s| s.rect.x).min().unwrap_or(width) - 10;
     if app_limit > 0 {
@@ -1028,9 +1028,9 @@ git commit -m "tray: render indicators in the menubar; start poller in daemon"
 Append to `tests/tray_tests.rs`:
 
 ```rust
-use tuiui::geometry::Point;
-use tuiui::tray::{Tray, PopoverHit};
-use tuiui::system::ControlIntent;
+use tetron_wm::geometry::Point;
+use tetron_wm::tray::{Tray, PopoverHit};
+use tetron_wm::system::ControlIntent;
 
 #[test]
 fn clicking_a_segment_opens_its_popover() {
@@ -1144,18 +1144,18 @@ git commit -m "tray: session wiring — open popovers, dispatch intents, optimis
 
 - [ ] **Step 1: Add an opt-in dependency step**
 
-Append to `install.sh`, after the binary is installed, a step that — only when `TUIUI_INSTALL_DEPS=1` (or an interactive TTY) and a package manager is present — installs `blueutil` on macOS:
+Append to `install.sh`, after the binary is installed, a step that — only when `TETRON_WM_INSTALL_DEPS=1` (or an interactive TTY) and a package manager is present — installs `blueutil` on macOS:
 
 ```sh
 install_optional_deps() {
-  [ "${TUIUI_SKIP_DEPS:-0}" = "1" ] && return 0
+  [ "${TETRON_WM_SKIP_DEPS:-0}" = "1" ] && return 0
   # In a piped non-interactive install, require explicit opt-in.
-  if [ ! -t 0 ] && [ "${TUIUI_INSTALL_DEPS:-0}" != "1" ]; then return 0; fi
+  if [ ! -t 0 ] && [ "${TETRON_WM_INSTALL_DEPS:-0}" != "1" ]; then return 0; fi
   case "$(uname -s)" in
     Darwin)
       if command -v brew >/dev/null 2>&1 && ! command -v blueutil >/dev/null 2>&1; then
-        echo "tuiui: installing optional dependency blueutil (Bluetooth control)…"
-        brew install blueutil || echo "tuiui: blueutil install skipped (you can run 'brew install blueutil' later)"
+        echo "tetron-wm: installing optional dependency blueutil (Bluetooth control)…"
+        brew install blueutil || echo "tetron-wm: blueutil install skipped (you can run 'brew install blueutil' later)"
       fi ;;
     Linux) : ;; # bluetoothctl/rfkill ship with the distro
   esac
@@ -1186,7 +1186,7 @@ Expected: builds, zero clippy warnings, all tests pass.
 
 - [ ] **Step 2: Manual smoke (on the mini)**
 
-`tuiui kill ; tuiui` → confirm the menubar shows clock + CPU/mem + volume + WiFi; clicking volume opens a popover; ◂/▸ change the level; WiFi popover lists known networks. Battery is absent (correct on the mini). Bluetooth popover shows a hint if `blueutil` is missing.
+`tetron-wm kill ; tetron-wm` → confirm the menubar shows clock + CPU/mem + volume + WiFi; clicking volume opens a popover; ◂/▸ change the level; WiFi popover lists known networks. Battery is absent (correct on the mini). Bluetooth popover shows a hint if `blueutil` is missing.
 
 - [ ] **Step 3: Commit any fixups**
 

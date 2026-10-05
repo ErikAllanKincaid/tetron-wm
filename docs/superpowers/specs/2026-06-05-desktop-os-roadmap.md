@@ -1,4 +1,4 @@
-# tuiui "Real Desktop OS" Roadmap
+# tetron-wm "Real Desktop OS" Roadmap
 
 **Status:** Planning roadmap (2026-06-05). Sequences six subsystems toward a
 file-manager + browser + default-apps + desktop-icons/widgets desktop. Each item
@@ -15,7 +15,7 @@ multiple sessions, R = has a genuine research/feasibility risk.
 Everything image-related splits into two very different problems. Naming them now
 prevents a nasty surprise later.
 
-- **A1 — Native image rendering (feasible).** tuiui's *own* compositor places
+- **A1 — Native image rendering (feasible).** tetron-wm's *own* compositor places
   images: the daemon includes image placements in a frame, and the thin client
   emits Kitty graphics escapes at the right screen cells, clipped to the owning
   window. This powers our **own** surfaces — an image viewer, file-manager
@@ -25,7 +25,7 @@ prevents a nasty surprise later.
 - **A2 — Graphics passthrough from embedded apps (hard, R).** Apps we host run in
   a PTY rendered by our embedded emulator (`alacritty_terminal`), which is
   **cell-based and does not understand the Kitty graphics protocol** — it would
-  swallow the escapes. So a graphics-emitting TUI inside a tuiui window (yazi
+  swallow the escapes. So a graphics-emitting TUI inside a tetron-wm window (yazi
   previews, `timg`, Carbonyl) will **not** show images today. Fixing this means
   teaching the embedded emulator to capture graphics commands and threading them
   out through our frame to the client — a real emulator-level change, possibly
@@ -131,7 +131,7 @@ as A1→F. This roadmap is the umbrella; it is not itself a buildable spec.
 ## Parallel/future tracks (not in the A–F line)
 
 - **Live update / hot reload** — update the daemon and reload new code while
-  keeping running apps + windows alive (no `tuiui kill`). Proposed: re-exec with
+  keeping running apps + windows alive (no `tetron-wm kill`). Proposed: re-exec with
   PTY-fd + state handoff (nginx-style graceful reload). User-requested, needs its
   own design.
 - **Tray system managers** (interactive WiFi/BT/audio), **audio transport over

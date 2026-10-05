@@ -1,6 +1,6 @@
-use tuiui::terminal::{Caps, frame_to_ansi};
-use tuiui::compositor::CellChange;
-use tuiui::cell::{Cell, Rgba};
+use tetron_wm::terminal::{Caps, frame_to_ansi};
+use tetron_wm::compositor::CellChange;
+use tetron_wm::cell::{Cell, Rgba};
 
 #[test]
 fn truecolor_change_emits_sgr_and_glyph() {

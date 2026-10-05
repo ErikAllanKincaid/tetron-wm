@@ -1,5 +1,5 @@
-use tuiui::system::{ClockInfo, MemInfo, SystemState, VolumeInfo, WifiInfo};
-use tuiui::tray::{tray_segments, SegmentKind};
+use tetron_wm::system::{ClockInfo, MemInfo, SystemState, VolumeInfo, WifiInfo};
+use tetron_wm::tray::{tray_segments, SegmentKind};
 
 fn sample() -> SystemState {
     SystemState {
@@ -45,9 +45,9 @@ fn segments_do_not_overlap() {
     }
 }
 
-use tuiui::geometry::Point;
-use tuiui::system::ControlIntent;
-use tuiui::tray::Tray;
+use tetron_wm::geometry::Point;
+use tetron_wm::system::ControlIntent;
+use tetron_wm::tray::Tray;
 
 #[test]
 fn clicking_a_segment_opens_then_closes_its_popover() {
@@ -109,7 +109,7 @@ fn clock_popover_is_a_calendar_with_month_nav() {
 #[test]
 fn calendar_grid_marks_today() {
     // June 2026: the 4th is a Thursday — the calendar must place it in column 3.
-    let weeks = tuiui::calendar::month_grid(2026, 6);
+    let weeks = tetron_wm::calendar::month_grid(2026, 6);
     assert_eq!(weeks[0][3], Some(4));
 }
 
@@ -145,7 +145,7 @@ fn bell_popover_rows_focus_and_clear() {
 fn calendar_lists_upcoming_events() {
     let mut st = sample();
     st.events = vec![
-        tuiui::system::CalEvent { year: 2026, month: 6, day: 10, text: "09:30 Standup".into() },
+        tetron_wm::system::CalEvent { year: 2026, month: 6, day: 10, text: "09:30 Standup".into() },
     ];
     let mut tray = Tray::new();
     tray.force_open(SegmentKind::Clock);

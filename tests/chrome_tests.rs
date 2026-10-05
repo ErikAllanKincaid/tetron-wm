@@ -1,7 +1,7 @@
-use tuiui::chrome::{render_menubar, render_dock, dock_hit_regions, DockItem, DockKind, menubar_mode_region};
-use tuiui::cell::Rgba;
-use tuiui::geometry::Point;
-use tuiui::window::WindowId;
+use tetron_wm::chrome::{render_menubar, render_dock, dock_hit_regions, DockItem, DockKind, menubar_mode_region};
+use tetron_wm::cell::Rgba;
+use tetron_wm::geometry::Point;
+use tetron_wm::window::WindowId;
 
 fn badge_color() -> Rgba { Rgba::rgb(70, 130, 230) }
 
@@ -12,7 +12,7 @@ fn menubar_layer_spans_top_row_and_shows_brand() {
     assert_eq!(layer.origin, Point::new(0,0));
     assert_eq!(layer.buf.height(), 1);
     let row: String = (0..40).map(|x| layer.buf.get(x,0).unwrap().ch).collect();
-    assert!(row.contains("tuiui"));  // left brand button (opens launcher)
+    assert!(row.contains("tetron-wm"));  // left brand button (opens launcher)
     assert!(row.contains("btop"));
     assert!(row.contains("devbox"));  // right power button shows the host name
 }
@@ -113,7 +113,7 @@ fn menubar_shows_mode_toggle_glyph() {
 
 #[test]
 fn menubar_has_power_button_on_right() {
-    use tuiui::chrome::menubar_power_region;
+    use tetron_wm::chrome::menubar_power_region;
     let width = 40;
     let power = " devbox \u{25be} ";
     let layer = render_menubar(width, "btop", &[], false, power);

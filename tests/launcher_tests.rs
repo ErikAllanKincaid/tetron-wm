@@ -1,6 +1,6 @@
-use tuiui::launcher::{Launcher, LauncherMode};
-use tuiui::config::AppEntry;
-use tuiui::buffer::CellBuffer;
+use tetron_wm::launcher::{Launcher, LauncherMode};
+use tetron_wm::config::AppEntry;
+use tetron_wm::buffer::CellBuffer;
 
 fn entry(n: &str) -> AppEntry { AppEntry { name: n.into(), command: n.into(), args: vec![], category: None, requires_cwd: None, cwd: None, cli: None, warn: None } }
 

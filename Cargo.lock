@@ -3416,6 +3416,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tetron-wm"
+version = "0.14.1"
+dependencies = [
+ "alacritty_terminal",
+ "base64 0.22.1",
+ "crossterm",
+ "dirs",
+ "flate2",
+ "image",
+ "infer",
+ "libc",
+ "mime_guess",
+ "portable-pty",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tetron-proto",
+ "toml",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3761,28 +3783,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tuiui"
-version = "0.14.1"
-dependencies = [
- "alacritty_terminal",
- "base64 0.22.1",
- "crossterm",
- "dirs",
- "flate2",
- "image",
- "infer",
- "libc",
- "mime_guess",
- "portable-pty",
- "rmp-serde",
- "serde",
- "serde_json",
- "sysinfo",
- "tetron-proto",
- "toml",
-]
 
 [[package]]
 name = "typenum"

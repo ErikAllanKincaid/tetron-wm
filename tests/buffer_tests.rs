@@ -1,5 +1,5 @@
-use tuiui::buffer::CellBuffer;
-use tuiui::cell::{Cell, Rgba};
+use tetron_wm::buffer::CellBuffer;
+use tetron_wm::cell::{Cell, Rgba};
 
 #[test]
 fn new_buffer_is_default_filled() {

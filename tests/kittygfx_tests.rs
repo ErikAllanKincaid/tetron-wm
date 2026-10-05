@@ -1,4 +1,4 @@
-use tuiui::kittygfx::GraphicsTap;
+use tetron_wm::kittygfx::GraphicsTap;
 
 /// Build a Kitty graphics APC: ESC _ G <control> ; <payload> ESC \
 fn apc(control: &str, payload: &str) -> Vec<u8> {
@@ -70,7 +70,7 @@ fn transparency_invariant_for_non_graphics() {
     }
 }
 
-use tuiui::kittygfx::GraphicsState;
+use tetron_wm::kittygfx::GraphicsState;
 
 fn tiny_png() -> Vec<u8> {
     // 1x1 red PNG, generated via the image crate.
@@ -85,7 +85,7 @@ fn direct_png_transmit_decodes() {
     use base64::Engine;
     let png = tiny_png();
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=7", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=7", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 0, 0);
     assert!(st.png(7).is_some());
@@ -98,7 +98,7 @@ fn raw_rgba_transmit_decodes() {
     // 2x2 RGBA = 16 bytes
     let raw: Vec<u8> = (0..16).map(|i| i as u8).collect();
     let b64 = base64::engine::general_purpose::STANDARD.encode(&raw);
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=t,f=32,t=d,s=2,v=2,i=3", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=t,f=32,t=d,s=2,v=2,i=3", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 0, 0);
     assert!(st.png(3).is_some());
@@ -111,9 +111,9 @@ fn chunked_transmit_reassembles() {
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
     let (a, b) = b64.split_at(b64.len() / 2);
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=5,m=1", a)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=5,m=1", a)), 0, 0);
     assert!(st.png(5).is_none()); // not complete yet
-    st.apply(&tuiui::kittygfx::parse_one(&apc("i=5,m=0", b)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("i=5,m=0", b)), 0, 0);
     assert!(st.png(5).is_some());
 }
 
@@ -121,7 +121,7 @@ fn chunked_transmit_reassembles() {
 fn transmit_and_display_places_at_cursor() {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(tiny_png());
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=4,r=2", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=4,r=2", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 6, 3);
     assert_eq!(st.placements.len(), 1);
@@ -134,19 +134,19 @@ fn delete_all_and_by_id() {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(tiny_png());
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=1,c=1,r=1", &b64)), 0, 0);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=1,r=1", &b64)), 1, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=1,c=1,r=1", &b64)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=1,r=1", &b64)), 1, 0);
     assert_eq!(st.placements.len(), 2);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=d,d=i,i=1", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=d,d=i,i=1", "")), 0, 0);
     assert_eq!(st.placements.len(), 1);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=d,d=A", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=d,d=A", "")), 0, 0);
     assert!(st.placements.is_empty());
 }
 
 #[test]
 fn query_pushes_ok_reply() {
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=q,i=99", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=q,i=99", "")), 0, 0);
     assert_eq!(st.queries.len(), 1);
     assert!(st.queries[0].windows(2).any(|w| w == b"OK"));
 }
@@ -160,20 +160,20 @@ fn file_source_outside_temp_is_refused() {
     assert!(std::path::Path::new(secret).exists());
     let path_b64 = base64::engine::general_purpose::STANDARD.encode(secret.as_bytes());
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=f,i=4", &path_b64)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=f,i=4", &path_b64)), 0, 0);
     assert!(st.png(4).is_none(), "reads outside temp dirs must be refused");
 }
 
 #[test]
 fn temp_file_source_is_read() {
     use base64::Engine;
-    let dir = std::env::temp_dir().join(format!("tuiui-a2-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-a2-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("img.png");
     std::fs::write(&path, tiny_png()).unwrap();
     let path_b64 = base64::engine::general_purpose::STANDARD.encode(path.to_string_lossy().as_bytes());
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=t,i=8", &path_b64)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=t,i=8", &path_b64)), 0, 0);
     assert!(st.png(8).is_some());
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -189,9 +189,9 @@ fn chunked_transmit_and_display_places_after_completion() {
     let b64 = base64::engine::general_purpose::STANDARD.encode(&raw);
     let (h1, h2) = b64.split_at(b64.len() / 2);
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=T,f=32,s=2,v=2,c=4,r=2,m=1", h1)), 6, 3);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=T,f=32,s=2,v=2,c=4,r=2,m=1", h1)), 6, 3);
     assert!(st.placements.is_empty(), "must not place until transmission completes");
-    st.apply(&tuiui::kittygfx::parse_one(&apc("m=0", h2)), 9, 9);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("m=0", h2)), 9, 9);
     assert_eq!(st.placements.len(), 1, "placed on completion");
     let p = &st.placements[0];
     // Placement uses the OPENER's cursor (6,3) + c/r (4,2), not the final chunk's cursor.

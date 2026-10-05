@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
-use tuiui::openwith::{classify, resolve, OpenAction, Role};
+use tetron_wm::openwith::{classify, resolve, OpenAction, Role};
 
 fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()

@@ -45,10 +45,10 @@
 
 ```rust
 use std::fs;
-use tuiui::fileops::{FsOps, StdFs};
+use tetron_wm::fileops::{FsOps, StdFs};
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-fo-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-fo-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -73,7 +73,7 @@ fn list_sorts_dirs_first_then_name_and_hides_dotfiles() {
     let alpha = shown.iter().find(|e| e.name == "alpha.txt").unwrap();
     assert!(!alpha.is_dir);
     assert_eq!(alpha.size, 2);
-    assert_eq!(alpha.role, tuiui::openwith::Role::Text);
+    assert_eq!(alpha.role, tetron_wm::openwith::Role::Text);
 
     let _ = fs::remove_dir_all(&d);
 }
@@ -352,7 +352,7 @@ fn copy_is_recursive_for_directories() {
 
 #[test]
 fn unique_destination_suffixes_extension_correctly() {
-    use tuiui::fileops::unique_destination;
+    use tetron_wm::fileops::unique_destination;
     let d = tmp("uniq");
     fs::write(d.join("note.md"), b"x").unwrap();
     let p = unique_destination(&d, "note.md");
@@ -385,7 +385,7 @@ git commit -m "fileops: tests for mkdir/rename/copy/move + unique naming"
 ```rust
 #[test]
 fn trash_dir_is_os_appropriate() {
-    use tuiui::fileops::trash_dir;
+    use tetron_wm::fileops::trash_dir;
     let p = trash_dir().expect("home dir resolvable in test env");
     let s = p.to_string_lossy();
     if cfg!(target_os = "macos") {
@@ -401,7 +401,7 @@ fn trash_moves_file_out_of_source_dir() {
     // real OS trash but immediately clean up our marker file from it.
     let d = tmp("trash");
     let fs_ops = StdFs;
-    let marker = format!("tuiui-trash-marker-{}.txt", std::process::id());
+    let marker = format!("tetron-wm-trash-marker-{}.txt", std::process::id());
     let victim = d.join(&marker);
     fs::write(&victim, b"bye").unwrap();
 
@@ -409,7 +409,7 @@ fn trash_moves_file_out_of_source_dir() {
     assert!(!victim.exists(), "source file should be gone after trashing");
 
     // Clean our marker out of the real trash so we don't litter.
-    if let Some(td) = tuiui::fileops::trash_dir() {
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
         let _ = fs::remove_file(td.join(&marker));
         let _ = fs::remove_file(td.join(format!("{marker} copy")));
     }
@@ -439,10 +439,10 @@ The widget is generic over `FsOps` so tests can drive it against a temp dir with
 ```rust
 use std::collections::BTreeMap;
 use std::fs;
-use tuiui::filemanager::{FileManager, ViewMode};
+use tetron_wm::filemanager::{FileManager, ViewMode};
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-fm-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-fm-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -727,7 +727,7 @@ fn parent_navigates_up() {
 
 #[test]
 fn activate_file_requests_open_action() {
-    use tuiui::filemanager::FileManagerAction;
+    use tetron_wm::filemanager::FileManagerAction;
     let d = tmp("open");
     fs::write(d.join("notes.md"), b"# hi").unwrap();
     let mut handlers = BTreeMap::new();
@@ -747,7 +747,7 @@ fn activate_file_requests_open_action() {
 
 #[test]
 fn activate_image_requests_open_image() {
-    use tuiui::filemanager::FileManagerAction;
+    use tetron_wm::filemanager::FileManagerAction;
     let d = tmp("img");
     fs::write(d.join("p.png"), b"\x89PNG").unwrap(); // ext is enough for classify
     let mut handlers = BTreeMap::new();
@@ -849,7 +849,7 @@ mod tests {
     use std::fs;
 
     fn tmp(tag: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("tuiui-fmu-{}-{}", tag, std::process::id()));
+        let d = std::env::temp_dir().join(format!("tetron-wm-fmu-{}-{}", tag, std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -1152,15 +1152,15 @@ fn copy_paste_duplicates_into_cwd() {
 #[test]
 fn delete_moves_to_trash_after_confirm() {
     let d = tmp("del");
-    let marker = format!("tuiui-fm-del-{}.txt", std::process::id());
+    let marker = format!("tetron-wm-fm-del-{}.txt", std::process::id());
     fs::write(d.join(&marker), b"x").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
     fm.select_at(0, false, false);
     fm.begin_delete();
-    assert!(matches!(fm.overlay(), Some(tuiui::filemanager::Overlay::ConfirmDelete { .. })));
+    assert!(matches!(fm.overlay(), Some(tetron_wm::filemanager::Overlay::ConfirmDelete { .. })));
     fm.confirm_delete();
     assert!(!d.join(&marker).exists());
-    if let Some(td) = tuiui::fileops::trash_dir() {
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
         let _ = fs::remove_file(td.join(&marker));
     }
     let _ = fs::remove_dir_all(&d);
@@ -1593,7 +1593,7 @@ git commit -m "filemanager: daemon flags + client key/scroll routing"
 
 ### Task 10: Manual verification + docs
 
-- [ ] **Step 1:** `cargo install --path . --root ~/.local --force`; on the host, `tuiui kill ; tuiui`. Open the launcher → **Files** (or `@files`). Verify: navigate folders (Enter/Backspace/click), Icon↔List toggle (`1`/`2` or the toolbar), open a text file (launches `$EDITOR`), open a PNG (image viewer), new folder (`Ctrl+N`), rename (`F2`), copy/paste (`Ctrl+C`/`Ctrl+V`), delete→Trash (`Delete`, confirm), `.` toggles hidden.
+- [ ] **Step 1:** `cargo install --path . --root ~/.local --force`; on the host, `tetron-wm kill ; tetron-wm`. Open the launcher → **Files** (or `@files`). Verify: navigate folders (Enter/Backspace/click), Icon↔List toggle (`1`/`2` or the toolbar), open a text file (launches `$EDITOR`), open a PNG (image viewer), new folder (`Ctrl+N`), rename (`F2`), copy/paste (`Ctrl+C`/`Ctrl+V`), delete→Trash (`Delete`, confirm), `.` toggles hidden.
 - [ ] **Step 2:** Update `README.md` — add the file manager to the features list and its keyboard shortcuts to the shortcuts section (Enter open, Backspace up, `Ctrl+C/X/V`, `Delete` trash, `F2` rename, `Ctrl+N` new folder, `1`/`2` views, `.` hidden, `Esc` close). Commit:
 
 ```bash

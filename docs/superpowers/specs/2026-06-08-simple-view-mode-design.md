@@ -4,10 +4,10 @@
 
 ## Problem / goal
 
-tuiui today is a windowed desktop. The user wants a **tmux-like "simple" mode**: one app
+tetron-wm today is a windowed desktop. The user wants a **tmux-like "simple" mode**: one app
 full-screen at a time, switch between them, no window decorations or desktop — but reusing
-tuiui's existing top menubar and bottom dock rather than a separate program. It is a **view
-toggle inside tuiui**, flipped from the top bar. Apps live in the apphost (Phase 2), so the
+tetron-wm's existing top menubar and bottom dock rather than a separate program. It is a **view
+toggle inside tetron-wm**, flipped from the top bar. Apps live in the apphost (Phase 2), so the
 same running instances appear in both modes; toggling never restarts or moves apps.
 
 ## Behaviour
@@ -21,7 +21,7 @@ Two view modes on the running frontend:
 
 Both bars stay in both modes:
 - **Top menubar**: `Go` (launcher), the **mode toggle** button, focused-app name, tray, and
-  the `tuiui ▾` power menu (Exit/Restart/Shutdown). Everything keeps working.
+  the `tetron-wm ▾` power menu (Exit/Restart/Shutdown). Everything keeps working.
 - **Bottom dock**: lists every open window — in simple mode it is the **app switcher**:
   clicking a dock pill focuses that app and makes it the full-screen one.
 
@@ -82,7 +82,7 @@ No changes to `apphost`, `proto`, `RemoteAppHost`, the client, or the wire proto
   pill in simple mode changes the focused window.
 - Manual: launch 2+ apps, toggle to simple (focused app fills screen, decorations gone),
   click dock pills to switch (each fills screen at the right size), toggle back (windows
-  restored in place), Go/launcher and tuiui menu still work in simple mode.
+  restored in place), Go/launcher and tetron-wm menu still work in simple mode.
 
 ## Out of scope (future)
 

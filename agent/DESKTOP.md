@@ -1,39 +1,39 @@
 # Driving the desktop
 
-These commands talk to the running tuiui daemon (same user, local socket).
+These commands talk to the running tetron-wm daemon (same user, local socket).
 They are how you open windows and arrange the user's desktop.
 
-- `tuiui launch <command> [args…]`   open a new app window running <command>
+- `tetron-wm launch <command> [args…]`   open a new app window running <command>
   - Launching a catalog-tagged **CLI tool** (gum, himalaya, khal, dust, …)
     with **no args** automatically opens a shell with the tool's `--help`
     printed first, instead of a window that prints usage and dies. Passing
     args runs the command exactly as given.
-- `tuiui tile`                       tile all windows into the configured grid
-- `tuiui theme <name>`               switch theme (midnight|nord|gruvbox|dracula)
-- `tuiui reload`                     reload the UI (apps keep running)
-- `tuiui msg '<json>'`               raw control message (ClientMsg JSON), e.g.
+- `tetron-wm tile`                       tile all windows into the configured grid
+- `tetron-wm theme <name>`               switch theme (midnight|nord|gruvbox|dracula)
+- `tetron-wm reload`                     reload the UI (apps keep running)
+- `tetron-wm msg '<json>'`               raw control message (ClientMsg JSON), e.g.
 
 ```sh
-tuiui msg '"MaximizeFocused"'
-tuiui msg '{"SnapFocused":"Left"}'
-tuiui msg '{"SendToCell":3}'
-tuiui msg '{"Launch":{"name":"btop","command":"btop","args":[]}}'
+tetron-wm msg '"MaximizeFocused"'
+tetron-wm msg '{"SnapFocused":"Left"}'
+tetron-wm msg '{"SendToCell":3}'
+tetron-wm msg '{"Launch":{"name":"btop","command":"btop","args":[]}}'
 ```
 
 Examples of arranging a workspace:
 
 ```sh
-tuiui launch btop          # system monitor
-tuiui launch lazygit       # git UI
-tuiui tile                 # arrange everything into the grid
+tetron-wm launch btop          # system monitor
+tetron-wm launch lazygit       # git UI
+tetron-wm tile                 # arrange everything into the grid
 ```
 
 Apps are installed via the in-app Store (600+ curated TUIs), or you can
-install them yourself with the user's package manager and then `tuiui launch`.
+install them yourself with the user's package manager and then `tetron-wm launch`.
 
 Other things worth knowing when helping the user:
 - Scroll the mouse wheel over any app window to read its scrollback; typing
   jumps back to the live bottom.
-- Updating tuiui is **Settings → Updates** (default channel downloads the
+- Updating tetron-wm is **Settings → Updates** (default channel downloads the
   latest prebuilt release; a "dev" channel builds the dev branch from source).
 - The version is in `Cargo.toml`; release notes are in `CHANGELOG.md`.

@@ -1,6 +1,6 @@
-use tuiui::wm::WindowManager;
-use tuiui::window::WindowState;
-use tuiui::geometry::{Rect, Point, SnapZone};
+use tetron_wm::wm::WindowManager;
+use tetron_wm::window::WindowState;
+use tetron_wm::geometry::{Rect, Point, SnapZone};
 
 fn wm() -> WindowManager { WindowManager::new(Rect::new(0, 1, 80, 22)) } // work area
 
@@ -83,8 +83,8 @@ fn close_removes_and_refocuses_next_top() {
 
 // ── Task 9: render_window ─────────────────────────────────────────────────────
 
-use tuiui::wm::render_window;
-use tuiui::buffer::CellBuffer;
+use tetron_wm::wm::render_window;
+use tetron_wm::buffer::CellBuffer;
 
 #[test]
 fn render_window_draws_title_and_content() {
@@ -92,7 +92,7 @@ fn render_window_draws_title_and_content() {
     // 24 wide: enough room for the "btop" title plus the right-side controls.
     let id = m.add_window("btop".into(), Rect::new(0, 1, 24, 5));
     let mut content = CellBuffer::new(10, 3);
-    content.write_str(0, 0, "hello", tuiui::cell::Rgba::rgb(255, 255, 255), tuiui::cell::Rgba::TRANSPARENT);
+    content.write_str(0, 0, "hello", tetron_wm::cell::Rgba::rgb(255, 255, 255), tetron_wm::cell::Rgba::TRANSPARENT);
     let layers = render_window(m.get(id).unwrap(), &content, true, true);
     // shadow layer + window layer
     assert!(!layers.is_empty());
@@ -128,7 +128,7 @@ fn minimize_hides_and_moves_focus_then_unminimize_restores() {
     assert_eq!(m.focused(), Some(b)); // restored + raised
 }
 
-use tuiui::geometry::Grid;
+use tetron_wm::geometry::Grid;
 
 #[test]
 fn send_to_cell_places_window_in_grid() {

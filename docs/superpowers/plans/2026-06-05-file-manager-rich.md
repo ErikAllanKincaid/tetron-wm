@@ -45,12 +45,12 @@ fn info_reports_size_and_permissions() {
     fs::write(&f, b"abcd").unwrap();
     fs::set_permissions(&f, fs::Permissions::from_mode(0o640)).unwrap();
 
-    let info = tuiui::fileops::info(&f).unwrap();
+    let info = tetron_wm::fileops::info(&f).unwrap();
     assert_eq!(info.size, 4);
     assert!(!info.is_dir);
     assert!(!info.is_symlink);
     assert_eq!(info.mode & 0o777, 0o640);
-    assert_eq!(tuiui::fileops::mode_rwx(info.mode), "rw-r-----");
+    assert_eq!(tetron_wm::fileops::mode_rwx(info.mode), "rw-r-----");
 
     let _ = fs::remove_dir_all(&d);
 }
@@ -64,7 +64,7 @@ fn info_follows_symlink_reports_target() {
     let link = d.join("alias.txt");
     std::os::unix::fs::symlink(&target, &link).unwrap();
 
-    let info = tuiui::fileops::info(&link).unwrap();
+    let info = tetron_wm::fileops::info(&link).unwrap();
     assert!(info.is_symlink);
     assert_eq!(info.link_target.as_deref(), Some(target.as_path()));
 
@@ -78,7 +78,7 @@ fn set_permissions_changes_mode() {
     let d = tmp("chmod");
     let f = d.join("s.sh");
     fs::write(&f, b"#!/bin/sh\n").unwrap();
-    tuiui::fileops::StdFs.set_mode(&f, 0o755).unwrap();
+    tetron_wm::fileops::StdFs.set_mode(&f, 0o755).unwrap();
     let m = fs::metadata(&f).unwrap().permissions().mode();
     assert_eq!(m & 0o777, 0o755);
     let _ = fs::remove_dir_all(&d);
@@ -191,7 +191,7 @@ Adds `Overlay::GetInfo { idx }`, `begin_get_info()`, and renders a read-only inf
 ```rust
 #[test]
 fn get_info_overlay_opens_for_focused_entry() {
-    use tuiui::filemanager::Overlay;
+    use tetron_wm::filemanager::Overlay;
     let d = tmp("getinfo");
     fs::write(d.join("a.txt"), b"hello").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
@@ -297,7 +297,7 @@ fn thumbnail_requests_lists_image_entries() {
 
 #[test]
 fn set_thumb_then_placement_is_reported() {
-    use tuiui::geometry::Rect;
+    use tetron_wm::geometry::Rect;
     let d = tmp("thumbplace");
     fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
@@ -377,7 +377,7 @@ fn set_thumb_then_placement_is_reported() {
 ```rust
 #[test]
 fn file_manager_emits_thumbnail_placement_for_image() {
-    let dir = std::env::temp_dir().join(format!("tuiui-fmthumb-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-fmthumb-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255]));
@@ -735,7 +735,7 @@ git commit -m "filemanager: tabs (per-tab folder state + strip + Ctrl+T/W/Tab)"
 ### Task 7: Final verification + docs
 
 - [ ] **Step 1:** Full gate green (build + test + clippy 0 warnings).
-- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tuiui kill ; tuiui`. In **Files**: confirm thumbnails show for a folder of images (Icon view, Ghostty/Kitty), `Get Info` shows permissions + symlink target, the preview pane toggles with Space, `1`/`2`/`3` switch Icon/List/Columns, and `Ctrl+T`/`Ctrl+W`/`Tab` manage tabs.
+- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tetron-wm kill ; tetron-wm`. In **Files**: confirm thumbnails show for a folder of images (Icon view, Ghostty/Kitty), `Get Info` shows permissions + symlink target, the preview pane toggles with Space, `1`/`2`/`3` switch Icon/List/Columns, and `Ctrl+T`/`Ctrl+W`/`Tab` manage tabs.
 - [ ] **Step 3:** Update `README.md` — note thumbnails, preview, columns, tabs, Get-Info under the file manager bullet and shortcuts (Space preview, `3` columns, `Ctrl+T`/`Ctrl+W`/`Tab` tabs, `Get Info`). Mark stage-2 done in the roadmap line. Commit:
 
 ```bash

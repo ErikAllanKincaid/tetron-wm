@@ -79,7 +79,7 @@ client to forward typed characters to the rename field (mirrors `desktop_editing
 ## Out of scope (later)
 
 Drag-to-reorder dock pills; pinning apps to the dock; per-app real icons (the letter badge stands
-in); renaming the group key itself; persisting custom labels across a full `tuiui kill` (they
+in); renaming the group key itself; persisting custom labels across a full `tetron-wm kill` (they
 already persist across a frontend **reload** via `WinMeta`).
 
 ## Testing

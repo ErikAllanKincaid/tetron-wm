@@ -6,19 +6,19 @@ use crate::window::WindowId;
 // ── Theme constants ────────────────────────────────────────────────────────────
 
 /// Label drawn for the top-left launcher button (opens the app launcher).
-const GO_LABEL: &str = " tuiui ";
+const GO_LABEL: &str = " tetron-wm ";
 
 /// Column where the view-mode toggle is drawn (just right of the brand button).
-const MODE_X: i32 = 8; // GO_LABEL is 7 cells wide, + a 1-cell gap
+const MODE_X: i32 = 12; // GO_LABEL is 11 cells wide, + a 1-cell gap
 
 /// Column where the assistant (✦) button is drawn (right of the mode toggle).
-const ASSIST_X: i32 = 12;
+const ASSIST_X: i32 = 16;
 
 /// Label for the assistant button (opens the AI chat panel).
 const ASSIST_LABEL: &str = " \u{2726} "; // ✦
 
 /// Column where the focused-app name starts (after brand + mode + assistant).
-const APP_X: i32 = 16;
+const APP_X: i32 = 20;
 
 /// Menubar view-mode toggle glyphs (shows the CURRENT mode; click to switch).
 const MODE_DESKTOP: &str = " \u{229E} "; // ⊞  windowed desktop
@@ -83,7 +83,7 @@ pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Se
     Layer { z: 1000, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None }
 }
 
-/// Screen-space hit region for the menubar brand ("tuiui") button, used to open
+/// Screen-space hit region for the menubar brand ("tetron-wm") button, used to open
 /// the launcher dropdown. Top-left of the menubar.
 pub fn menubar_brand_region() -> Rect {
     Rect::new(0, 0, GO_LABEL.chars().count() as i32, 1)

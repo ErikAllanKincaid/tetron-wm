@@ -73,8 +73,8 @@ PY
 ```rust
 #[test]
 fn ai_tools_require_cwd() {
-    assert!(tuiui::catalog::recipe("Claude Code").unwrap().requires_cwd);
-    assert!(!tuiui::catalog::recipe("btop").map(|r| r.requires_cwd).unwrap_or(false));
+    assert!(tetron_wm::catalog::recipe("Claude Code").unwrap().requires_cwd);
+    assert!(!tetron_wm::catalog::recipe("btop").map(|r| r.requires_cwd).unwrap_or(false));
 }
 ```
 
@@ -117,7 +117,7 @@ Replace the `if let Some(home) = dirs::home_dir() { builder.cwd(home); }` block 
 
 ```rust
 use std::path::{Path, PathBuf};
-use tuiui::dirpicker::{DirLister, DirPicker, PendingLaunch};
+use tetron_wm::dirpicker::{DirLister, DirPicker, PendingLaunch};
 
 struct Fake;
 impl DirLister for Fake {

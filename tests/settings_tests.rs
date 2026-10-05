@@ -1,5 +1,5 @@
-use tuiui::settings::Settings;
-use tuiui::config::Config;
+use tetron_wm::settings::Settings;
+use tetron_wm::config::Config;
 
 #[test]
 fn toggle_changes_config() {
@@ -26,7 +26,7 @@ fn threshold_adjusts_within_bounds() {
 
 #[test]
 fn updates_section_requests_check_and_install() {
-    use tuiui::settings::SettingsAction;
+    use tetron_wm::settings::SettingsAction;
     let mut s = Settings::new(Config::default());
     s.next_section(); // Appearance
     s.next_section(); // Updates
@@ -43,8 +43,8 @@ fn updates_section_requests_check_and_install() {
 
 #[test]
 fn updates_branch_switcher_cycles_channels() {
-    use tuiui::settings::Settings;
-    use tuiui::config::Config;
+    use tetron_wm::settings::Settings;
+    use tetron_wm::config::Config;
     let mut s = Settings::new(Config::default());
     s.show_updates_section();
     assert_eq!(s.config().update_branch, "main");
@@ -59,8 +59,8 @@ fn updates_branch_switcher_cycles_channels() {
 
 #[test]
 fn restart_app_server_row_only_when_flagged() {
-    use tuiui::settings::{Settings, SettingsAction};
-    use tuiui::config::Config;
+    use tetron_wm::settings::{Settings, SettingsAction};
+    use tetron_wm::config::Config;
     let mut s = Settings::new(Config::default());
     s.show_updates_section();
     // Not flagged: selecting past the last row stops at Channel (row 2).
