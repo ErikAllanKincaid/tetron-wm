@@ -6,6 +6,17 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-10-05
+
+### Added
+- `tuiui --version` (and `-V`) prints the version.
+
+### Changed
+- **Version scheme now tracks tetron core's minor.** Addons version as
+  `0.<tetron-core-minor>.<patch>`; this release follows `tetron-proto 0.14.x`,
+  so the jump from `0.2.14` to `0.14.0` is a scheme change, not 12 minors of
+  feature work. Patch resets to 0.
+
 ## [0.2.14] — 2026-07-20
 
 ### Fixed

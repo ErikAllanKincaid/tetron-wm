@@ -25,6 +25,10 @@ fn main() -> std::io::Result<()> {
     let cmd = args.next();
     let rest: Vec<String> = args.collect();
     match cmd.as_deref() {
+        Some("--version" | "-V") => {
+            println!("tuiui {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         Some("--daemon") => tuiui::daemon::run(),
         Some("--apphost") => tuiui::apphost::server::run(),
         Some("kill") => kill(),
@@ -74,7 +78,7 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tuiui: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, theme, msg, service, --daemon)"
+                "tuiui: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, theme, msg, service, --version, --daemon)"
             );
             Ok(())
         }
