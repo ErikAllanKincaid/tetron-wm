@@ -10,6 +10,22 @@ It's a multiplexer at heart — like tmux, but with windows and a mouse: apps ru
 
 > **Status: active development.** The shell, window management, a persistent daemon that runs apps in a **separate process so they survive a UI reload/update**, mouse passthrough into apps, an app launcher + store, a file manager, desktop icons, settings, theming, a macOS-style status tray, and configurable grid tiling all work today. GUI/Wayland streaming is on the roadmap below.
 
+## tetron
+
+tuiui with tetron-wm changes has first-class, optional support for [tetron](https://github.com/ErikAllanKincaid/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tuiui works identically with or without tetron present.
+
+- **Status at a glance.** The tray shows `⇄<peers>` with a connection-quality dot: `●` when at least one network has a direct path, `○` when every connection is relay-only, and `off` when tetron is reachable but in standby. It is read-only, a background poll that bounds every call so a stuck daemon can never hang the tray.
+- **On/off from the popover.** Click the segment for a popover with a global **Tetron [on/off]** toggle plus one row per network. Each network row toggles just that network's data plane (**Resume** / **Standby**) with its own `●`/`○` direct-or-relay indicator; the global toggle moves them all at once. These map to tetron's own `Resume`/`Standby` IPC messages, the same effect as `tetron resume` / `tetron standby` from the CLI.
+- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/ErikAllanKincaid/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in the cli or tetron-tui, not in the tray.
+
+### Pairing with kmscon on a bare console
+
+tuiui tetron-wm is the desktop layer of **tetron-os**, a GUI-less Linux that boots straight to a mouse-driven terminal desktop, reachable both at the local console and remotely over SSH/tetron. On a headless or console-only box there is no X11 or Wayland, and the kernel VT is a poor terminal: no truecolor, no real fonts, no mouse. tuiui pairs with **kmscon**, a KMS/DRM userspace console that renders directly on the framebuffer and provides truecolor, fontconfig fonts, XKB keyboards for every device, and the mouse-report passthrough tuiui needs. kmscon replaces the kernel VT as the console you land on at boot; tuiui runs inside it, so you get the full floating-window desktop on bare hardware with no display server at all.
+
+**Why the maintained fork.** This needs kmscon **10** (truecolor + mouse) with `libtsm4 >= 4.7.1`, which only the maintained line of kmscon provides (on Debian, in **trixie-backports**). The original upstream kmscon has neither truecolor nor mouse support, so the old kmscon that older Debian/Ubuntu ship will not work. tetron-os's `firstboot.sh` installs the backports kmscon and swaps the getty on the console VT for `kmsconvt@`, so the machine comes up in kmscon running tuiui.
+
+> Over SSH you are in whatever terminal your client provides, so kmscon is not involved there; tuiui just runs in terminal mode. On a raw VT without kmscon, use [gpm](#mouse-on-a-bare-linux-console-gpm) for the mouse instead.
+
 ## What works today
 
 - **Floating, overlapping windows** with drop shadows, each running a real TUI (btop, a shell, vim, …) in its own pseudo-terminal.
@@ -41,20 +57,20 @@ It's a multiplexer at heart — like tmux, but with windows and a mouse: apps ru
 
 tuiui uses a **leader key** (`Ctrl+Space`) so its shortcuts never collide with macOS, your terminal, or the focused app. Press the leader, release, then a key:
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+Space` then `Space` | Spotlight launcher (type to filter, ↑/↓, Enter) |
-| `Ctrl+Space` then `a` | App menu (dropdown) |
-| `Ctrl+Space` then `m` / `n` | Maximize / minimize focused window |
-| `Ctrl+Space` then `[` / `]` | Snap focused window left / right half |
-| `Ctrl+Space` then `t` | Tile all windows into the grid |
-| `Ctrl+Space` then `T` | Toggle auto-tile mode |
-| `Ctrl+Space` then `1`–`9` | Send focused window to grid cell N |
-| `Ctrl+Space` then `s` / `,` | Open the Store / Settings |
-| `Ctrl+Space` then `A` | **Activity Monitor** — see and kill hosted apps |
-| `Ctrl+Space` then `r` | **Rename** the focused window (type a new name, Enter) |
-| `Ctrl+Space` then `?` | **Help** — show this shortcut cheatsheet in-app (any key dismisses) |
-| `Ctrl+Space` then `q` | Detach (apps keep running in the background) |
+| Shortcut                    | Action                                                              |
+| --------------------------- | ------------------------------------------------------------------- |
+| `Ctrl+Space` then `Space`   | Spotlight launcher (type to filter, ↑/↓, Enter)                     |
+| `Ctrl+Space` then `a`       | App menu (dropdown)                                                 |
+| `Ctrl+Space` then `m` / `n` | Maximize / minimize focused window                                  |
+| `Ctrl+Space` then `[` / `]` | Snap focused window left / right half                               |
+| `Ctrl+Space` then `t`       | Tile all windows into the grid                                      |
+| `Ctrl+Space` then `T`       | Toggle auto-tile mode                                               |
+| `Ctrl+Space` then `1`–`9`   | Send focused window to grid cell N                                  |
+| `Ctrl+Space` then `s` / `,` | Open the Store / Settings                                           |
+| `Ctrl+Space` then `A`       | **Activity Monitor** — see and kill hosted apps                     |
+| `Ctrl+Space` then `r`       | **Rename** the focused window (type a new name, Enter)              |
+| `Ctrl+Space` then `?`       | **Help** — show this shortcut cheatsheet in-app (any key dismisses) |
+| `Ctrl+Space` then `q`       | Detach (apps keep running in the background)                        |
 
 Exit/Restart/Shutdown live in the top-right **host-name menu** (`▾`): **Exit** detaches, **Restart** reloads the UI keeping apps alive, **Shutdown** stops everything. **Systems** cascades the machine switcher: click a saved machine to ssh into its tuiui session (its `✕` opens a confirm, with an opt-in toggle to also revoke this PC's SSH key on that host), or **+ Add Remote…** to set up a new one (Tab/↑↓ between fields, `←`/`→` picks the theme, Enter connects). Setup also copies your terminal's **terminfo** to the remote (so Ghostty/Kitty `TERM`s like `xterm-ghostty` don't break curses apps there — with an automatic `xterm-256color` fallback on every connect) and syncs your saved-systems list. Troubleshooting a switch: every step logs to `~/tuiui-debug.log` (open it in-app via launcher → tuiui → **Logs**, press `c` to copy it); `TUIUI_DEBUG=1` additionally prints the exact ssh/setup script before it runs.
 
@@ -76,16 +92,18 @@ Requires a [Rust toolchain](https://rustup.rs).
 
 ### Install
 
-**Prebuilt binary** (macOS arm64/x86_64, Linux x86_64 — no Rust needed):
+> Install from **this fork** (`ErikAllanKincaid/tetron-wm`), not upstream `jaylfc/tuiui`: only the fork carries the tetron integration. The binary is still named `tuiui`.
+
+**Prebuilt binary** (macOS arm64/x86_64, Linux x86_64/aarch64, no Rust needed):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaylfc/tuiui/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 ```
 
 **Or build from source** with a [Rust toolchain](https://rustup.rs):
 
 ```bash
-cargo install --git https://github.com/jaylfc/tuiui
+cargo install --git https://github.com/ErikAllanKincaid/tetron-wm
 ```
 
 Either way the `tuiui` binary lands on your `PATH`, so you can just run:
@@ -97,7 +115,7 @@ tuiui            # start the daemon (if needed) and attach
 Update later from inside the app (**Settings → Updates → Check / Update**), or manually:
 
 ```bash
-cargo install --git https://github.com/jaylfc/tuiui --force
+cargo install --git https://github.com/ErikAllanKincaid/tetron-wm --force
 tuiui kill && tuiui     # restart the daemon onto the new build
 ```
 
@@ -185,11 +203,13 @@ exits cleanly instead of fighting over the socket.
 This project is currently developed and tested on **macOS** using **[Ghostty](https://ghostty.org)**, frequently driving a tuiui instance **running on a remote machine over SSH** (the Mac is the thin client; tuiui and the apps run on the host). Two things matter in that setup:
 
 - **Truecolor over SSH:** SSH doesn't forward `COLORTERM`, so export it on the host before launching for full 24-bit color (otherwise tuiui falls back to a 256-color approximation):
+  
   ```bash
   export COLORTERM=truecolor
   cargo run --release
   ```
 - **Terminfo over SSH:** if `clear`/apps complain about an unknown `xterm-ghostty` terminal, install Ghostty's terminfo on the host once:
+  
   ```bash
   infocmp -x xterm-ghostty | ssh user@host -- tic -x -
   ```
@@ -254,22 +274,6 @@ kilo = "yellow"
 ```
 
 Most of these are editable live from the in-app **Settings** panel, which writes this file back.
-
-## tetron
-
-tuiui has first-class, optional support for [tetron](https://github.com/ErikAllanKincaid/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tuiui works identically with or without tetron present.
-
-- **Status at a glance.** The tray shows `⇄<peers>` with a connection-quality dot: `●` when at least one network has a direct path, `○` when every connection is relay-only, and `off` when tetron is reachable but in standby. It is read-only, a background poll that bounds every call so a stuck daemon can never hang the tray.
-- **On/off from the popover.** Click the segment for a popover with a global **Tetron [on/off]** toggle plus one row per network. Each network row toggles just that network's data plane (**Resume** / **Standby**) with its own `●`/`○` direct-or-relay indicator; the global toggle moves them all at once. These map to tetron's own `Resume`/`Standby` IPC messages, the same effect as `tetron resume` / `tetron standby` from the CLI.
-- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/ErikAllanKincaid/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in tetron-tui, not in the tray.
-
-### Pairing with kmscon on a bare console
-
-tuiui is the desktop layer of **tetron-os**, a GUI-less Linux that boots straight to a mouse-driven terminal desktop, reachable both at the local console and remotely over SSH/tetron. On a headless or console-only box there is no X11 or Wayland, and the kernel VT is a poor terminal: no truecolor, no real fonts, no mouse. tuiui pairs with **kmscon**, a KMS/DRM userspace console that renders directly on the framebuffer and provides truecolor, fontconfig fonts, XKB keyboards for every device, and the mouse-report passthrough tuiui needs. kmscon replaces the kernel VT as the console you land on at boot; tuiui runs inside it, so you get the full floating-window desktop on bare hardware with no display server at all.
-
-**Why the maintained fork.** This needs kmscon **10** (truecolor + mouse) with `libtsm4 >= 4.7.1`, which only the maintained line of kmscon provides (on Debian, in **trixie-backports**). The original upstream kmscon has neither truecolor nor mouse support, so the old kmscon that older Debian/Ubuntu ship will not work. tetron-os's `firstboot.sh` installs the backports kmscon and swaps the getty on the console VT for `kmsconvt@`, so the machine comes up in kmscon running tuiui.
-
-> Over SSH you are in whatever terminal your client provides, so kmscon is not involved there; tuiui just runs in terminal mode. On a raw VT without kmscon, use [gpm](#mouse-on-a-bare-linux-console-gpm) for the mouse instead.
 
 ## Architecture
 

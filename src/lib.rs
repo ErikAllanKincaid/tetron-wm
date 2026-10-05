@@ -49,8 +49,10 @@ pub mod assistant;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The git commit this binary was built from (stamped by `build.rs`).
 pub const GIT_SHA: &str = env!("TUIUI_GIT_SHA");
-/// Upstream repository the in-app updater checks/installs from.
-pub const REPO_URL: &str = "https://github.com/jaylfc/tuiui";
+/// Repository the in-app updater checks/installs from. This is the tetron-wm
+/// fork (adds the tetron mesh-VPN integration), not upstream jaylfc/tuiui --
+/// pointing it upstream would self-update over the tetron patches.
+pub const REPO_URL: &str = "https://github.com/ErikAllanKincaid/tetron-wm";
 
 /// Max size of `~/tuiui-debug.log` before it's reset, so a long-running session
 /// can't grow it without bound.

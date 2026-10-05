@@ -4525,7 +4525,7 @@ fn update_command(branch: &str) -> String {
     let branch = sanitize_branch(branch);
     let branch = branch.as_str();
     let repo = crate::REPO_URL;
-    let raw = "https://raw.githubusercontent.com/jaylfc/tuiui";
+    let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
     // Keep the new binary where the running one lives (cargo bin vs ~/.local/bin).
     let exe_dir = std::env::current_exe()
         .ok()

@@ -1,12 +1,15 @@
 #!/bin/sh
 # tuiui installer — downloads the latest prebuilt binary for your platform.
 #
-#   curl -fsSL https://raw.githubusercontent.com/jaylfc/tuiui/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 #
 # Override the install directory with TUIUI_BIN_DIR (default: ~/.local/bin).
 set -eu
 
-REPO="jaylfc/tuiui"
+# This is the tetron-wm fork of tuiui (adds the tetron mesh-VPN integration).
+# Pull prebuilt binaries from it, NOT upstream jaylfc/tuiui, or the tetron
+# features are missing. The binary is still named `tuiui`.
+REPO="ErikAllanKincaid/tetron-wm"
 BIN_DIR="${TUIUI_BIN_DIR:-$HOME/.local/bin}"
 
 # Stock Debian often has wget but not curl; accept either.

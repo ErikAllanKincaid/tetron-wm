@@ -164,7 +164,7 @@ pub fn switch_script(spec: &SwitchSpec) -> String {
             "curl -fsSL {repo_raw}/main/install.sh | TUIUI_INSTALL_DEPS=1 sh || \
 {{ command -v cargo >/dev/null 2>&1 && cargo install --git {repo}; }}",
             repo = crate::REPO_URL,
-            repo_raw = "https://raw.githubusercontent.com/jaylfc/tuiui",
+            repo_raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm",
         ));
         let gpm = sh_quote(
             "if [ \"$(uname -s)\" = Linux ] && ! command -v gpm >/dev/null 2>&1; then \

@@ -434,7 +434,7 @@ impl Settings {
             _ => {
                 buf.write_str(cx, 3, "tuiui — a desktop environment for the terminal", FG, BG);
                 buf.write_str(cx, 5, "Settings are saved to ~/.config/tuiui/config.toml", DIM, BG);
-                buf.write_str(cx, 6, "github.com/jaylfc/tuiui", DIM, BG);
+                buf.write_str(cx, 6, "github.com/ErikAllanKincaid/tetron-wm", DIM, BG);
             }
         }
         buf
