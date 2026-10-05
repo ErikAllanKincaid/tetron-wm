@@ -379,6 +379,27 @@ fn app_mouse_area_none_without_mouse_mode() {
 }
 
 #[test]
+fn tray_popover_click_launches_over_a_covering_window() {
+    // Regression: an open tray popover must own the click even when an app
+    // window sits under it. A maximized shell covers the whole work area, so
+    // the popover's "Open terminal" row is over app content. Before the fix,
+    // mouse_select (which runs first on MouseDown) did not count the tray as an
+    // overlay, so it swallowed the click as a text-selection on the window
+    // beneath and the launch never fired.
+    use tuiui::tray::SegmentKind;
+    let cfg = Config { launch_maximized: true, ..Config::default() };
+    let mut core = SessionCore::new(120, 40, cfg);
+    core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
+    assert_eq!(core.window_count(), 1);
+    let rect = core
+        .tray_openterm_rect_for_test(SegmentKind::Tetron)
+        .expect("tetron popover has an Open terminal row");
+    core.apply(ClientMsg::MouseDown(Point::new(rect.x, rect.y)));
+    assert_eq!(core.window_count(), 2, "Open terminal launched despite the window under the popover");
+    core.shutdown();
+}
+
+#[test]
 fn app_mouse_area_suppressed_while_launcher_open() {
     // An open overlay (the Go launcher) must take the mouse — even over a focused
     // app — so clicking an app in the menu is never swallowed by passthrough.

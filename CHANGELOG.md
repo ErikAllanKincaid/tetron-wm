@@ -6,6 +6,17 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.1] — 2026-10-05
+
+### Fixed
+- **Tray "Open terminal" now works when a window sits under the popover.** The
+  popover opened the native `tetron-tui` only when nothing was behind it; over
+  an app window the click was swallowed as a text-selection on the window
+  beneath and nothing launched. `mouse_select` runs before the tray router on
+  `MouseDown` but did not treat an open tray popover as an overlay, so it
+  claimed the click. The tray popover now counts as an overlay like every other
+  modal menu.
+
 ## [0.14.0] — 2026-10-05
 
 ### Added

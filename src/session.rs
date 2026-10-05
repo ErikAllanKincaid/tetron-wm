@@ -1575,6 +1575,22 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// Return the number of live windows (app instances spawned successfully).
     pub fn window_count(&self) -> usize { self.contents.len() }
 
+    /// Test: force-open `kind`'s tray popover and return the hit rect for its
+    /// `TetronOpenTerminal` row, if present (used to drive a click at that cell).
+    pub fn tray_openterm_rect_for_test(
+        &mut self,
+        kind: crate::tray::SegmentKind,
+    ) -> Option<crate::geometry::Rect> {
+        self.tray.force_open(kind);
+        let st = self.tray_state.read().unwrap();
+        self.tray
+            .render(self.w, self.h, &st)
+            .hits
+            .into_iter()
+            .find(|h| matches!(h.intent, crate::system::ControlIntent::TetronOpenTerminal))
+            .map(|h| h.rect)
+    }
+
     /// Return the currently focused [`WindowId`], if any.
     pub fn focused(&self) -> Option<WindowId> { self.wm.focused() }
 
@@ -3217,6 +3233,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             || self.confirm_close.is_open()
             || self.launch_warn.is_open()
             || self.launcher.is_open()
+            || self.tray.open().is_some()
     }
 
     /// Mouse text-selection for terminal (app) windows: select by left-drag over
