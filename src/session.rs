@@ -1317,16 +1317,21 @@ impl SessionCore {
                 return;
             }
             I::TetronOpenTerminal => {
-                // Show status immediately, then drop to the user's interactive
-                // shell so the whole tetron CLI (invite/join/admin/…) is to hand
-                // -- the thin, native "dashboard" for a CLI-first tool.
+                // Prefer the native tetron-tui panel when installed; otherwise
+                // fall back to showing status and dropping to an interactive
+                // shell so the whole tetron CLI (invite/join/admin/…) is to hand.
+                // A login shell (`-lc`) sources the profile so ~/.local/bin is
+                // on PATH. `exec` replaces the shell so the window tracks the
+                // app/session lifetime.
                 self.tray.close();
                 self.launch_in(
                     "Tetron".to_string(),
                     "sh".to_string(),
                     vec![
                         "-lc".to_string(),
-                        "tetron status; exec \"${SHELL:-sh}\" -i".to_string(),
+                        "if command -v tetron-tui >/dev/null 2>&1; then exec tetron-tui; fi; \
+                         tetron status; exec \"${SHELL:-sh}\" -i"
+                            .to_string(),
                     ],
                     None,
                 );
