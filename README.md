@@ -1,4 +1,4 @@
-# tuiui
+# tetron-wm · tuiui
 
 <p align="center">
   <img src="assets/tuiui.png" alt="tuiui — a desktop environment running inside a terminal: floating windows, a dock, a menubar tray, and a mouse cursor" width="900">
@@ -254,6 +254,22 @@ kilo = "yellow"
 ```
 
 Most of these are editable live from the in-app **Settings** panel, which writes this file back.
+
+## tetron
+
+tuiui has first-class, optional support for [tetron](https://github.com/ErikAllanKincaid/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tuiui works identically with or without tetron present.
+
+- **Status at a glance.** The tray shows `⇄<peers>` with a connection-quality dot: `●` when at least one network has a direct path, `○` when every connection is relay-only, and `off` when tetron is reachable but in standby. It is read-only, a background poll that bounds every call so a stuck daemon can never hang the tray.
+- **On/off from the popover.** Click the segment for a popover with a global **Tetron [on/off]** toggle plus one row per network. Each network row toggles just that network's data plane (**Resume** / **Standby**) with its own `●`/`○` direct-or-relay indicator; the global toggle moves them all at once. These map to tetron's own `Resume`/`Standby` IPC messages, the same effect as `tetron resume` / `tetron standby` from the CLI.
+- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/ErikAllanKincaid/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in tetron-tui, not in the tray.
+
+### Pairing with kmscon on a bare console
+
+tuiui is the desktop layer of **tetron-os**, a GUI-less Linux that boots straight to a mouse-driven terminal desktop, reachable both at the local console and remotely over SSH/tetron. On a headless or console-only box there is no X11 or Wayland, and the kernel VT is a poor terminal: no truecolor, no real fonts, no mouse. tuiui pairs with **kmscon**, a KMS/DRM userspace console that renders directly on the framebuffer and provides truecolor, fontconfig fonts, XKB keyboards for every device, and the mouse-report passthrough tuiui needs. kmscon replaces the kernel VT as the console you land on at boot; tuiui runs inside it, so you get the full floating-window desktop on bare hardware with no display server at all.
+
+**Why the maintained fork.** This needs kmscon **10** (truecolor + mouse) with `libtsm4 >= 4.7.1`, which only the maintained line of kmscon provides (on Debian, in **trixie-backports**). The original upstream kmscon has neither truecolor nor mouse support, so the old kmscon that older Debian/Ubuntu ship will not work. tetron-os's `firstboot.sh` installs the backports kmscon and swaps the getty on the console VT for `kmsconvt@`, so the machine comes up in kmscon running tuiui.
+
+> Over SSH you are in whatever terminal your client provides, so kmscon is not involved there; tuiui just runs in terminal mode. On a raw VT without kmscon, use [gpm](#mouse-on-a-bare-linux-console-gpm) for the mouse instead.
 
 ## Architecture
 
