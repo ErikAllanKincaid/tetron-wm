@@ -51,6 +51,20 @@ fn run(state: Arc<RwLock<SystemState>>) {
         });
     }
 
+    // tetron status on its own thread + cadence: the probe is a Unix-socket
+    // round-trip (timeout-guarded in `system::tetron`), kept off the clock/CPU
+    // path so a slow/absent daemon can never delay the rest of the desktop.
+    {
+        let state = state.clone();
+        std::thread::spawn(move || loop {
+            let tetron = crate::system::tetron::poll();
+            if let Ok(mut s) = state.write() {
+                s.tetron = tetron;
+            }
+            std::thread::sleep(Duration::from_secs(4));
+        });
+    }
+
     loop {
         sys.refresh_cpu_usage();
         sys.refresh_memory();

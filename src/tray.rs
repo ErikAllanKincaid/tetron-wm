@@ -12,6 +12,7 @@ pub enum SegmentKind {
     Volume,
     Bluetooth,
     Wifi,
+    Tetron,
     Bell,
     Clock,
 }
@@ -53,6 +54,20 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
     if let Some(w) = &state.wifi {
         let name = if w.ssid.is_empty() { "wifi".to_string() } else { w.ssid.clone() };
         texts.push((SegmentKind::Wifi, format!("{} {}", bars_glyph(w.signal), name)));
+    }
+    // tetron: only when the daemon answered (installed + running). `⇄{peers}`
+    // with a direct(●)/relay(○) dot, or `off` on reachable standby.
+    if state.tetron.reachable {
+        let connected: usize = state.tetron.networks.iter().map(|n| n.connected).sum();
+        let any_direct = state.tetron.networks.iter().any(|n| n.any_direct);
+        let dot = if !state.tetron.active {
+            "off"
+        } else if any_direct {
+            "●"
+        } else {
+            "○"
+        };
+        texts.push((SegmentKind::Tetron, format!("⇄{connected} {dot}")));
     }
     if bells > 0 {
         texts.push((SegmentKind::Bell, format!("🔔{bells}")));
@@ -225,6 +240,24 @@ impl Tray {
             SegmentKind::Volume => self.render_volume(w, h, anchor_x, state),
             SegmentKind::Wifi => self.render_wifi(w, h, anchor_x, state),
             SegmentKind::Bluetooth => self.render_bluetooth(w, h, anchor_x, state),
+            SegmentKind::Tetron => {
+                // Read-only in v1: list networks (peers connected/total + how).
+                // Connect/disconnect/copy-ticket actions land in slice 2.
+                let ti = &state.tetron;
+                let mut lines = Vec::new();
+                if !ti.active {
+                    lines.push("standby (VPN off)".to_string());
+                }
+                if ti.networks.is_empty() {
+                    lines.push("no networks".to_string());
+                } else {
+                    for n in &ti.networks {
+                        let via = if n.any_direct { "direct" } else { "relay" };
+                        lines.push(format!("{}: {}/{} peers · {}", n.name, n.connected, n.members, via));
+                    }
+                }
+                self.render_lines(w, h, anchor_x, "Tetron", &lines)
+            }
             SegmentKind::Clock => self.render_calendar(w, h, anchor_x, state),
             SegmentKind::Bell => self.render_bell(w, anchor_x),
             SegmentKind::Cpu => self.render_lines(w, h, anchor_x, "CPU", &[

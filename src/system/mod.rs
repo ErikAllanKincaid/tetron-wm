@@ -19,6 +19,35 @@ pub struct SystemState {
     pub remotes_online: Vec<(String, bool)>,
     /// Upcoming calendar events (from `khal` when installed), soonest first.
     pub events: Vec<CalEvent>,
+    /// tetron (P2P mesh VPN) status, polled from its daemon socket. Default =
+    /// daemon not reachable (tetron may not be installed/running); the tray
+    /// segment is hidden unless `tetron.reachable`.
+    pub tetron: TetronInfo,
+}
+
+/// tetron daemon status for the menubar tray.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TetronInfo {
+    /// The daemon's IPC socket answered a `Status` request this poll. When
+    /// false, tetron is not installed/running and the tray segment is hidden.
+    pub reachable: bool,
+    /// The VPN is active (TUN up, networks connected), vs. reachable standby.
+    pub active: bool,
+    /// One entry per joined network.
+    pub networks: Vec<TetronNetwork>,
+}
+
+/// One tetron network's summary for the tray.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TetronNetwork {
+    /// Local display name of the network.
+    pub name: String,
+    /// Total members in the network.
+    pub members: usize,
+    /// Peers with a live connection right now.
+    pub connected: usize,
+    /// Any connected peer is a direct (not relayed) link.
+    pub any_direct: bool,
 }
 
 /// One upcoming calendar event for the menubar calendar popover.
@@ -227,3 +256,5 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
 pub mod macos;
 #[cfg(target_os = "linux")]
 pub mod linux;
+/// Cross-platform tetron daemon status probe (Unix socket; any OS tetron runs on).
+pub mod tetron;
