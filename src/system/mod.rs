@@ -48,6 +48,9 @@ pub struct TetronNetwork {
     pub connected: usize,
     /// Any connected peer is a direct (not relayed) link.
     pub any_direct: bool,
+    /// This network's data plane is up (vs. on standby). Drives the per-network
+    /// connect/disconnect toggle.
+    pub active: bool,
 }
 
 /// One upcoming calendar event for the menubar calendar popover.
@@ -151,6 +154,11 @@ pub enum ControlIntent {
     WifiConnectKnown(String),
     BtSetEnabled(bool),
     BtConnect { addr: String, connect: bool },
+    /// Activate (`Resume`) or deactivate (`Standby`) tetron. `network = None`
+    /// toggles every joined network (daemon-wide); `Some(name)` toggles just
+    /// that network. Handled by the session (sends to the tetron daemon),
+    /// not the OS backend.
+    TetronSetActive { network: Option<String>, active: bool },
     /// Step the menubar calendar popover a month back/forward. Handled by the
     /// session's tray state, not the OS backend.
     CalendarPrev,

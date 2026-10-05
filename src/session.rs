@@ -1293,6 +1293,29 @@ impl SessionCore {
                 self.tray.close();
                 return;
             }
+            I::TetronSetActive { ref network, active } => {
+                // Send to the tetron daemon (fire-and-forget; the next poll
+                // reflects the real result), and optimistically flip local state
+                // so the popover updates immediately. `ref network` avoids moving
+                // out of `intent`, which the OS-control match below still reads.
+                crate::system::tetron::set_active(network.clone(), active);
+                if let Ok(mut s) = self.tray_state.write() {
+                    match network {
+                        None => {
+                            s.tetron.active = active;
+                            for n in &mut s.tetron.networks {
+                                n.active = active;
+                            }
+                        }
+                        Some(name) => {
+                            if let Some(n) = s.tetron.networks.iter_mut().find(|n| &n.name == name) {
+                                n.active = active;
+                            }
+                        }
+                    }
+                }
+                return;
+            }
             _ => {}
         }
         if let Ok(mut s) = self.tray_state.write() {

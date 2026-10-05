@@ -240,24 +240,7 @@ impl Tray {
             SegmentKind::Volume => self.render_volume(w, h, anchor_x, state),
             SegmentKind::Wifi => self.render_wifi(w, h, anchor_x, state),
             SegmentKind::Bluetooth => self.render_bluetooth(w, h, anchor_x, state),
-            SegmentKind::Tetron => {
-                // Read-only in v1: list networks (peers connected/total + how).
-                // Connect/disconnect/copy-ticket actions land in slice 2.
-                let ti = &state.tetron;
-                let mut lines = Vec::new();
-                if !ti.active {
-                    lines.push("standby (VPN off)".to_string());
-                }
-                if ti.networks.is_empty() {
-                    lines.push("no networks".to_string());
-                } else {
-                    for n in &ti.networks {
-                        let via = if n.any_direct { "direct" } else { "relay" };
-                        lines.push(format!("{}: {}/{} peers · {}", n.name, n.connected, n.members, via));
-                    }
-                }
-                self.render_lines(w, h, anchor_x, "Tetron", &lines)
-            }
+            SegmentKind::Tetron => self.render_tetron(w, h, anchor_x, state),
             SegmentKind::Clock => self.render_calendar(w, h, anchor_x, state),
             SegmentKind::Bell => self.render_bell(w, anchor_x),
             SegmentKind::Cpu => self.render_lines(w, h, anchor_x, "CPU", &[
@@ -359,6 +342,44 @@ impl Tray {
             hits.push(PopoverHit {
                 rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
                 intent: ControlIntent::BtConnect { addr: d.addr.clone(), connect: !d.connected },
+            });
+        }
+        Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
+    }
+
+    /// tetron popover: a global on/off toggle plus one row per network that
+    /// toggles that network's data plane (Resume/Standby). Clicking the `[on]`/
+    /// `[off]` title label toggles all networks; clicking a network row toggles
+    /// just it. (Invites/join live in the tetron-tui, not here.)
+    fn render_tetron(&self, w: i32, _h: i32, anchor_x: i32, st: &St) -> Rendered {
+        let t = crate::theme::current();
+        let ti = &st.tetron;
+        let nets: Vec<_> = ti.networks.iter().take(8).cloned().collect();
+        let box_w = 40;
+        let box_h = 3 + nets.len().max(1) as i32;
+        let origin = self.box_origin(w, anchor_x, box_w);
+        let mut buf = CellBuffer::new(box_w, box_h);
+        fill_box(&mut buf, box_w, box_h);
+        buf.write_str(2, 1, &format!("Tetron  [{}]", if ti.active { "on" } else { "off" }), t.accent, t.window_bg);
+        // Global toggle on the `[on]`/`[off]` label.
+        let mut hits = vec![PopoverHit {
+            rect: Rect::new(origin.x + 9, origin.y + 1, 5, 1),
+            intent: ControlIntent::TetronSetActive { network: None, active: !ti.active },
+        }];
+        if nets.is_empty() {
+            buf.write_str(2, 2, "(no networks)", t.dim, t.window_bg);
+        }
+        for (i, n) in nets.iter().enumerate() {
+            let y = 2 + i as i32;
+            // `●`/`○` = this network's data plane up/standby; direct/relay = how
+            // its connected peers are reached.
+            let mark = if n.active { "●" } else { "○" };
+            let via = if n.any_direct { "direct" } else { "relay" };
+            let line = format!("{} {}  {}/{} · {}", mark, n.name, n.connected, n.members, via);
+            buf.write_str(2, y, &line, t.text, t.window_bg);
+            hits.push(PopoverHit {
+                rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
+                intent: ControlIntent::TetronSetActive { network: Some(n.name.clone()), active: !n.active },
             });
         }
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }

@@ -74,6 +74,7 @@ fn probe() -> Option<TetronInfo> {
                         members: n.member_count,
                         connected,
                         any_direct,
+                        active: n.active,
                     }
                 })
                 .collect(),
@@ -82,4 +83,44 @@ fn probe() -> Option<TetronInfo> {
         // reachable-but-unknown rather than inventing network data.
         _ => Some(TetronInfo { reachable: true, active: false, networks: Vec::new() }),
     }
+}
+
+/// Activate (`Resume`) or deactivate (`Standby`) tetron, globally (`network =
+/// None`) or for one network. Fire-and-forget on its own thread: activation can
+/// take a moment, and we must not block the UI click — the next status poll (a
+/// few seconds) reflects the real result. Best-effort; errors are ignored
+/// (same convention as the poll: tetron may not be running).
+pub fn set_active(network: Option<String>, active: bool) {
+    std::thread::spawn(move || {
+        let _ = send_action(network, active);
+    });
+}
+
+fn send_action(network: Option<String>, active: bool) -> Option<()> {
+    let mut stream = UnixStream::connect(ipc::socket_path()).ok()?;
+    // Activation brings up the TUN + reconnects, so allow more time than a poll.
+    let timeout = Duration::from_secs(5);
+    stream.set_read_timeout(Some(timeout)).ok()?;
+    stream.set_write_timeout(Some(timeout)).ok()?;
+
+    let msg = if active {
+        IpcMessage::Resume { hostname: None, network }
+    } else {
+        IpcMessage::Standby { network }
+    };
+    let body = rmp_serde::to_vec_named(&msg).ok()?;
+    stream.write_all(&(body.len() as u32).to_be_bytes()).ok()?;
+    stream.write_all(&body).ok()?;
+    stream.flush().ok()?;
+
+    // Drain the one reply (Ok/Error) so the round-trip completes cleanly.
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf).ok()?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len == 0 || len > MAX_FRAME_LEN {
+        return None;
+    }
+    let mut buf = vec![0u8; len];
+    stream.read_exact(&mut buf).ok()?;
+    Some(())
 }
