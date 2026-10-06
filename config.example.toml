@@ -31,8 +31,15 @@
 #tile_gap = 0
 
 ## ── Appearance ────────────────────────────────────────────────────────────
-# Color theme: "midnight", "nord", "gruvbox", or "dracula". (NRO default: nord.)
+# Color theme: "midnight", "nord", "gruvbox", "dracula", or "light". (NRO default: nord.)
 #theme = "nord"
+# Terminal default background/foreground, independent of the desktop theme (hex
+# #rrggbb or a named color). Unset = follow the theme (e.g. "light" gives
+# black-on-white terminals). Set these to decouple the terminal, e.g. a light
+# desktop with a dark terminal. Applied by the apphost at startup, so a change
+# takes effect on the next start (`tetron-wm kill` then relaunch), not a reload.
+#terminal_bg = "#ffffff"
+#terminal_fg = "#1a1a1a"
 
 ## ── Files / working directories ───────────────────────────────────────────
 # Directory the working-directory picker opens at (default: your home).
@@ -47,7 +54,8 @@
 ## ── Desktop ───────────────────────────────────────────────────────────────
 # Show icons on the wallpaper/desktop.
 #desktop_enabled = true
-# Pinned desktop shortcuts (see [[desktop_pins]] below). Defaults to Files + Store.
+# Pinned desktop shortcuts (see [[desktop_pins]] below). Default: none — the
+# desktop shows only the real contents of ~/Desktop. Add pins explicitly.
 # desktop_positions (icon grid placement) is saved by the app, not hand-set.
 
 ## ── Assistant (the ✦ panel) ───────────────────────────────────────────────
@@ -79,7 +87,7 @@
 #command = "htop"
 #cli = true
 
-# Pinned desktop shortcuts (same fields as [[apps]]). Default: Files + Store.
+# Pinned desktop shortcuts (same fields as [[apps]]). Default: none.
 #[[desktop_pins]]
 #name = "Files"
 #command = "@files"

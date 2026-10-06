@@ -278,8 +278,17 @@ impl<F: FsOps> DesktopIcons<F> {
     /// wallpaper shows through; only icon tiles draw).
     pub fn render(&self, w: i32, h: i32) -> crate::buffer::CellBuffer {
         use crate::cell::{Cell, Rgba};
-        const FG: Rgba = Rgba { r: 220, g: 226, b: 236, a: 255 };
-        const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 200 };
+        // Label/glyph color follows the theme's `text`, which always contrasts
+        // with the wallpaper (`desktop_bg`) in every theme — the old hardcoded
+        // light grey was invisible on the light theme's paper wallpaper.
+        let th = crate::theme::current();
+        let fg = th.text;
+        let sel = th.active_bg;
+        let sel_bg = Rgba { r: sel.r, g: sel.g, b: sel.b, a: 200 };
+        #[allow(non_snake_case)]
+        let FG = fg;
+        #[allow(non_snake_case)]
+        let SEL_BG = sel_bg;
         let transparent = Rgba::TRANSPARENT;
         let mut buf = crate::buffer::CellBuffer::new(w, h);
         buf.fill(Cell { ch: ' ', fg: FG, bg: transparent, attrs: Default::default() });

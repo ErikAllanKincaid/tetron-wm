@@ -335,14 +335,16 @@ pub fn render_window(win: &Window, content: &CellBuffer, focused: bool, shadows:
         buf.set(r.w - 2, 0, Cell { ch: '\u{2715}', fg: t.close_fg, bg: tbg, attrs: Default::default() });
     }
 
-    // Left and right borders (rows 1..h).
+    // Left and right borders (rows 1..h). Transparent background so the border is
+    // just the thin line glyph over whatever is behind, not a full cell of
+    // window_bg — which otherwise reads as a wide white band on a light theme.
     for y in 1..r.h {
-        buf.set(0,       y, Cell { ch: '│', fg: t.border, bg: t.window_bg, attrs: Default::default() });
-        buf.set(r.w - 1, y, Cell { ch: '│', fg: t.border, bg: t.window_bg, attrs: Default::default() });
+        buf.set(0,       y, Cell { ch: '│', fg: t.border, bg: Rgba::TRANSPARENT, attrs: Default::default() });
+        buf.set(r.w - 1, y, Cell { ch: '│', fg: t.border, bg: Rgba::TRANSPARENT, attrs: Default::default() });
     }
     // Bottom border.
     for x in 0..r.w {
-        buf.set(x, r.h - 1, Cell { ch: '─', fg: t.border, bg: t.window_bg, attrs: Default::default() });
+        buf.set(x, r.h - 1, Cell { ch: '─', fg: t.border, bg: Rgba::TRANSPARENT, attrs: Default::default() });
     }
 
     // Blit content into the inner rect starting at (1, 1).

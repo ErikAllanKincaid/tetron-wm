@@ -696,11 +696,14 @@ fn pdf_preview(path: &std::path::Path, max: usize) -> Vec<String> {
 use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
 
-const BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
-const FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-const DIM: Rgba = Rgba { r: 120, g: 130, b: 150, a: 255 };
-const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 255 };
-const ACCENT: Rgba = Rgba { r: 108, g: 182, b: 255, a: 255 };
+// File-manager colors follow the active desktop theme (were hardcoded midnight,
+// which left the Files app dark under every theme). Named `pal_*` so they do not
+// collide with the many local `bg`/`fg` bindings in the render code.
+fn pal_bg() -> Rgba { crate::theme::current().window_bg }
+fn pal_fg() -> Rgba { crate::theme::current().text }
+fn pal_dim() -> Rgba { crate::theme::current().dim }
+fn pal_sel() -> Rgba { crate::theme::current().active_bg }
+fn pal_accent() -> Rgba { crate::theme::current().accent }
 
 const SIDEBAR_W: i32 = 16; // left shortcuts column
 const TOOLBAR_Y: i32 = 0;  // breadcrumb/toolbar row
@@ -798,18 +801,18 @@ impl<F: FsOps> FileManager<F> {
         let t = self.tab();
         let top = self.content_top();
         let mut buf = CellBuffer::new(w, h);
-        buf.fill(Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() });
+        buf.fill(Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() });
 
         // Toolbar: back/forward/up + breadcrumb + view toggle.
-        buf.write_str(0, TOOLBAR_Y, "\u{25C2} \u{25B8} \u{25B2}", ACCENT, BG); // ◂ ▸ ▲
+        buf.write_str(0, TOOLBAR_Y, "\u{25C2} \u{25B8} \u{25B2}", pal_accent(), pal_bg()); // ◂ ▸ ▲
         let crumb = t.cwd.to_string_lossy().to_string();
-        buf.write_str(8, TOOLBAR_Y, &crumb, FG, BG);
+        buf.write_str(8, TOOLBAR_Y, &crumb, pal_fg(), pal_bg());
         let toggle = match t.view {
             ViewMode::Icon => "[grid]",
             ViewMode::List => "[list]",
             ViewMode::Columns => "[cols]",
         };
-        buf.write_str((w - toggle.len() as i32 - 1).max(0), TOOLBAR_Y, toggle, DIM, BG);
+        buf.write_str((w - toggle.len() as i32 - 1).max(0), TOOLBAR_Y, toggle, pal_dim(), pal_bg());
 
         // Tab strip (only with more than one tab) on the row below the toolbar.
         if self.tabs.len() > 1 {
@@ -822,7 +825,7 @@ impl<F: FsOps> FileManager<F> {
                     .unwrap_or_else(|| "/".to_string());
                 let label = format!(" {name} ");
                 let active = i == self.active;
-                let (fg, bg) = if active { (ACCENT, SEL_BG) } else { (DIM, BG) };
+                let (fg, bg) = if active { (pal_accent(), pal_sel()) } else { (pal_dim(), pal_bg()) };
                 buf.write_str(x, TOOLBAR_Y + 1, &label, fg, bg);
                 x += label.chars().count() as i32 + 1;
                 if x >= w { break; }
@@ -831,7 +834,7 @@ impl<F: FsOps> FileManager<F> {
 
         // Sidebar.
         for (i, (label, _)) in self.sidebar().iter().enumerate() {
-            buf.write_str(0, top + i as i32, label, DIM, BG);
+            buf.write_str(0, top + i as i32, label, pal_dim(), pal_bg());
         }
 
         let area_x = SIDEBAR_W;
@@ -857,10 +860,10 @@ impl<F: FsOps> FileManager<F> {
                     if y >= h - 1 { break; }
                     let selected = t.selection.contains(&i);
                     let focused = i == t.cursor;
-                    let bg = if selected || focused { SEL_BG } else { BG };
-                    for x in area_x..area_right { buf.set(x, y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() }); }
+                    let bg = if selected || focused { pal_sel() } else { pal_bg() };
+                    for x in area_x..area_right { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
                     let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
-                    buf.write_str(area_x, y, &format!("{mark} {}", e.name), if focused { ACCENT } else { FG }, bg);
+                    buf.write_str(area_x, y, &format!("{mark} {}", e.name), if focused { pal_accent() } else { pal_fg() }, bg);
                 }
             }
             ViewMode::Columns => {
@@ -890,19 +893,19 @@ impl<F: FsOps> FileManager<F> {
                     buf.set(
                         ir.x + ir.w / 2,
                         ir.y + ir.h / 2,
-                        Cell { ch: Self::glyph(e), fg: FG, bg: BG, attrs: Default::default() },
+                        Cell { ch: Self::glyph(e), fg: pal_fg(), bg: pal_bg(), attrs: Default::default() },
                     );
                     // Label: centered on the tile's last row. Selection/focus
                     // highlight lives here only, like the desktop.
-                    let label_bg = if selected || focused { SEL_BG } else { BG };
+                    let label_bg = if selected || focused { pal_sel() } else { pal_bg() };
                     let label_y = tile.y + TILE_H - 1;
                     let name: String = e.name.chars().take(TILE_W as usize).collect();
                     let len = name.chars().count() as i32;
                     let lx = tile.x + (TILE_W - len).max(0) / 2;
                     for x in tile.x..(tile.x + TILE_W).min(area_right) {
-                        buf.set(x, label_y, Cell { ch: ' ', fg: FG, bg: label_bg, attrs: Default::default() });
+                        buf.set(x, label_y, Cell { ch: ' ', fg: pal_fg(), bg: label_bg, attrs: Default::default() });
                     }
-                    buf.write_str(lx, label_y, &name, if focused { ACCENT } else { FG }, label_bg);
+                    buf.write_str(lx, label_y, &name, if focused { pal_accent() } else { pal_fg() }, label_bg);
                 }
             }
         }
@@ -911,7 +914,7 @@ impl<F: FsOps> FileManager<F> {
         if preview_w > 0 && t.view != ViewMode::Columns {
             let sep_x = area_right;
             for y in top..h - 1 {
-                buf.set(sep_x, y, Cell { ch: '\u{2502}', fg: DIM, bg: BG, attrs: Default::default() });
+                buf.set(sep_x, y, Cell { ch: '\u{2502}', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
             }
             let pane_x = sep_x + 2;
             let max = (h - top - 1).max(0) as usize;
@@ -919,16 +922,16 @@ impl<F: FsOps> FileManager<F> {
                 let y = top + i as i32;
                 if y >= h - 1 { break; }
                 let text: String = line.chars().take((preview_w - 2).max(1) as usize).collect();
-                buf.write_str(pane_x, y, &text, FG, BG);
+                buf.write_str(pane_x, y, &text, pal_fg(), pal_bg());
             }
         }
 
         // Status line.
         if !self.status.is_empty() {
-            buf.write_str(0, h - 1, &self.status, ACCENT, BG);
+            buf.write_str(0, h - 1, &self.status, pal_accent(), pal_bg());
         } else {
             let info = format!("{} items", t.entries.len());
-            buf.write_str(0, h - 1, &info, DIM, BG);
+            buf.write_str(0, h - 1, &info, pal_dim(), pal_bg());
         }
 
         // Overlays render on top (Task 7 adds NewFolder/Rename/Confirm/Context/OpenWith/Error).
@@ -952,10 +955,10 @@ impl<F: FsOps> FileManager<F> {
                     let y = top + i as i32;
                     if y >= h - 1 { break; }
                     let here = e.path == t.cwd;
-                    let bg = if here { SEL_BG } else { BG };
-                    for x in area_x..mid_x { buf.set(x, y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() }); }
+                    let bg = if here { pal_sel() } else { pal_bg() };
+                    for x in area_x..mid_x { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
                     let name: String = e.name.chars().take((col_w - 1).max(1) as usize).collect();
-                    buf.write_str(area_x, y, &name, if here { ACCENT } else { DIM }, bg);
+                    buf.write_str(area_x, y, &name, if here { pal_accent() } else { pal_dim() }, bg);
                 }
             }
         }
@@ -969,22 +972,22 @@ impl<F: FsOps> FileManager<F> {
             if y >= h - 1 { break; }
             let selected = t.selection.contains(&i);
             let focused = i == t.cursor;
-            let bg = if selected || focused { SEL_BG } else { BG };
-            for x in mid_x..right_x { buf.set(x, y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() }); }
+            let bg = if selected || focused { pal_sel() } else { pal_bg() };
+            for x in mid_x..right_x { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
             let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
             let label = format!("{mark} {}", e.name);
             let label: String = label.chars().take((col_w - 1).max(1) as usize).collect();
-            buf.write_str(mid_x, y, &label, if focused { ACCENT } else { FG }, bg);
+            buf.write_str(mid_x, y, &label, if focused { pal_accent() } else { pal_fg() }, bg);
         }
 
         // Right: preview of the focused entry.
-        for x in right_x - 1..right_x { buf.set(x, top, Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() }); }
+        for x in right_x - 1..right_x { buf.set(x, top, Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() }); }
         let max = (h - top - 1).max(0) as usize;
         for (i, line) in self.preview_lines(max).iter().enumerate() {
             let y = top + i as i32;
             if y >= h - 1 { break; }
             let text: String = line.chars().take((area_right - right_x).max(1) as usize).collect();
-            buf.write_str(right_x, y, &text, FG, BG);
+            buf.write_str(right_x, y, &text, pal_fg(), pal_bg());
         }
     }
 
@@ -1134,12 +1137,12 @@ impl<F: FsOps> FileManager<F> {
         let by = (h - bh) / 2;
         for y in by..by + bh {
             for x in bx..bx + bw {
-                buf.set(x, y, Cell { ch: ' ', fg: FG, bg: SEL_BG, attrs: Default::default() });
+                buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: pal_sel(), attrs: Default::default() });
             }
         }
-        buf.write_str(bx + 2, by, title, ACCENT, SEL_BG);
+        buf.write_str(bx + 2, by, title, pal_accent(), pal_sel());
         for (i, line) in lines.iter().enumerate() {
-            buf.write_str(bx + 2, by + 2 + i as i32, line, FG, SEL_BG);
+            buf.write_str(bx + 2, by + 2 + i as i32, line, pal_fg(), pal_sel());
         }
     }
 
@@ -1177,12 +1180,12 @@ impl<F: FsOps> FileManager<F> {
         let Some(r) = self.context_menu_rect(w, h) else { return; };
         for y in r.y..r.y + r.h {
             for x in r.x..r.x + r.w {
-                buf.set(x, y, Cell { ch: ' ', fg: FG, bg: SEL_BG, attrs: Default::default() });
+                buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: pal_sel(), attrs: Default::default() });
             }
         }
         for (i, item) in ContextMenuItem::ALL.iter().enumerate() {
             let hi = i == sel;
-            let (fg, bg) = if hi { (BG, ACCENT) } else { (FG, SEL_BG) };
+            let (fg, bg) = if hi { (pal_bg(), pal_accent()) } else { (pal_fg(), pal_sel()) };
             let y = r.y + 1 + i as i32;
             for x in r.x + 1..r.x + r.w - 1 {
                 buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });

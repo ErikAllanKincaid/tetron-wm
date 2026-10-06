@@ -12,12 +12,11 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// Default foreground/background used for cells that reference the terminal's
-/// "default" colors (and as a fallback for unresolved named colors).
-const DEFAULT_FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-// Matches the window panel color (wm::WIN_BG) so an app's default-background
-// cells blend seamlessly into the window rather than showing a mismatched fill.
-const DEFAULT_BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
+// A cell's "default" foreground/background (and the fallback for unresolved
+// named colors) comes from the active desktop theme — `text` and `window_bg` —
+// snapshotted once per frame at the render loop below, so an app's
+// default-background cells blend into the window and follow theme switches
+// (e.g. the light theme's black-on-white terminals).
 
 /// Forwards the embedded terminal's replies back to the child over the PTY.
 ///
@@ -252,6 +251,7 @@ impl AppInstance {
         let gscreen = grid.screen_lines() as i32;
         let ghist = grid.total_lines() as i32 - gscreen; // scrollback depth
         let mut buf = CellBuffer::new(self.cols as i32, self.rows as i32);
+        let th = crate::theme::current(); // default fg/bg follow the active theme
         for y in 0..self.rows as i32 {
             let line = y - off;
             // Outside the grid's line range -> leave the row blank.
@@ -271,8 +271,8 @@ impl AppInstance {
                     y,
                     Cell {
                         ch,
-                        fg: resolve_color(cell.fg, DEFAULT_FG),
-                        bg: resolve_color(cell.bg, DEFAULT_BG),
+                        fg: resolve_color(cell.fg, th.text),
+                        bg: resolve_color(cell.bg, th.window_bg),
                         attrs: CellAttrs {
                             bold: flags.contains(Flags::BOLD),
                             italic: flags.contains(Flags::ITALIC),
@@ -453,8 +453,8 @@ fn resolve_color(c: AColor, default: Rgba) -> Rgba {
 fn named_to_rgb(n: NamedColor, default: Rgba) -> Rgba {
     use NamedColor::*;
     match n {
-        Foreground => DEFAULT_FG,
-        Background => DEFAULT_BG,
+        Foreground => default,
+        Background => default,
         Black => idx_to_rgb(0),
         Red => idx_to_rgb(1),
         Green => idx_to_rgb(2),

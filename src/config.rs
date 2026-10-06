@@ -69,6 +69,16 @@ pub struct Config {
     /// Active color theme name (one of the preset names in `theme::PRESETS`).
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Terminal default background/foreground, independent of the desktop theme
+    /// (hex `#rrggbb` or a named color). Unset = follow the theme's `window_bg`/
+    /// `text`, so e.g. the light theme gives black-on-white terminals. Set these
+    /// to decouple the terminal, e.g. a light desktop with a dark terminal.
+    /// Applied by the apphost at startup; a change takes effect on the next
+    /// apphost start (`tetron-wm kill` then relaunch), not a bare `reload`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_bg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_fg: Option<String>,
     /// Root directory the working-directory picker opens at (default `~`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_project_dir: Option<String>,
@@ -150,6 +160,8 @@ impl Default for Config {
             auto_tile: false,
             launch_maximized: false,
             theme: "nord".into(),
+            terminal_bg: None,
+            terminal_fg: None,
             default_project_dir: None,
             recent_dirs: Vec::new(),
             show_hidden_dirs: false,
@@ -172,13 +184,12 @@ impl Default for Config {
 
 fn default_true() -> bool { true }
 
-/// Default desktop shortcuts, also used by serde to seed configs that predate the
-/// `desktop_pins` field (so existing users still get Files + Store on the desktop).
+/// Default desktop shortcuts: none. The desktop shows only the real contents of
+/// `~/Desktop`; pins are opt-in via `[[desktop_pins]]`.
 fn default_desktop_pins() -> Vec<AppEntry> {
-    vec![
-        AppEntry { name: "Files".into(), command: "@files".into(), args: vec![], category: None, requires_cwd: None, cwd: None, cli: None, warn: None },
-        AppEntry { name: "Store".into(), command: "@store".into(), args: vec![], category: None, requires_cwd: None, cwd: None, cli: None, warn: None },
-    ]
+    // No pins by default: the desktop shows only what is really in ~/Desktop.
+    // Add Files/Store (or anything) back explicitly via [[desktop_pins]].
+    Vec::new()
 }
 
 
