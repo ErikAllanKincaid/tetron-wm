@@ -8,13 +8,17 @@ use crate::catalog::{self, CatalogApp};
 use crate::cell::{Cell, Rgba};
 use crate::geometry::Point;
 
-const BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
-const FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-const DIM: Rgba = Rgba { r: 120, g: 130, b: 150, a: 255 };
-const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 255 };
-const ACCENT: Rgba = Rgba { r: 108, g: 182, b: 255, a: 255 };
+// Chrome colors follow the active desktop theme (were hardcoded midnight, which
+// left the Store dark under every theme). Named `pal_*` to avoid colliding with
+// local `bg`/`fg` bindings in the render code.
+fn pal_bg() -> Rgba { crate::theme::current().window_bg }
+fn pal_fg() -> Rgba { crate::theme::current().text }
+fn pal_dim() -> Rgba { crate::theme::current().dim }
+fn pal_sel() -> Rgba { crate::theme::current().active_bg }
+fn pal_accent() -> Rgba { crate::theme::current().accent }
+fn pal_panel() -> Rgba { crate::theme::current().menubar_bg }
+// Semantic success color (e.g. "installed" markers); not theme-swapped.
 const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
-const PANEL: Rgba = Rgba { r: 22, g: 26, b: 37, a: 255 };
 
 const SIDEBAR_W: i32 = 16;
 const LIST_W: i32 = 30;
@@ -110,13 +114,13 @@ impl Store {
     /// Render the store into a `w × h` content buffer.
     pub fn render(&self, w: i32, h: i32) -> CellBuffer {
         let mut buf = CellBuffer::new(w, h);
-        buf.fill(Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() });
+        buf.fill(Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() });
 
         // Search bar (row 0).
-        buf.write_str(1, 0, &format!("\u{2315} {}\u{2588}", self.query), ACCENT, BG);
+        buf.write_str(1, 0, &format!("\u{2315} {}\u{2588}", self.query), pal_accent(), pal_bg());
         let count = self.filtered().len();
         let meta = format!("{count} apps");
-        buf.write_str((w - meta.len() as i32 - 1).max(0), 0, &meta, DIM, BG);
+        buf.write_str((w - meta.len() as i32 - 1).max(0), 0, &meta, pal_dim(), pal_bg());
         hline(&mut buf, w, 1);
 
         // Sidebar (categories).
@@ -126,7 +130,7 @@ impl Store {
                 break;
             }
             let sel = i == self.cat_index;
-            let (fg, bg) = if sel { (ACCENT, SEL_BG) } else { (DIM, BG) };
+            let (fg, bg) = if sel { (pal_accent(), pal_sel()) } else { (pal_dim(), pal_bg()) };
             for x in 0..SIDEBAR_W {
                 buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });
             }
@@ -155,16 +159,16 @@ impl Store {
         if let Some(app) = self.selected_app() {
             for y in 2..h {
                 for x in dx..w {
-                    buf.set(x, y, Cell { ch: ' ', fg: FG, bg: PANEL, attrs: Default::default() });
+                    buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: pal_panel(), attrs: Default::default() });
                 }
             }
-            buf.write_str(dx + 1, 3, truncate(&app.name, dw as usize - 2), ACCENT, PANEL);
+            buf.write_str(dx + 1, 3, truncate(&app.name, dw as usize - 2), pal_accent(), pal_panel());
             let cat_str = truncate(&app.category, dw as usize - 2);
-            buf.write_str(dx + 1, 4, cat_str, DIM, PANEL);
+            buf.write_str(dx + 1, 4, cat_str, pal_dim(), pal_panel());
             if app.cli {
                 let bx = dx + 1 + cat_str.chars().count() as i32 + 2;
                 if bx + CLI_BADGE.len() as i32 <= dx + dw {
-                    buf.write_str(bx, 4, CLI_BADGE, ACCENT, PANEL);
+                    buf.write_str(bx, 4, CLI_BADGE, pal_accent(), pal_panel());
                 }
             }
             let mut y = 6;
@@ -172,7 +176,7 @@ impl Store {
                 if y >= h - 5 {
                     break;
                 }
-                buf.write_str(dx + 1, y, &line, FG, PANEL);
+                buf.write_str(dx + 1, y, &line, pal_fg(), pal_panel());
                 y += 1;
             }
             // Setup tip (e.g. "add models/providers with `hermes model` first").
@@ -183,23 +187,23 @@ impl Store {
                         if y >= h - 5 {
                             break;
                         }
-                        buf.write_str(dx + 1, y, &line, ACCENT, PANEL);
+                        buf.write_str(dx + 1, y, &line, pal_accent(), pal_panel());
                         y += 1;
                     }
                 }
             }
-            buf.write_str(dx + 1, h - 4, truncate(&app.homepage, dw as usize - 2), DIM, PANEL);
+            buf.write_str(dx + 1, h - 4, truncate(&app.homepage, dw as usize - 2), pal_dim(), pal_panel());
             // Verified-recipe badge.
             if let Some(r) = catalog::recipe(&app.name) {
                 if r.verified {
-                    buf.write_str(dx + 1, h - 3, &format!("\u{2713} verified \u{00B7} {}", r.method), GREEN, PANEL);
+                    buf.write_str(dx + 1, h - 3, &format!("\u{2713} verified \u{00B7} {}", r.method), GREEN, pal_panel());
                 }
             }
             // Action hint.
             let installed = catalog::is_installed(&app.bin);
             let action = if installed { "[ Enter: Launch ]" } else { "[ Enter: Install ]" };
-            let acol = if installed { GREEN } else { ACCENT };
-            buf.write_str(dx + 1, h - 2, action, acol, PANEL);
+            let acol = if installed { GREEN } else { pal_accent() };
+            buf.write_str(dx + 1, h - 2, action, acol, pal_panel());
         }
 
         buf
@@ -318,28 +322,28 @@ struct ListRowFlags {
 /// rather than a persistent TUI) — a right-aligned `CLI` tag.
 fn draw_list_row(buf: &mut CellBuffer, x: i32, y: i32, w: i32, name: &str, flags: ListRowFlags) {
     let ListRowFlags { installed, cli, sel } = flags;
-    let bg = if sel { SEL_BG } else { BG };
+    let bg = if sel { pal_sel() } else { pal_bg() };
     for dx in 0..w {
-        buf.set(x + dx, y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() });
+        buf.set(x + dx, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() });
     }
     let mark = if installed { "\u{2713} " } else { "  " };
     buf.write_str(x, y, mark, GREEN, bg);
     let badge_w = if cli { CLI_BADGE.len() as i32 + 1 } else { 0 };
     let name_w = (w - 3 - badge_w).max(1) as usize;
-    buf.write_str(x + 2, y, truncate(name, name_w), FG, bg);
+    buf.write_str(x + 2, y, truncate(name, name_w), pal_fg(), bg);
     if cli {
-        buf.write_str(x + w - CLI_BADGE.len() as i32, y, CLI_BADGE, ACCENT, bg);
+        buf.write_str(x + w - CLI_BADGE.len() as i32, y, CLI_BADGE, pal_accent(), bg);
     }
 }
 
 fn hline(buf: &mut CellBuffer, w: i32, y: i32) {
     for x in 0..w {
-        buf.set(x, y, Cell { ch: '\u{2500}', fg: DIM, bg: BG, attrs: Default::default() });
+        buf.set(x, y, Cell { ch: '\u{2500}', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
     }
 }
 fn vline(buf: &mut CellBuffer, x: i32, y0: i32, h: i32) {
     for y in y0..h {
-        buf.set(x, y, Cell { ch: '\u{2502}', fg: DIM, bg: BG, attrs: Default::default() });
+        buf.set(x, y, Cell { ch: '\u{2502}', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
     }
 }
 fn truncate(s: &str, max: usize) -> &str {

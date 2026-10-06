@@ -13,11 +13,15 @@ use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
 use crate::geometry::Point;
 
-const BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
-const FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-const DIM: Rgba = Rgba { r: 120, g: 130, b: 150, a: 255 };
-const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 255 };
-const ACCENT: Rgba = Rgba { r: 108, g: 182, b: 255, a: 255 };
+// Chrome colors follow the active desktop theme (were hardcoded midnight, which
+// left the Activity Monitor dark under every theme). Named `pal_*` to avoid
+// colliding with local `bg`/`fg` bindings in the render code.
+fn pal_bg() -> Rgba { crate::theme::current().window_bg }
+fn pal_fg() -> Rgba { crate::theme::current().text }
+fn pal_dim() -> Rgba { crate::theme::current().dim }
+fn pal_sel() -> Rgba { crate::theme::current().active_bg }
+fn pal_accent() -> Rgba { crate::theme::current().accent }
+// Semantic danger color (kill / high-usage); not theme-swapped.
 const RED: Rgba = Rgba { r: 241, g: 76, b: 76, a: 255 };
 
 /// In-progress kill confirmation: `Some((index, app_id))` while the user is
@@ -148,30 +152,30 @@ impl Activity {
     /// Render the panel into a `w × h` content buffer.
     pub fn render(&self, w: i32, h: i32) -> CellBuffer {
         let mut buf = CellBuffer::new(w, h);
-        buf.fill(Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() });
+        buf.fill(Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() });
 
         // Header bar: title + count + refresh counter.
         let title = "Activity Monitor";
-        buf.write_str(2, 1, title, ACCENT, BG);
+        buf.write_str(2, 1, title, pal_accent(), pal_bg());
         let count = format!("{} app{}", self.rows.len(), if self.rows.len() == 1 { "" } else { "s" });
-        buf.write_str(2 + title.chars().count() as i32 + 2, 1, &count, DIM, BG);
+        buf.write_str(2 + title.chars().count() as i32 + 2, 1, &count, pal_dim(), pal_bg());
         let refresh = format!("refresh: #{}", self.refresh_count);
-        buf.write_str(w - refresh.chars().count() as i32 - 2, 1, &refresh, DIM, BG);
+        buf.write_str(w - refresh.chars().count() as i32 - 2, 1, &refresh, pal_dim(), pal_bg());
 
         // Column headers.
         let header_y = 3;
         let cols = ColumnLayout::for_width(w);
-        buf.write_str(cols.id, header_y, "ID", DIM, BG);
-        buf.write_str(cols.pid, header_y, "PID", DIM, BG);
-        buf.write_str(cols.cmd, header_y, "CMD", DIM, BG);
-        buf.write_str(cols.dims, header_y, "COLS×ROWS", DIM, BG);
-        buf.write_str(cols.age, header_y, "AGE", DIM, BG);
-        buf.write_str(cols.state, header_y, "STATE", DIM, BG);
-        buf.write_str(cols.kill, header_y, "KILL", DIM, BG);
+        buf.write_str(cols.id, header_y, "ID", pal_dim(), pal_bg());
+        buf.write_str(cols.pid, header_y, "PID", pal_dim(), pal_bg());
+        buf.write_str(cols.cmd, header_y, "CMD", pal_dim(), pal_bg());
+        buf.write_str(cols.dims, header_y, "COLS×ROWS", pal_dim(), pal_bg());
+        buf.write_str(cols.age, header_y, "AGE", pal_dim(), pal_bg());
+        buf.write_str(cols.state, header_y, "STATE", pal_dim(), pal_bg());
+        buf.write_str(cols.kill, header_y, "KILL", pal_dim(), pal_bg());
 
         // Divider under the header.
         for x in 1..(w - 1) {
-            buf.set(x, header_y + 1, Cell { ch: '─', fg: DIM, bg: BG, attrs: Default::default() });
+            buf.set(x, header_y + 1, Cell { ch: '─', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
         }
 
         if self.rows.is_empty() {
@@ -179,21 +183,21 @@ impl Activity {
                 (w / 2 - 10).max(1),
                 header_y + 3,
                 "no apps running",
-                DIM,
-                BG,
+                pal_dim(),
+                pal_bg(),
             );
         } else {
             // List rows.
             let mut y = header_y + 2;
             for (i, row) in self.rows.iter().enumerate() {
                 let sel = i == self.selected;
-                let row_bg = if sel { SEL_BG } else { BG };
+                let row_bg = if sel { pal_sel() } else { pal_bg() };
                 if sel {
                     for x in 0..w {
-                        buf.set(x, y, Cell { ch: ' ', fg: FG, bg: row_bg, attrs: Default::default() });
+                        buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: row_bg, attrs: Default::default() });
                     }
                 }
-                let fg = if sel { FG } else { DIM };
+                let fg = if sel { pal_fg() } else { pal_dim() };
                 buf.write_str(cols.id, y, &format!("{}", row.entry.app), fg, row_bg);
                 let pid = row.entry.pid.map(|p| p.to_string()).unwrap_or_else(|| "—".into());
                 buf.write_str(cols.pid, y, &pid, fg, row_bg);
@@ -208,14 +212,14 @@ impl Activity {
                     row_bg,
                 );
                 buf.write_str(cols.age, y, &format_age(row.entry.age_secs), fg, row_bg);
-                let (state_text, state_col) = if row.entry.alive { ("alive", FG) } else { ("dead", DIM) };
+                let (state_text, state_col) = if row.entry.alive { ("alive", pal_fg()) } else { ("dead", pal_dim()) };
                 buf.write_str(cols.state, y, state_text, state_col, row_bg);
 
                 // Kill button on the selected row (red glyph).
                 if sel {
                     buf.write_str(cols.kill, y, "kill", RED, row_bg);
                 } else {
-                    buf.write_str(cols.kill, y, "    ", FG, row_bg);
+                    buf.write_str(cols.kill, y, "    ", pal_fg(), row_bg);
                 }
 
                 y += 1;
@@ -229,7 +233,7 @@ impl Activity {
         let footer_y = h - 2;
         let footer = "↑↓ select · k kill selected · K kill all dead · r refresh · Esc close";
         let fx = ((w - footer.chars().count() as i32) / 2).max(1);
-        buf.write_str(fx, footer_y, footer, DIM, BG);
+        buf.write_str(fx, footer_y, footer, pal_dim(), pal_bg());
 
         // Optional confirm overlay.
         if let Some(pk) = self.pending_kill {
@@ -253,7 +257,7 @@ impl Activity {
         let bg = Rgba { r: 45, g: 0, b: 0, a: 255 };
         for x in ox..(ox + box_w) {
             for y in oy..(oy + box_h) {
-                buf.set(x, y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() });
+                buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() });
             }
         }
         buf.write_str(ox + 2, oy + 1, &label, RED, bg);
