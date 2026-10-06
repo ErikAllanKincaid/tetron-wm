@@ -19,7 +19,8 @@ Each row is the TOML key, its type, the fork default, and what it does.
 | `grid_rows` | int | `2` | Tiling grid rows (1–6). |
 | `grid_cols` | int | `2` | Tiling grid columns (1–6). |
 | `tile_gap` | int | `0` | Cells of gutter between tiled windows. |
-| `theme` | string | `"nord"` (upstream: midnight) | Color theme: `midnight`, `nord`, `gruvbox`, or `dracula`. |
+| `theme` | string | `"nord"` (upstream: midnight) | Color theme: `midnight`, `nord`, `gruvbox`, `dracula`, or `light`. |
+| `icon_style` | string | `"ascii"` | File-type icon glyphs where graphical (Kitty) icons can't render (kmscon, bare VT, SSH): `ascii` (BMP shapes, renders everywhere), `nerd` (Nerd Font glyphs, needs one installed — tetron-os ships it), or `emoji`. |
 | `default_project_dir` | string | home (`~`) | Directory the working-directory picker opens at. |
 | `show_hidden_dirs` | bool | `false` | Show hidden (dot) directories in the picker by default. |
 | `filemanager_view` | string | unset | File-manager view: `icon` or `list`. |

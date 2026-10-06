@@ -40,6 +40,11 @@
 # takes effect on the next start (`tetron-wm kill` then relaunch), not a reload.
 #terminal_bg = "#ffffff"
 #terminal_fg = "#1a1a1a"
+# File-type icon glyphs where the graphical (Kitty) icons can't render -- kmscon,
+# a bare VT, plain SSH: "ascii" (default; BMP geometric shapes, render in every
+# font and take the theme color), "nerd" (Nerd Font file-type glyphs -- needs a
+# Nerd Font installed, which tetron-os ships), or "emoji" (GUI terminals only).
+#icon_style = "ascii"
 
 ## ── Files / working directories ───────────────────────────────────────────
 # Directory the working-directory picker opens at (default: your home).

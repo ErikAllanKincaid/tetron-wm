@@ -778,18 +778,10 @@ impl<F: FsOps> FileManager<F> {
         .collect()
     }
 
+    /// The file-type glyph for the list view and the no-graphics fallback, in
+    /// the configured icon style (ascii / nerd / emoji -- see `iconset`).
     fn glyph(entry: &Entry) -> char {
-        use crate::openwith::Role::*;
-        match entry.role {
-            Directory => '\u{1F4C1}', // 📁
-            Image => '\u{1F5BC}',     // 🖼
-            Audio => '\u{1F3B5}',     // 🎵
-            Video => '\u{1F3AC}',     // 🎬
-            Archive => '\u{1F4E6}',   // 📦
-            Pdf => '\u{1F4D5}',       // 📕
-            Code => '\u{1F4C4}',      // 📄
-            _ => '\u{1F4C4}',         // 📄
-        }
+        crate::iconset::glyph(entry.role)
     }
 
     /// First content row, shifted down by one when the tab strip is shown.
@@ -862,7 +854,7 @@ impl<F: FsOps> FileManager<F> {
                     let focused = i == t.cursor;
                     let bg = if selected || focused { pal_sel() } else { pal_bg() };
                     for x in area_x..area_right { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
-                    let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
+                    let mark = if e.is_dir { crate::iconset::glyph(crate::openwith::Role::Directory) } else { Self::glyph(e) };
                     buf.write_str(area_x, y, &format!("{mark} {}", e.name), if focused { pal_accent() } else { pal_fg() }, bg);
                 }
             }
@@ -974,7 +966,7 @@ impl<F: FsOps> FileManager<F> {
             let focused = i == t.cursor;
             let bg = if selected || focused { pal_sel() } else { pal_bg() };
             for x in mid_x..right_x { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
-            let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
+            let mark = if e.is_dir { crate::iconset::glyph(crate::openwith::Role::Directory) } else { Self::glyph(e) };
             let label = format!("{mark} {}", e.name);
             let label: String = label.chars().take((col_w - 1).max(1) as usize).collect();
             buf.write_str(mid_x, y, &label, if focused { pal_accent() } else { pal_fg() }, bg);

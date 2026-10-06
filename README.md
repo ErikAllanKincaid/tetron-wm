@@ -230,6 +230,10 @@ theme = "midnight"        # midnight | nord | gruvbox | dracula | light
 # terminal_bg = "#ffffff"
 # terminal_fg = "#1a1a1a"
 
+# File-type icon glyphs where the graphical (Kitty) icons can't render (kmscon,
+# a bare VT, plain SSH): ascii (default, renders everywhere) | nerd | emoji.
+# icon_style = "ascii"
+
 # AI assistant (the ✦ menubar button; also editable in Settings → Assistant)
 # assistant_command = "opencode"   # the agent CLI: "opencode" or "hermes"
 #                                  # (switch in Settings → Assistant), or any binary

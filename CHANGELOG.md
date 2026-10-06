@@ -28,6 +28,12 @@ carry user-visible feature work and the occasional breaking config change.
   panels, tetron-green highlights.
 - **`terminal_bg` / `terminal_fg` config keys** — decouple terminal colors from the
   desktop theme (hex or named color); unset = follow the theme.
+- **`icon_style` config key** — picks the file-type icon glyphs used where the
+  graphical (Kitty) icons can't render (kmscon, a bare VT, plain SSH): `ascii`
+  (default; BMP geometric shapes that render in every font and take the theme
+  color), `nerd` (Nerd Font glyphs — needs a Nerd Font installed), or `emoji`.
+  Previously the file manager and desktop always used emoji, which showed as
+  tofu on a console.
 
 ### Fixed
 - **Window rename triggers only on the title text now**, not anywhere on the
