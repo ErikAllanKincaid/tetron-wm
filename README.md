@@ -42,7 +42,7 @@ tetron-wm tetron-wm is the desktop layer of **tetron-os**, a GUI-less Linux that
 - **App store** — browse/search/install from a curated, **100%-verified** catalog of **600+** TUIs — including a dedicated **AI** category (Claude Code, Gemini CLI, Aider, opencode, Codex, Crush, Goose, Plandex, …) and a full **terminal office suite** (word processor, spreadsheets, presentations, email, calendar, contacts, notes) — OS-aware so Linux-only tools never show on macOS and vice-versa. If an app needs a toolchain you don't have (Go, Rust, Node, Python), the installer **detects it and offers to install it first**.
 - **Custom apps** — add your own launcher entries (name + command) from **Settings → Apps**.
 - **Working-directory picker** — launching a coding agent (Claude Code, Aider, …) opens a browsable file-tree so it starts in the project you choose; remembers recent directories. Installing Claude Code also adds a **Claude Code ⚠️** launcher variant running `--dangerously-skip-permissions` — behind a **warning dialog** so it's never launched by accident (your own `[[launcher]]` entries can set a `warn` message too).
-- **Theming** — five built-in palettes (midnight, nord, gruvbox, dracula, and a light theme), switchable live from **Settings → Appearance**.
+- **Theming** — five built-in palettes (midnight, nord, gruvbox, dracula, and pastoral, a light-appearance theme), plus drop-in `*.toml` theme files in `~/.config/tetron-wm/themes/`; switchable live from **Settings → Appearance**.
 - **Dock app-grouping + window rename** — windows of the same app collapse into one dock pill with a colored **letter badge** (per-app color, configurable in `[dock.badges]`); click a grouped pill to choose between its windows. **Right-click a pill** for a context menu (minimise / maximise / close / reset size — Reset re-centres a stranded or mis-sized window at half the work area). **Rename** any window (double-click its **title text** or `Ctrl+Space r`) — the label changes but it stays grouped with its app.
 - **Simple view mode** — a top-bar toggle (`⊞` desktop ⇄ `▦` simple) that flips to a tmux-style full-screen-single-app view (no window decorations), keeping the menubar + dock; the dock is your app switcher. Same running apps in both modes.
 - **Persistent daemon + thin client, with live updates** (tmux-style): apps run in a separate **apphost** process and survive client detach, SSH disconnects, **and a frontend reload** — update the binary and **reload the UI without killing your apps** (menubar **Restart**, `tetron-wm reload`, or **Settings → Update & Reload**). Closing an app window (titlebar **✕**) asks for confirmation first since it ends the process; built-in panels (Store/Settings/Files) close without asking. `tetron-wm kill` stops everything (daemon + apphost), and works even while a client is attached.
@@ -222,11 +222,14 @@ Persistent remote sessions work today: the daemon + apphost run on the host and 
 snapping_enabled = true   # drag-to-cell snapping
 snap_threshold = 3        # edge band (cells) that engages snapping
 window_shadows = true
-theme = "midnight"        # midnight | nord | gruvbox | dracula | light
+theme = "midnight"        # midnight | nord | gruvbox | dracula | pastoral | <theme-file name>
+# theme_dir = "themes"    # *.toml theme files; default <config>/themes/
 
 # Terminal colors, independent of the desktop theme (hex or named color).
-# Unset = follow the theme (e.g. "light" = black-on-white terminals). Set to
+# Unset = follow the theme (e.g. "pastoral" = black-on-white terminals). Set to
 # decouple, e.g. a light desktop with a dark terminal. Applied at apphost start.
+# truecolor = true        # force 24-bit color if your terminal does truecolor
+#                         # but omits COLORTERM (env: TETRON_WM_TRUECOLOR=1/0)
 # terminal_bg = "#ffffff"
 # terminal_fg = "#1a1a1a"
 
@@ -297,7 +300,7 @@ Design docs and the slice-by-slice plan live in [`docs/superpowers/`](docs/super
 - **✅ Slice 2 — Daemon:** persistent daemon + thin client; detach/reattach keeps windows and processes alive.
 - **✅ Slice 3 — Store:** browse/search/install a 100%-verified, OS-aware catalog (incl. an AI tools category).
 - **✅ Slice 4 — Settings:** sidebar settings panel writing `config.toml` (Windows, Appearance, Updates, Apps).
-- **✅ Slice 5 — Theming:** five live-switchable palettes (incl. a light theme) from Settings → Appearance.
+- **✅ Slice 5 — Theming:** five live-switchable palettes (incl. pastoral, a light-appearance theme) plus drop-in theme files, from Settings → Appearance.
 - **✅ Menubar tray:** clock/CPU/mem/volume/WiFi/Bluetooth/battery with host-control popovers (macOS + Linux backends).
 - **✅ Grid tiling:** configurable R×C grid — drag-to-cell, auto-tile, send-to-cell, tile-all.
 - **✅ Working-directory picker:** a browsable file-tree on launch for apps flagged `requires_cwd` (the AI CLIs); remembers recent dirs.

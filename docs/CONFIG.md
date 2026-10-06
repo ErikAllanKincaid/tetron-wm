@@ -19,8 +19,10 @@ Each row is the TOML key, its type, the fork default, and what it does.
 | `grid_rows` | int | `2` | Tiling grid rows (1–6). |
 | `grid_cols` | int | `2` | Tiling grid columns (1–6). |
 | `tile_gap` | int | `0` | Cells of gutter between tiled windows. |
-| `theme` | string | `"nord"` (upstream: midnight) | Color theme: `midnight`, `nord`, `gruvbox`, `dracula`, or `light`. |
+| `theme` | string | `"nord"` (upstream: midnight) | Color theme: a built-in (`midnight`, `nord`, `gruvbox`, `dracula`, `pastoral`) or the stem of a theme file (see `theme_dir`). A file with a built-in's name overrides it. (`light` is a deprecated alias for `pastoral`.) |
+| `theme_dir` | string | `<config>/themes` | Directory of `*.toml` theme files. Relative paths resolve against the config dir; also overridable via `$TETRON_WM_THEMES_DIR`. A theme file is a flat table of palette fields (`desktop_bg`, `window_bg`, `title_focus`, `title_blur`, `title_fg`, `border`, `shadow`, `ctrl_fg`, `close_fg`, `menubar_bg`, `dock_bg`, `text`, `dim`, `accent`, `active_bg`) → `#rrggbb` / `#rrggbbaa` / named color; optional `name` and `base` (built-in to inherit unset fields from). Create one with `tetron-wm theme --dump <name>`; list all names with `tetron-wm theme --list`. Low-contrast themes are warned about in the debug log, never rejected. |
 | `icon_style` | string | `"ascii"` | File-type icon glyphs where graphical (Kitty) icons can't render (kmscon, bare VT, SSH): `ascii` (BMP shapes, renders everywhere), `nerd` (Nerd Font glyphs, needs one installed — tetron-os ships it), or `emoji`. |
+| `truecolor` | bool | auto-detect | Force 24-bit color on/off. Unset = detect from known truecolor terminals + `COLORTERM`. Set `true` when the terminal supports truecolor but omits `COLORTERM` (common with `TERM=xterm-256color`), else subtle themes quantize to the 256-color cube (nord → teal/navy). `TETRON_WM_TRUECOLOR=1/0` env overrides this. |
 | `default_project_dir` | string | home (`~`) | Directory the working-directory picker opens at. |
 | `show_hidden_dirs` | bool | `false` | Show hidden (dot) directories in the picker by default. |
 | `filemanager_view` | string | `list` | File-manager view: `icon` or `list`. List is the default; this override key round-trips but is not yet applied at startup. |

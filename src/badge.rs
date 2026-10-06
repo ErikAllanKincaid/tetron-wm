@@ -16,15 +16,18 @@ fn initial(key: &str) -> char {
     key.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_ascii_uppercase()).unwrap_or('?')
 }
 
-/// A small set of named colors, plus `#rrggbb`. Returns `None` if unrecognized.
+/// A small set of named colors, plus `#rrggbb` and `#rrggbbaa` (the trailing
+/// byte is alpha, so a theme file can express the shadow and the semi-transparent
+/// selection). Returns `None` if unrecognized.
 pub fn parse_color(s: &str) -> Option<Rgba> {
     let s = s.trim();
     if let Some(hex) = s.strip_prefix('#') {
-        if hex.len() == 6 {
+        if hex.len() == 6 || hex.len() == 8 {
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            return Some(Rgba::rgb(r, g, b));
+            let a = if hex.len() == 8 { u8::from_str_radix(&hex[6..8], 16).ok()? } else { 255 };
+            return Some(Rgba { r, g, b, a });
         }
         return None;
     }

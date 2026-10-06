@@ -17,7 +17,7 @@ carry user-visible feature work and the occasional breaking config change.
 - **The theme now applies to every surface.** Terminals, the launcher, the file
   manager, desktop icon labels, the Store, Settings, and the Activity Monitor all
   read the active theme instead of a hardcoded midnight palette, so theme switches
-  (and the light theme) are no longer skin-deep.
+  (and the pastoral theme) are no longer skin-deep.
 - **Finer window borders** — a thin green line instead of a wide white band.
 - **No default desktop pins** — the desktop shows only the real contents of
   `~/Desktop`; add pins via `[[desktop_pins]]`.
@@ -26,9 +26,27 @@ carry user-visible feature work and the occasional breaking config change.
   high in the tile.
 
 ### Added
-- **Light theme** — a fifth, and first light, palette (`theme = "light"`, or cycle
-  it in Settings → Appearance): paper wallpaper, black-on-white terminals, light
-  panels, tetron-green highlights.
+- **Choose truecolor vs 256-color** — a `truecolor` config key (and
+  `TETRON_WM_TRUECOLOR=1/0` env override) forces 24-bit color on or off. Auto-
+  detection only enabled truecolor for known terminals or when `COLORTERM`
+  advertised it, so terminals that do truecolor but set `TERM=xterm-256color`
+  without `COLORTERM` fell back to the 256-color palette — which quantized the
+  subtle themes (nord → teal/navy, dracula) into the wrong colors. Env wins over
+  the config key, both win over auto-detection and the graphics probe.
+- **File-based themes.** Drop a `*.toml` in `~/.config/tetron-wm/themes/` (or set
+  `theme_dir`) and it appears everywhere a built-in does — Settings → Appearance,
+  the power-menu remote form, `tetron-wm theme <name>`. A file is a flat table of
+  the palette fields → `#rrggbb` / `#rrggbbaa` (alpha) / named color, with optional
+  `name` and `base` (a built-in to inherit unset fields from); a file named after a
+  built-in overrides it. `tetron-wm theme --dump <name>` writes a built-in out as an
+  editable starter; `--list` prints every theme name. Malformed files are skipped
+  and logged; low-contrast themes are warned about (never rejected) so a user theme
+  cannot silently reproduce the red-on-green button bug.
+- **Pastoral theme** — a fifth, and first light-appearance, palette
+  (`theme = "pastoral"`, or cycle it in Settings → Appearance): paper wallpaper,
+  black-on-white terminals, light panels, tetron-green highlights. (Named for the
+  palette, not its brightness, so the name does not clash with a theme's
+  light/dark `appearance`; `theme = "light"` still works as a deprecated alias.)
 - **`terminal_bg` / `terminal_fg` config keys** — decouple terminal colors from the
   desktop theme (hex or named color); unset = follow the theme.
 - **`icon_style` config key** — picks the file-type icon glyphs used where the
@@ -56,7 +74,7 @@ carry user-visible feature work and the occasional breaking config change.
   signature), so fast mid-screen drags pass through.
 - **Confirm-dialog buttons are readable now.** The destructive confirms (Close,
   Shut Down, Remove, the dangerous-launch Launch, Restart) drew red text on the
-  green accent -- an unreadable red-on-green, especially on the light theme. They
+  green accent -- an unreadable red-on-green, especially on the pastoral (light) theme. They
   now use light text on a red fill (a proper destructive button); the benign
   Connect button and the calendar's "today" cell use light text on the accent.
 - **Window rename triggers only on the title text now**, not anywhere on the

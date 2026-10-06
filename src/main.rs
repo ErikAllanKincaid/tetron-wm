@@ -56,10 +56,29 @@ fn main() -> std::io::Result<()> {
             ctl(&tetron_wm::session::ClientMsg::Launch { name, command, args })
         }
         Some("tile") => ctl(&tetron_wm::session::ClientMsg::TileAll),
-        Some("theme") => match std::env::args().nth(2) {
-            Some(name) => ctl(&tetron_wm::session::ClientMsg::SetTheme(name)),
+        Some("theme") => match std::env::args().nth(2).as_deref() {
+            // List every theme name (built-ins + file themes).
+            Some("--list") => {
+                for n in tetron_wm::theme::preset_names() {
+                    println!("{n}");
+                }
+                Ok(())
+            }
+            // Write a built-in palette out as an editable theme file to start from.
+            Some("--dump") => {
+                let name = std::env::args().nth(3).unwrap_or_else(|| "midnight".into());
+                match tetron_wm::theme::dump_builtin(&name) {
+                    Ok(p) => println!("wrote {}", p.display()),
+                    Err(e) => eprintln!("tetron-wm theme --dump: {e}"),
+                }
+                Ok(())
+            }
+            Some(name) => ctl(&tetron_wm::session::ClientMsg::SetTheme(name.to_string())),
             None => {
-                eprintln!("usage: tetron-wm theme <{}>", tetron_wm::theme::PRESETS.join("|"));
+                eprintln!(
+                    "usage: tetron-wm theme <{}>\n       tetron-wm theme --list | --dump <name>",
+                    tetron_wm::theme::preset_names().join("|")
+                );
                 Ok(())
             }
         },

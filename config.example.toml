@@ -31,15 +31,27 @@
 #tile_gap = 0
 
 ## ── Appearance ────────────────────────────────────────────────────────────
-# Color theme: "midnight", "nord", "gruvbox", "dracula", or "light". (NRO default: nord.)
+# Color theme: a built-in ("midnight", "nord", "gruvbox", "dracula", "pastoral";
+# NRO default: nord) or the stem of a theme file in the themes dir (below). A
+# file with a built-in's name overrides that built-in.
 #theme = "nord"
+# Directory of *.toml theme files. Unset = <config>/themes/ (i.e.
+# ~/.config/tetron-wm/themes/). Relative paths resolve against the config dir.
+# Create a starter with: tetron-wm theme --dump <name>   (list all: --list)
+#theme_dir = "themes"
 # Terminal default background/foreground, independent of the desktop theme (hex
-# #rrggbb or a named color). Unset = follow the theme (e.g. "light" gives
+# #rrggbb or a named color). Unset = follow the theme (e.g. "pastoral" gives
 # black-on-white terminals). Set these to decouple the terminal, e.g. a light
 # desktop with a dark terminal. Applied by the apphost at startup, so a change
 # takes effect on the next start (`tetron-wm kill` then relaunch), not a reload.
 #terminal_bg = "#ffffff"
 #terminal_fg = "#1a1a1a"
+# Force 24-bit "truecolor" output on/off. Unset = auto-detect (known truecolor
+# terminals + COLORTERM). Set true if your terminal does truecolor but does not
+# set COLORTERM (common with TERM=xterm-256color), otherwise subtle themes
+# (nord, dracula) get quantized to the 256-color palette and look wrong. The
+# TETRON_WM_TRUECOLOR=1/0 env var overrides this key.
+#truecolor = true
 # File-type icon glyphs where the graphical (Kitty) icons can't render -- kmscon,
 # a bare VT, plain SSH: "ascii" (default; BMP geometric shapes, render in every
 # font and take the theme color), "nerd" (Nerd Font file-type glyphs -- needs a

@@ -66,12 +66,18 @@ pub struct Config {
     /// Open new app windows maximized (filling the work area).
     #[serde(default)]
     pub launch_maximized: bool,
-    /// Active color theme name (one of the preset names in `theme::PRESETS`).
+    /// Active color theme name: a built-in preset (`theme::PRESETS`) or the stem
+    /// of a `<config>/themes/<name>.toml` file (which, same name, overrides a
+    /// built-in).
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Directory to load `*.toml` theme files from. Unset = `<config>/themes/`.
+    /// A relative path is resolved against the config dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme_dir: Option<String>,
     /// Terminal default background/foreground, independent of the desktop theme
     /// (hex `#rrggbb` or a named color). Unset = follow the theme's `window_bg`/
-    /// `text`, so e.g. the light theme gives black-on-white terminals. Set these
+    /// `text`, so e.g. the pastoral theme gives black-on-white terminals. Set these
     /// to decouple the terminal, e.g. a light desktop with a dark terminal.
     /// Applied by the apphost at startup; a change takes effect on the next
     /// apphost start (`tetron-wm kill` then relaunch), not a bare `reload`.
@@ -79,6 +85,14 @@ pub struct Config {
     pub terminal_bg: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_fg: Option<String>,
+    /// Force 24-bit ("truecolor") SGR output on/off. Unset = auto-detect from the
+    /// terminal (known truecolor terminals + `COLORTERM`). Set `true` when your
+    /// terminal supports truecolor but does not advertise it (many set
+    /// `TERM=xterm-256color` without `COLORTERM`), else subtle themes (nord,
+    /// dracula) are quantized to the 256-color palette and look wrong. The
+    /// `TETRON_WM_TRUECOLOR` env var (1/0) overrides this key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truecolor: Option<bool>,
     /// Glyph set for file-type icons where the Kitty graphics image icons can't
     /// render (kmscon, a bare VT, plain SSH): "ascii" (default, renders in every
     /// font), "nerd" (Nerd Font glyphs -- needs one installed, tetron-os ships
@@ -166,8 +180,10 @@ impl Default for Config {
             auto_tile: false,
             launch_maximized: false,
             theme: "nord".into(),
+            theme_dir: None,
             terminal_bg: None,
             terminal_fg: None,
+            truecolor: None,
             icon_style: crate::iconset::IconStyle::default(),
             default_project_dir: None,
             recent_dirs: Vec::new(),
@@ -229,6 +245,14 @@ fn config_file_path(
         .map(std::path::PathBuf::from)
         .or_else(|| home.map(|h| h.join(".config")))?;
     Some(base.join("tetron-wm").join("config.toml"))
+}
+
+/// The tetron-wm config directory (`$XDG_CONFIG_HOME/tetron-wm` or
+/// `~/.config/tetron-wm`) — the parent of `config.toml`, used to locate the
+/// `themes/` subdir. `None` only if neither env var nor home dir resolves.
+pub fn config_dir() -> Option<std::path::PathBuf> {
+    config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir())
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
 }
 
 impl Config {

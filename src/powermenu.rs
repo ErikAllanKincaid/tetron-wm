@@ -41,10 +41,10 @@ const ITEMS: [PowerAction; 3] = [PowerAction::Exit, PowerAction::Restart, PowerA
 const SYSTEMS_ROW: usize = ITEMS.len();
 
 /// Theme choices offered in the Add Remote form: the remote's own default, then
-/// the built-in presets.
-fn theme_choices() -> Vec<&'static str> {
-    let mut v = vec!["default"];
-    v.extend_from_slice(crate::theme::PRESETS);
+/// every theme name (built-in presets plus file themes).
+fn theme_choices() -> Vec<String> {
+    let mut v = vec!["default".to_string()];
+    v.extend(crate::theme::preset_names());
     v
 }
 
@@ -575,7 +575,7 @@ impl PowerMenu {
             buf.set(f.w - 1, f.h - 1, b('╯'));
 
             let masked: String = "•".repeat(form.password.chars().count());
-            let theme = theme_choices()[form.theme_idx];
+            let theme = theme_choices()[form.theme_idx].clone();
             let rows: [(usize, &str, String); 4] = [
                 (0, "Name", form.name.clone()),
                 (1, "SSH", if form.ssh.is_empty() && form.field != 1 { "user@host[:port]".into() } else { form.ssh.clone() }),

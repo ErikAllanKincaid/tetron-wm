@@ -35,9 +35,27 @@ impl Caps {
         let force = std::env::var("TETRON_WM_GRAPHICS").map(|v| v != "0").unwrap_or(false);
         let graphics = known || force;
         // Known terminals are all truecolor; otherwise trust COLORTERM.
-        let truecolor = graphics || ct.contains("truecolor") || ct.contains("24bit");
+        let auto_truecolor = graphics || ct.contains("truecolor") || ct.contains("24bit");
+        // An explicit override (env, else the `truecolor` config key) wins: many
+        // terminals support 24-bit color but set TERM=xterm-256color with no
+        // COLORTERM, so auto-detection downsamples subtle themes to the 256-color
+        // cube (nord → teal/navy). Let the user choose truecolor vs xterm-256color.
+        let truecolor = truecolor_override().unwrap_or(auto_truecolor);
         Caps { truecolor, pixel_mouse: graphics, kitty_graphics: graphics }
     }
+}
+
+/// Explicit truecolor choice: the `TETRON_WM_TRUECOLOR` env var (`1/true/yes/on`
+/// vs `0/false/no/off`) takes priority over the `truecolor` config key. `None`
+/// means "auto-detect".
+pub(crate) fn truecolor_override() -> Option<bool> {
+    if let Some(v) = std::env::var_os("TETRON_WM_TRUECOLOR") {
+        let v = v.to_string_lossy().trim().to_ascii_lowercase();
+        if !v.is_empty() {
+            return Some(matches!(v.as_str(), "1" | "true" | "yes" | "on"));
+        }
+    }
+    crate::config::Config::load().truecolor
 }
 
 // ── Pure color helpers ────────────────────────────────────────────────────────
@@ -202,6 +220,10 @@ impl Terminal {
             caps.kitty_graphics = true;
             caps.truecolor = true;
         }
+        // An explicit truecolor choice wins over the graphics probe's implication.
+        if let Some(forced) = truecolor_override() {
+            caps.truecolor = forced;
+        }
         crate::dbg_log(&format!(
             "caps: kitty_graphics={} truecolor={} term={} term_program={}",
             caps.kitty_graphics,
@@ -246,5 +268,24 @@ impl Drop for Terminal {
             cursor::Show
         );
         let _ = terminal::disable_raw_mode();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truecolor_env_override_wins_and_parses() {
+        // Serialized within one test so the process-wide env var is deterministic.
+        std::env::set_var("TETRON_WM_TRUECOLOR", "1");
+        assert_eq!(truecolor_override(), Some(true));
+        std::env::set_var("TETRON_WM_TRUECOLOR", "ON");
+        assert_eq!(truecolor_override(), Some(true));
+        std::env::set_var("TETRON_WM_TRUECOLOR", "0");
+        assert_eq!(truecolor_override(), Some(false));
+        std::env::set_var("TETRON_WM_TRUECOLOR", "false");
+        assert_eq!(truecolor_override(), Some(false));
+        std::env::remove_var("TETRON_WM_TRUECOLOR");
     }
 }

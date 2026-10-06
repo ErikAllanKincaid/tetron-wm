@@ -221,14 +221,14 @@ impl Settings {
             (0, 6) => self.cfg.launch_maximized = flip(self.cfg.launch_maximized, dir),
             (1, 0) => self.cfg.window_shadows = flip(self.cfg.window_shadows, dir),
             (1, 1) => {
-                let presets = crate::theme::PRESETS;
-                let cur_idx = presets.iter().position(|&p| p == self.cfg.theme.as_str()).unwrap_or(0);
+                let presets = crate::theme::preset_names();
+                let cur_idx = presets.iter().position(|p| p == &self.cfg.theme).unwrap_or(0);
                 let next_idx = if dir == -1 {
                     (cur_idx + presets.len() - 1) % presets.len()
                 } else {
                     (cur_idx + 1) % presets.len()
                 };
-                self.cfg.theme = presets[next_idx].to_string();
+                self.cfg.theme = presets[next_idx].clone();
             }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
