@@ -1813,7 +1813,14 @@ or a remote-side error — its authorized_keys was left untouched)",
                     self.mouse_select(MouseKind::Up, p);
                     return;
                 }
-                if self.drag.is_some() && self.is_spurious_jump(p) {
+                // A window drag is still active but this is a no-button move: a
+                // real drag only ever arrives as Drag events (button held), so the
+                // release was lost. End the drag here instead of letting the window
+                // keep following the pointer ("stuck drag"), mirroring the
+                // text-selection self-heal above.
+                if self.drag.is_some() {
+                    self.cursor = p;
+                    self.handle_mouse(MouseKind::Up, p);
                     return;
                 }
                 self.cursor = p;
@@ -3221,14 +3228,19 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
     }
 
-    /// Whether `p` is more than half the screen *vertically* away from the last
-    /// cursor position — a physically impossible single-event jump that indicates
-    /// a spurious terminal mouse report. (Vertical only: the observed bad reports
-    /// teleport to the bottom row, and horizontal jumps are legit — e.g. clicking
-    /// the far-left brand then the far-right power button on the menubar. Off-
-    /// screen horizontal motion is handled by `wm::move_to` clamping instead.)
+    /// Whether `p` is a spurious terminal mouse report: a big (> half-screen)
+    /// *vertical* jump from the last cursor position that also lands on the top or
+    /// bottom screen edge. The observed garbage teleports to the extreme row (e.g.
+    /// a same-ms row 1 → row 71 "drag" that flings the window off the bottom), so
+    /// we require BOTH the magnitude and an edge landing — a fast legitimate drag
+    /// that ends mid-screen is *not* dropped (that over-broad magnitude-only test
+    /// made fast vertical drags freeze and biased dragging toward one direction).
+    /// Vertical only: horizontal jumps are legit (far-left brand → far-right power
+    /// button) and off-screen horizontal motion is clamped by `wm::move_to`.
     fn is_spurious_jump(&self, p: Point) -> bool {
-        (p.y - self.cursor.y).abs() > self.h / 2
+        let big = (p.y - self.cursor.y).abs() > self.h / 2;
+        let to_edge = p.y <= 0 || p.y >= self.h - 1;
+        big && to_edge
     }
 
     /// Route a mouse event through dock hit-testing then the WM input router.

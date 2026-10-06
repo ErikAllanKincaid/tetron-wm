@@ -119,6 +119,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
 
     let mut leader = false;
     let mut last_click: Option<(Point, std::time::Instant)> = None;
+    let mut grab: Option<Grab> = None;
     loop {
         if detached.load(Ordering::SeqCst) {
             break;
@@ -389,7 +390,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                         alt: me.modifiers.contains(KeyModifiers::ALT),
                     };
                     if let Some(ev) = to_mouse_input(&me, p, mods) {
-                        route_mouse(&mut out_stream, &f, ev, &mut last_click)?;
+                        route_mouse(&mut out_stream, &f, ev, &mut last_click, &mut grab)?;
                     }
                 }
                 Event::Resize(nc, nr) => send(&mut out_stream, &ClientMsg::Resize { w: nc as i32, h: nr as i32 })?,
@@ -467,21 +468,59 @@ fn place_key(x: i32, y: i32) -> u32 {
     (((x.max(0) as u32) & 0xffff) << 16) | ((y.max(0) as u32) & 0xffff)
 }
 
+/// Which target captured the left button at press time. The whole drag is routed
+/// there until release — a standard pointer grab. Without it, dragging a
+/// mouse-reporting app's titlebar downward "falls into" the app: the cursor crosses
+/// the (one-frame-stale) `app_area` before the window follows, so a per-event
+/// positional router would start sending the drag to the app instead of the WM.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Grab {
+    App,
+    Chrome,
+}
+
 /// Route one mouse event: into the focused app (passthrough) when the pointer is
-/// in `f.app_area`, otherwise via the existing chrome/WM variants. Shared by the
-/// crossterm path and the gpm reader so both behave identically.
+/// in `f.app_area`, otherwise via the existing chrome/WM variants. A left-button
+/// press grabs its target (`grab`) so the rest of the drag follows it regardless of
+/// position. Shared by the crossterm path and the gpm reader so both behave
+/// identically.
 pub(crate) fn route_mouse(
     out: &mut UnixStream,
     f: &Flags,
     ev: crate::mouse::MouseInput,
     last_click: &mut Option<(Point, std::time::Instant)>,
+    grab: &mut Option<Grab>,
 ) -> std::io::Result<()> {
     use crate::mouse::{MouseAction as A, MouseButton as B};
     let p = Point::new(ev.col, ev.row);
-    // When the focused app is grabbing the mouse, pass events straight through —
-    // unless Shift is held, which forces tetron-wm's own text-selection/paste over
-    // the app (the classic xterm override, so you can still copy from vim/htop).
-    if f.app_area.map(|r| r.contains(p)).unwrap_or(false) && !ev.mods.shift {
+    // Whether this position would passthrough to the app (Shift forces tetron-wm's
+    // own text-selection/paste over the app — the classic xterm override, so you
+    // can still copy from vim/htop).
+    let in_app = f.app_area.map(|r| r.contains(p)).unwrap_or(false) && !ev.mods.shift;
+
+    // A left press establishes a pointer grab on whatever is under it; the matching
+    // release clears it. A left drag/release in between follows that grab, ignoring
+    // the current position — so a titlebar drag never falls into a mouse-reporting
+    // app, and an app-content drag that wanders onto chrome still reaches the app.
+    if ev.button == B::Left && ev.action == A::Down {
+        *grab = Some(if in_app { Grab::App } else { Grab::Chrome });
+    }
+    if ev.button == B::Left && matches!(ev.action, A::Drag | A::Up) {
+        if let Some(g) = *grab {
+            let r = match g {
+                Grab::App => send(out, &ClientMsg::MouseInput(ev)),
+                Grab::Chrome if ev.action == A::Drag => send(out, &ClientMsg::MouseDrag(p)),
+                Grab::Chrome => send(out, &ClientMsg::MouseUp(p)),
+            };
+            if ev.action == A::Up {
+                *grab = None;
+            }
+            return r;
+        }
+    }
+
+    // When the focused app is grabbing the mouse, pass events straight through.
+    if in_app {
         return send(out, &ClientMsg::MouseInput(ev));
     }
     match (ev.button, ev.action) {

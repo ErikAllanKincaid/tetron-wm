@@ -39,6 +39,21 @@ carry user-visible feature work and the occasional breaking config change.
   tofu on a console.
 
 ### Fixed
+- **Dragging a mouse-reporting app's window (e.g. tetron-tui) works now.** The
+  client routed each mouse event by the pointer's position in the *last frame's*
+  app content rect, so dragging the titlebar downward "fell into" the app as the
+  cursor crossed that stale rect before the window caught up — the window stuck,
+  stalled, or only dragged upward (a plain shell window, which reports no mouse
+  area, was unaffected). The client now takes a pointer grab on the button press:
+  the whole drag goes to whatever the press landed on (chrome or app) until
+  release, regardless of where the pointer wanders.
+- **Window dragging is smoother in general.** Two more drag glitches fixed:
+  (1) a window could stay "stuck" to the pointer after release — a lost release
+  event left the drag active, and a no-button move now ends it (self-heal, as text
+  selection already did); (2) fast vertical drags froze or dragged only one
+  direction — the spurious-teleport guard dropped *any* half-screen step, now it
+  only drops a big jump that lands on a screen edge (the real off-screen-fling
+  signature), so fast mid-screen drags pass through.
 - **Confirm-dialog buttons are readable now.** The destructive confirms (Close,
   Shut Down, Remove, the dangerous-launch Launch, Restart) drew red text on the
   green accent -- an unreadable red-on-green, especially on the light theme. They

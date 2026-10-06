@@ -484,11 +484,55 @@ fn spurious_teleport_drag_does_not_fling_window() {
     let before = core.focused_window_rect_for_test().unwrap();
     let p = Point::new(before.x + 2, before.y);
     core.apply(ClientMsg::MouseDown(p));
-    // Stray report teleporting to row 30 (jump > h/2 = 20) — impossible for a real drag.
-    core.apply(ClientMsg::MouseDrag(Point::new(p.x, 30)));
-    core.apply(ClientMsg::MouseUp(Point::new(p.x, 30)));
+    // Stray report teleporting to the BOTTOM edge row (the real garbage signature:
+    // a same-ms row-1 → last-row "drag" that flings the window off-screen). A big
+    // jump that lands on a screen edge is dropped.
+    core.apply(ClientMsg::MouseDrag(Point::new(p.x, 39)));
+    core.apply(ClientMsg::MouseUp(Point::new(p.x, 39)));
     let after = core.focused_window_rect_for_test().unwrap();
     assert_eq!(before, after, "a spurious teleport drag must not move the window (before={before:?} after={after:?})");
+    core.shutdown();
+}
+
+#[test]
+fn fast_vertical_drag_moves_the_window() {
+    // A fast legitimate drag reports a large single vertical step (terminals
+    // coalesce motion). As long as it lands mid-screen — not on an edge row — it
+    // must move the window, not be dropped as a spurious teleport. Guards against
+    // the over-broad magnitude-only filter that froze fast drags / biased them to
+    // one direction.
+    let mut core = SessionCore::new(120, 40, Config::default());
+    core.apply(ClientMsg::Launch { name: "a".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
+    core.apply(ClientMsg::SendToCell(1));
+    let before = core.focused_window_rect_for_test().unwrap();
+    let p = Point::new(before.x + 2, before.y);
+    core.apply(ClientMsg::MouseDown(p));
+    // Jump of 24 rows (> h/2 = 20) to mid-screen row 25 — a fast, legitimate drag.
+    core.apply(ClientMsg::MouseDrag(Point::new(p.x, 25)));
+    core.apply(ClientMsg::MouseUp(Point::new(p.x, 25)));
+    let after = core.focused_window_rect_for_test().unwrap();
+    assert!(after.y > before.y, "a fast mid-screen drag must move the window down (before={before:?} after={after:?})");
+    core.shutdown();
+}
+
+#[test]
+fn bare_move_during_drag_ends_it() {
+    // A no-button move while a window drag is active means the release was lost
+    // (a real drag only arrives as Drag events). The drag must end, not keep the
+    // window stuck to the pointer.
+    let mut core = SessionCore::new(120, 40, Config::default());
+    core.apply(ClientMsg::Launch { name: "a".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
+    core.apply(ClientMsg::SendToCell(1));
+    let before = core.focused_window_rect_for_test().unwrap();
+    let p = Point::new(before.x + 2, before.y);
+    core.apply(ClientMsg::MouseDown(p));
+    core.apply(ClientMsg::MouseDrag(Point::new(p.x, 10))); // real drag down
+    core.apply(ClientMsg::MouseMove(Point::new(p.x, 10))); // button released, Up lost
+    let moved = core.focused_window_rect_for_test().unwrap();
+    // A further bare move must NOT drag the window any more.
+    core.apply(ClientMsg::MouseMove(Point::new(p.x, 20)));
+    let after = core.focused_window_rect_for_test().unwrap();
+    assert_eq!(moved, after, "window must not keep following the pointer after the drag ended (moved={moved:?} after={after:?})");
     core.shutdown();
 }
 

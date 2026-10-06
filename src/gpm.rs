@@ -151,6 +151,7 @@ pub fn start(
     std::thread::spawn(move || {
         let mut out = out;
         let mut last_click: Option<(crate::geometry::Point, std::time::Instant)> = None;
+        let mut grab: Option<crate::client::Grab> = None;
         let mut prev_buttons: u8 = 0;
         let mut buf = [0u8; GPM_EVENT_SIZE];
         loop {
@@ -161,7 +162,7 @@ pub fn start(
             let Some(ev) = parse_event(&buf) else { continue };
             if let Some(input) = to_mouse_input(prev_buttons, &ev) {
                 let f = *flags.lock().unwrap();
-                if crate::client::route_mouse(&mut out, &f, input, &mut last_click).is_err() {
+                if crate::client::route_mouse(&mut out, &f, input, &mut last_click, &mut grab).is_err() {
                     break; // daemon socket gone
                 }
             }
