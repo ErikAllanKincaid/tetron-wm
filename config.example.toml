@@ -51,7 +51,8 @@
 #default_project_dir = "/home/you"
 # Show hidden (dot) directories in the picker by default.
 #show_hidden_dirs = false
-# File-manager view: "icon" or "list".
+# File-manager view: "icon" or "list". Default is list. (This override key
+# round-trips but is not yet applied at startup -- list is always the default.)
 #filemanager_view = "list"
 # recent_dirs is maintained by the app (most-recent working dirs); not hand-set.
 #recent_dirs = []

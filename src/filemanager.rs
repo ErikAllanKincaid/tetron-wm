@@ -68,7 +68,7 @@ impl Tab {
             entries: Vec::new(),
             cursor: 0,
             selection: BTreeSet::new(),
-            view: ViewMode::Icon,
+            view: ViewMode::List,
             show_hidden: false,
             history: vec![cwd],
             hpos: 0,
@@ -882,9 +882,13 @@ impl<F: FsOps> FileManager<F> {
                     // non-graphics terminals; a loaded thumbnail/role-icon
                     // image covers the same rect on Kitty-graphics terminals
                     // (see `thumbnail_placements`).
+                    // Sit the glyph at the bottom of the icon rect, just above the
+                    // label, so the single-char fallback isn't stranded high in a
+                    // tile sized for a large image. Still inside the rect, so a
+                    // loaded thumbnail/role-icon image covers it on graphics terminals.
                     buf.set(
                         ir.x + ir.w / 2,
-                        ir.y + ir.h / 2,
+                        ir.y + ir.h - 1,
                         Cell { ch: Self::glyph(e), fg: pal_fg(), bg: pal_bg(), attrs: Default::default() },
                     );
                     // Label: centered on the tile's last row. Selection/focus
@@ -1250,15 +1254,15 @@ mod tests {
     fn view_toggle_switches_modes() {
         let d = tmp("toggle");
         let mut fm = FileManager::new(d.clone(), BTreeMap::new());
-        assert_eq!(fm.view(), ViewMode::Icon);
-        fm.cycle_view();
-        assert_eq!(fm.view(), ViewMode::List);
+        assert_eq!(fm.view(), ViewMode::List); // List is the default
         fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::Columns);
         fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::Icon);
-        fm.set_view(ViewMode::List);
+        fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::List);
+        fm.set_view(ViewMode::Icon);
+        assert_eq!(fm.view(), ViewMode::Icon);
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -1325,6 +1329,7 @@ mod tests {
         let d = tmp("thumbrows");
         fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
         let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+        fm.set_view(ViewMode::Icon); // thumbnails only place in Icon view (default is List)
         let idx = fm.thumbnail_requests()[0].0;
         fm.set_thumb(idx, 999);
         let content = crate::geometry::Rect::new(0, 0, 80, 24);

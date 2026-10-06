@@ -23,7 +23,7 @@ Each row is the TOML key, its type, the fork default, and what it does.
 | `icon_style` | string | `"ascii"` | File-type icon glyphs where graphical (Kitty) icons can't render (kmscon, bare VT, SSH): `ascii` (BMP shapes, renders everywhere), `nerd` (Nerd Font glyphs, needs one installed — tetron-os ships it), or `emoji`. |
 | `default_project_dir` | string | home (`~`) | Directory the working-directory picker opens at. |
 | `show_hidden_dirs` | bool | `false` | Show hidden (dot) directories in the picker by default. |
-| `filemanager_view` | string | unset | File-manager view: `icon` or `list`. |
+| `filemanager_view` | string | `list` | File-manager view: `icon` or `list`. List is the default; this override key round-trips but is not yet applied at startup. |
 | `recent_dirs` | list of string | `[]` | Recently used working directories; maintained by the app, not hand-set. |
 | `desktop_enabled` | bool | `true` | Show icons on the wallpaper/desktop. |
 | `desktop_pins` | list of table | none | Pinned desktop shortcuts (see "App entries"); otherwise the desktop shows only real ~/Desktop contents. |

@@ -21,6 +21,9 @@ carry user-visible feature work and the occasional breaking config change.
 - **Finer window borders** — a thin green line instead of a wide white band.
 - **No default desktop pins** — the desktop shows only the real contents of
   `~/Desktop`; add pins via `[[desktop_pins]]`.
+- **The file manager opens in list view by default** (was the icon grid). The
+  grid view's fallback glyph now sits just above the label instead of floating
+  high in the tile.
 
 ### Added
 - **Light theme** — a fifth, and first light, palette (`theme = "light"`, or cycle
