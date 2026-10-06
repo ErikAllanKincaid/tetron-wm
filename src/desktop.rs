@@ -297,12 +297,15 @@ impl<F: FsOps> DesktopIcons<F> {
             let ir = self.icon_image_rect(icon.cell);
             let selected = self.selection.contains(&i);
             let bg = if selected { SEL_BG } else { transparent };
-            // Glyph fallback, centered in the icon area (the image layer covers it
-            // on Kitty-graphics terminals; this shows on the rest).
+            // Glyph fallback. Sit it at the bottom of the icon rect, just above the
+            // label, so the single-char fallback isn't stranded high in a tile
+            // sized for a large image (matches the file manager's grid view). Still
+            // inside the rect, so a loaded image covers it on Kitty-graphics
+            // terminals; this shows on the rest.
             let glyph = glyph_for(icon.role);
             buf.set(
                 ir.x + ir.w / 2,
-                ir.y + ir.h / 2,
+                ir.y + ir.h - 1,
                 Cell { ch: glyph, fg: FG, bg: transparent, attrs: Default::default() },
             );
             // Label: centered on the tile's last row, truncated to the tile width.

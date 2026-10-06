@@ -122,17 +122,6 @@ pub fn bars_glyph(signal: u8) -> String {
     (0..4).map(|i| if i < n { '▮' } else { '·' }).collect()
 }
 
-/// Speaker glyph reflecting mute and level.
-pub fn volume_glyph(v: &VolumeInfo) -> &'static str {
-    if v.muted || v.level == 0 {
-        "🔇"
-    } else if v.level < 66 {
-        "🔉"
-    } else {
-        "🔊"
-    }
-}
-
 /// Integer percentage of `used`/`total`, guarding division by zero.
 pub fn mem_pct(used: u64, total: u64) -> u8 {
     if total == 0 {

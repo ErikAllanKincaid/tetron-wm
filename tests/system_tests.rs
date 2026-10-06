@@ -1,4 +1,4 @@
-use tetron_wm::system::{bars_glyph, mem_pct, volume_glyph, VolumeInfo};
+use tetron_wm::system::{bars_glyph, mem_pct};
 
 #[test]
 fn signal_bars_fill_left_to_right() {
@@ -7,14 +7,6 @@ fn signal_bars_fill_left_to_right() {
     assert_eq!(bars_glyph(2), "▮▮··");
     assert_eq!(bars_glyph(4), "▮▮▮▮");
     assert_eq!(bars_glyph(9), "▮▮▮▮"); // clamps
-}
-
-#[test]
-fn volume_glyph_reflects_mute_and_level() {
-    assert_eq!(volume_glyph(&VolumeInfo { level: 0, muted: false }), "🔇");
-    assert_eq!(volume_glyph(&VolumeInfo { level: 50, muted: false }), "🔉");
-    assert_eq!(volume_glyph(&VolumeInfo { level: 90, muted: false }), "🔊");
-    assert_eq!(volume_glyph(&VolumeInfo { level: 50, muted: true }), "🔇");
 }
 
 #[test]

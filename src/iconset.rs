@@ -71,6 +71,73 @@ pub fn glyph_for(role: Role, style: IconStyle) -> char {
     }
 }
 
+/// Status-bar / tray indicator icons. Styled the same way as file-type glyphs so
+/// the whole UI follows one `icon_style` (no stray emoji under ascii/nerd). Wifi
+/// uses `system::bars_glyph` instead — it is a level meter, not a single icon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Status {
+    Cpu,
+    Mem,
+    BatteryCharging,
+    Battery,
+    VolMute,
+    VolLow,
+    VolHigh,
+    Bluetooth,
+    Net,
+    Bell,
+}
+
+/// The glyph for a status indicator in a specific `style`.
+pub fn status_for(s: Status, style: IconStyle) -> char {
+    use Status::*;
+    match style {
+        // BMP symbols — render in essentially every console/monospace font.
+        IconStyle::Ascii => match s {
+            Cpu => '\u{2299}',             // ⊙
+            Mem => '\u{25A4}',             // ▤
+            BatteryCharging => '\u{21AF}', // ↯
+            Battery => '\u{25AF}',         // ▯
+            VolMute => '\u{2717}',         // ✗
+            VolLow => '\u{266A}',          // ♪
+            VolHigh => '\u{266B}',         // ♫
+            Bluetooth => '\u{23FB}',       // ⏻
+            Net => '\u{21C4}',             // ⇄
+            Bell => '\u{237E}',            // ⍾ bell symbol
+        },
+        // Nerd Font (FontAwesome) glyphs — needs a Nerd Font installed.
+        IconStyle::Nerd => match s {
+            Cpu => '\u{F2DB}',             //  microchip
+            Mem => '\u{F1C0}',             //  database
+            BatteryCharging => '\u{F0E7}', //  bolt
+            Battery => '\u{F240}',         //  battery-full
+            VolMute => '\u{F026}',         //  volume-off
+            VolLow => '\u{F027}',          //  volume-down
+            VolHigh => '\u{F028}',         //  volume-up
+            Bluetooth => '\u{F293}',       //  bluetooth
+            Net => '\u{F0EC}',             //  exchange
+            Bell => '\u{F0F3}',            //  bell
+        },
+        IconStyle::Emoji => match s {
+            Cpu => '\u{1F5A5}',            // 🖥
+            Mem => '\u{1F4BE}',            // 💾
+            BatteryCharging => '\u{26A1}', // ⚡
+            Battery => '\u{1F50B}',        // 🔋
+            VolMute => '\u{1F507}',        // 🔇
+            VolLow => '\u{1F509}',         // 🔉
+            VolHigh => '\u{1F50A}',        // 🔊
+            Bluetooth => '\u{23FB}',       // ⏻ (no bluetooth emoji; the "bt" label carries it)
+            Net => '\u{1F517}',            // 🔗
+            Bell => '\u{1F514}',           // 🔔
+        },
+    }
+}
+
+/// The status glyph in the active style.
+pub fn status(s: Status) -> char {
+    status_for(s, *slot().read().unwrap())
+}
+
 fn slot() -> &'static RwLock<IconStyle> {
     static STYLE: OnceLock<RwLock<IconStyle>> = OnceLock::new();
     STYLE.get_or_init(|| RwLock::new(IconStyle::Ascii))
@@ -108,6 +175,29 @@ mod tests {
         // The point of the default style: no astral-plane / PUA codepoints.
         for role in [Role::Directory, Role::Other, Role::Executable, Role::Audio, Role::Video] {
             assert!((glyph_for(role, IconStyle::Ascii) as u32) <= 0xFFFF);
+        }
+    }
+
+    const STATUSES: [Status; 10] = [
+        Status::Cpu, Status::Mem, Status::BatteryCharging, Status::Battery,
+        Status::VolMute, Status::VolLow, Status::VolHigh, Status::Bluetooth,
+        Status::Net, Status::Bell,
+    ];
+
+    #[test]
+    fn every_status_has_a_glyph_in_every_style() {
+        for style in [IconStyle::Ascii, IconStyle::Nerd, IconStyle::Emoji] {
+            for s in STATUSES {
+                assert_ne!(status_for(s, style), '\0', "{style:?}/{s:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_status_glyphs_are_bmp_no_emoji() {
+        // Consistency fix: the tray must not use astral-plane emoji under ascii.
+        for s in STATUSES {
+            assert!((status_for(s, IconStyle::Ascii) as u32) <= 0xFFFF, "{s:?}");
         }
     }
 }

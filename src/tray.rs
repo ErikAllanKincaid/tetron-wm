@@ -1,7 +1,19 @@
 //! The menubar status tray: indicator segments + click-through popovers.
 
 use crate::geometry::Rect;
-use crate::system::{bars_glyph, mem_pct, volume_glyph, SystemState};
+use crate::system::{bars_glyph, mem_pct, SystemState};
+
+/// Map a volume reading to its status icon (muted/low/high).
+fn volume_status(v: &crate::system::VolumeInfo) -> crate::iconset::Status {
+    use crate::iconset::Status;
+    if v.muted || v.level == 0 {
+        Status::VolMute
+    } else if v.level < 66 {
+        Status::VolLow
+    } else {
+        Status::VolHigh
+    }
+}
 
 /// Which indicator a tray segment represents (used for hit-testing + drop order).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,21 +47,22 @@ const GAP: i32 = 2;
 /// space is tight; the clock is always kept.
 pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize) -> Vec<Segment> {
     // Display order, left→right.
+    use crate::iconset::{status, Status};
     let mut texts: Vec<(SegmentKind, String)> = Vec::new();
-    texts.push((SegmentKind::Cpu, format!("⊙{}%", state.cpu_pct.round() as u32)));
-    texts.push((SegmentKind::Mem, format!("▤{}%", mem_pct(state.mem.used, state.mem.total))));
+    // A space follows each glyph so a double-width Nerd Font icon does not overlap
+    // the metric (same convention as the file manager's list view).
+    texts.push((SegmentKind::Cpu, format!("{} {}%", status(Status::Cpu), state.cpu_pct.round() as u32)));
+    texts.push((SegmentKind::Mem, format!("{} {}%", status(Status::Mem), mem_pct(state.mem.used, state.mem.total))));
     if let Some(b) = &state.battery {
-        texts.push((
-            SegmentKind::Battery,
-            format!("{}{}%", if b.charging { "⚡" } else { "🔋" }, b.pct),
-        ));
+        let g = status(if b.charging { Status::BatteryCharging } else { Status::Battery });
+        texts.push((SegmentKind::Battery, format!("{} {}%", g, b.pct)));
     }
     texts.push((
         SegmentKind::Volume,
-        format!("{}{}", volume_glyph(&state.volume), state.volume.level),
+        format!("{} {}", status(volume_status(&state.volume)), state.volume.level),
     ));
     if state.caps.bluetooth || state.bluetooth.enabled {
-        texts.push((SegmentKind::Bluetooth, "⏻bt".to_string()));
+        texts.push((SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth))));
     }
     if let Some(w) = &state.wifi {
         let name = if w.ssid.is_empty() { "wifi".to_string() } else { w.ssid.clone() };
@@ -67,10 +80,10 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
         } else {
             "○"
         };
-        texts.push((SegmentKind::Tetron, format!("⇄{connected} {dot}")));
+        texts.push((SegmentKind::Tetron, format!("{} {connected} {dot}", status(Status::Net))));
     }
     if bells > 0 {
-        texts.push((SegmentKind::Bell, format!("🔔{bells}")));
+        texts.push((SegmentKind::Bell, format!("{} {bells}", status(Status::Bell))));
     }
     // Clock shows date + time ("Wed 04 Jun 09:41"); narrows to time-only first.
     let clock_full = if state.clock.date.is_empty() {
@@ -250,7 +263,7 @@ impl Tray {
                 format!("{}% used", mem_pct(state.mem.used, state.mem.total)),
             ]),
             SegmentKind::Battery => self.render_lines(w, h, anchor_x, "Battery", &[
-                state.battery.map(|b| format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" }))
+                state.battery.map(|b| format!("{}%{}", b.pct, if b.charging { format!(" {}", crate::iconset::status(crate::iconset::Status::BatteryCharging)) } else { String::new() }))
                     .unwrap_or_else(|| "no battery".into()),
             ]),
         }
@@ -276,7 +289,7 @@ impl Tray {
         buf.write_str(2, 2, "◂", t.accent, t.window_bg);
         buf.write_str(5, 2, &bar, t.text, t.window_bg);
         buf.write_str(13, 2, "▸", t.accent, t.window_bg);
-        buf.write_str(17, 2, volume_glyph(v), t.text, t.window_bg);
+        buf.write_str(17, 2, &crate::iconset::status(volume_status(v)).to_string(), t.text, t.window_bg);
         let hit = |lx: i32, lw: i32, intent: ControlIntent| PopoverHit {
             rect: Rect::new(origin.x + lx, origin.y + 2, lw, 1),
             intent,

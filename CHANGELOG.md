@@ -57,6 +57,15 @@ carry user-visible feature work and the occasional breaking config change.
   tofu on a console.
 
 ### Fixed
+- **The menubar tray glyphs now follow `icon_style`.** Volume, battery, and the
+  bell used hardcoded color emoji (🔇/🔉/🔊, ⚡/🔋, 🔔) regardless of the icon
+  style, so they clashed with the ascii/nerd file icons (and showed as tofu on a
+  console). All tray indicators (CPU, memory, battery, volume, bluetooth, network,
+  bell) now resolve through the same `icon_style` set — BMP shapes under `ascii`,
+  Nerd Font glyphs under `nerd`, emoji under `emoji`.
+- **Desktop icon glyph sits just above its label** — the no-graphics fallback
+  glyph was stranded high in the tile (centered in the image area); it now sits at
+  the bottom of the icon rect like the file manager's grid view.
 - **Dragging a mouse-reporting app's window (e.g. tetron-tui) works now.** The
   client routed each mouse event by the pointer's position in the *last frame's*
   app content rect, so dragging the titlebar downward "fell into" the app as the
