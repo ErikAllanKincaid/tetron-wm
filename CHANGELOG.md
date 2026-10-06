@@ -6,6 +6,26 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Changed
+- **Renamed from `tuiui` to `tetron-wm` (breaking).** This is a fork of upstream
+  `jaylfc/tuiui`; sharing the name let installs and the in-app updater collide
+  with upstream. The binary, crate, config dir (`~/.config/tetron-wm`), state dir,
+  log, socket, service unit (`tetron-wm-apphost`), `TETRON_WM_*` env vars, and
+  release assets (`tetron-wm-<target>.tar.gz`) are all renamed. Existing installs
+  must be reinstalled; config/service paths do not migrate automatically.
+- **Menubar launcher button now reads `tetron`**, not the full binary name.
+
+### Added
+- **Light theme** — a fifth, and first light, palette (`theme = "light"`, or cycle
+  it in Settings → Appearance): paper wallpaper, black-on-white terminals, light
+  panels, tetron-green highlights.
+
+### Fixed
+- **Install/update now pull from the fork, not upstream.** `install.sh`, the in-app
+  updater, and the Systems remote-installer pointed at `jaylfc/tuiui`, so a prebuilt
+  install or a Settings → Updates run fetched upstream and dropped the tetron
+  integration. All now target `ErikAllanKincaid/tetron-wm`.
+
 ## [0.14.1] — 2026-10-05
 
 ### Fixed

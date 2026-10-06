@@ -4,12 +4,14 @@ use tetron_wm::config::Config;
 #[test]
 fn toggle_changes_config() {
     let mut s = Settings::new(Config::default());
-    assert!(s.config().snapping_enabled);
-    s.toggle(); // Windows / snapping
+    // Fork defaults are OFF for both (docs/CONFIG.md); toggling flips them ON.
+    // (Upstream defaulted them on, which these asserts used to assume.)
     assert!(!s.config().snapping_enabled);
+    s.toggle(); // Windows / snapping
+    assert!(s.config().snapping_enabled);
     s.next_section(); // Appearance
     s.toggle(); // window shadows
-    assert!(!s.config().window_shadows);
+    assert!(s.config().window_shadows);
 }
 
 #[test]

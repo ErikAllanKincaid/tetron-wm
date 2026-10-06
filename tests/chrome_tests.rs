@@ -12,7 +12,7 @@ fn menubar_layer_spans_top_row_and_shows_brand() {
     assert_eq!(layer.origin, Point::new(0,0));
     assert_eq!(layer.buf.height(), 1);
     let row: String = (0..40).map(|x| layer.buf.get(x,0).unwrap().ch).collect();
-    assert!(row.contains("tetron-wm"));  // left brand button (opens launcher)
+    assert!(row.contains("tetron"));  // left brand button (opens launcher)
     assert!(row.contains("btop"));
     assert!(row.contains("devbox"));  // right power button shows the host name
 }
