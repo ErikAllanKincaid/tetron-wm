@@ -8,9 +8,10 @@ fn defaults_are_sane() {
     // upstream holdover that the rename's green-suite pass surfaced.
     assert!(!c.snapping_enabled);
     assert_eq!(c.snap_threshold, 3);
-    // No apps auto-start by default; the desktop seeds Files + Store pins instead.
+    // Nothing auto-starts and nothing is pinned by default; the desktop shows
+    // only the real contents of ~/Desktop.
     assert!(c.apps.is_empty());
-    assert_eq!(c.desktop_pins.len(), 2);
+    assert!(c.desktop_pins.is_empty());
 }
 
 #[test]
@@ -65,11 +66,10 @@ fn default_apps_has_builtin_image_handler() {
 }
 
 #[test]
-fn desktop_defaults_have_files_and_store_pins() {
+fn desktop_has_no_default_pins() {
+    // The desktop shows only the real contents of ~/Desktop; pins are opt-in.
     let c = Config::default();
     assert!(c.desktop_enabled);
-    let cmds: Vec<&str> = c.desktop_pins.iter().map(|p| p.command.as_str()).collect();
-    assert!(cmds.contains(&"@files"));
-    assert!(cmds.contains(&"@store"));
+    assert!(c.desktop_pins.is_empty());
     assert!(c.desktop_positions.is_empty());
 }

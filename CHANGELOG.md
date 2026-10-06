@@ -21,6 +21,10 @@ carry user-visible feature work and the occasional breaking config change.
   panels, tetron-green highlights.
 
 ### Fixed
+- **Window rename triggers only on the title text now**, not anywhere on the
+  titlebar, and clears any in-progress move/drag when it starts — so a
+  double-click on empty titlebar space no longer accidentally starts a rename or
+  leaves a stray, mispositioned titlebar behind.
 - **Install/update now pull from the fork, not upstream.** `install.sh`, the in-app
   updater, and the Systems remote-installer pointed at `jaylfc/tuiui`, so a prebuilt
   install or a Settings → Updates run fetched upstream and dropped the tetron

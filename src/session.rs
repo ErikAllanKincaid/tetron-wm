@@ -830,17 +830,23 @@ impl SessionCore {
     /// Return the id of the topmost non-minimized window whose **titlebar row**
     /// contains `p`, provided `p` is NOT on a control button (min/max/close).
     /// Used by the double-click handler to start a rename.
-    fn topmost_window_titlebar_at(&self, p: Point) -> Option<WindowId> {
-        // z_ordered is bottom-to-top; last match is the topmost.
+    /// The topmost window whose **title text** is at `p`. Rename triggers only on
+    /// the title text (not the whole titlebar), so a double-click on empty
+    /// titlebar space doesn't accidentally start a rename. The text is drawn at
+    /// column 2 of the titlebar, truncated to the same limit `render_window` uses.
+    fn topmost_window_title_text_at(&self, p: Point) -> Option<WindowId> {
         self.wm
             .z_ordered()
             .iter()
             .filter(|w| {
-                !w.minimized
-                    && w.rect.y == p.y
-                    && p.x >= w.rect.x
-                    && p.x < w.rect.x + w.rect.w
-                    && w.control_at(p).is_none()
+                if w.minimized || w.rect.y != p.y {
+                    return false;
+                }
+                let r = w.rect;
+                let title_limit = if r.w >= 9 { (r.w - 10).max(0) } else { (r.w - 4).max(0) } as usize;
+                let len = w.title.chars().count().min(title_limit) as i32;
+                let start = r.x + 2;
+                p.x >= start && p.x < start + len
             })
             .map(|w| w.id)
             .next_back()
@@ -2224,9 +2230,14 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                     return;
                 }
-                // Double-click on a window's titlebar (not on a control button)
-                // starts a rename of that window. Check this before desktop/content.
-                if let Some(id) = self.topmost_window_titlebar_at(p) {
+                // Double-click on a window's title TEXT (not empty titlebar space
+                // or a control button) starts a rename of that window. Check this
+                // before desktop/content.
+                if let Some(id) = self.topmost_window_title_text_at(p) {
+                    // Clear any in-progress move/resize from the double-click's own
+                    // button presses so it can't linger behind the rename.
+                    self.drag = None;
+                    self.drag_armed = false;
                     // Start with an empty buffer — type the new name fresh; an
                     // empty commit (or Esc) keeps the current name.
                     self.rename = Some((id, String::new()));

@@ -122,8 +122,10 @@ impl Theme {
         Theme {
             desktop_bg: rgb(236, 230, 216),
             window_bg: rgb(255, 255, 255),
-            title_focus: rgb(215, 233, 205),
-            title_blur: rgb(229, 224, 212),
+            // Active titlebar reads clearly green; inactive is a distinct taupe
+            // bar, darker than the paper wallpaper so it does not blend in.
+            title_focus: rgb(196, 227, 180),
+            title_blur: rgb(212, 207, 193),
             title_fg: rgb(43, 43, 43),
             border: rgb(76, 175, 80),
             shadow: Rgba { r: 50, g: 45, b: 30, a: 51 },
@@ -166,4 +168,19 @@ pub fn current() -> Theme {
 /// Replace the current desktop theme (applied on the next rendered frame).
 pub fn set(name: &str) {
     *slot().write().unwrap() = Theme::named(name);
+}
+
+/// Override just the terminal-relevant colors (`window_bg`/`text`) on the current
+/// theme. The apphost uses this so the `terminal_bg`/`terminal_fg` config keys can
+/// decouple terminal colors from the desktop theme: in the apphost process the
+/// theme global is read only by `ptyhost` for hosted-app cell colors, so this
+/// does not affect any chrome. `None` leaves that color following the theme.
+pub fn set_terminal_colors(bg: Option<Rgba>, fg: Option<Rgba>) {
+    let mut t = slot().write().unwrap();
+    if let Some(bg) = bg {
+        t.window_bg = bg;
+    }
+    if let Some(fg) = fg {
+        t.text = fg;
+    }
 }

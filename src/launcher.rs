@@ -12,13 +12,17 @@ use crate::compositor::Layer;
 use crate::config::AppEntry;
 use crate::geometry::{Point, Rect};
 
-const MENU_BG: Rgba = Rgba { r: 24, g: 28, b: 40, a: 255 };
-const MENU_FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 255 };
-const SEL_FG: Rgba = Rgba { r: 207, g: 224, b: 255, a: 255 };
-const BORDER: Rgba = Rgba { r: 58, g: 68, b: 88, a: 255 };
-const HINT: Rgba = Rgba { r: 120, g: 130, b: 150, a: 255 };
-const ACCENT: Rgba = Rgba { r: 108, g: 182, b: 255, a: 255 };
+// Menu colors follow the active desktop theme. These were hardcoded midnight,
+// which left the launcher dark under every theme (not just light). A dropdown is
+// a floating surface, so it uses `window_bg`/`text`; the highlighted row uses
+// `active_bg`/`accent`, the border `border`, and dim text `dim`.
+fn menu_bg() -> Rgba { crate::theme::current().window_bg }
+fn menu_fg() -> Rgba { crate::theme::current().text }
+fn sel_bg() -> Rgba { crate::theme::current().active_bg }
+fn sel_fg() -> Rgba { crate::theme::current().accent }
+fn border() -> Rgba { crate::theme::current().border }
+fn hint() -> Rgba { crate::theme::current().dim }
+fn accent() -> Rgba { crate::theme::current().accent }
 
 /// A node in the cascading menu.
 #[derive(Clone, Debug)]
@@ -403,7 +407,7 @@ impl Launcher {
                 draw_row(&mut buf, 1, panel.w - 2, 1 + i as i32, label, RowStyle { highlighted, marker: false, cli });
                 if e.is_submenu() {
                     // submenu marker at the right edge of the row
-                    let (fg, bg) = if highlighted { (SEL_FG, SEL_BG) } else { (ACCENT, MENU_BG) };
+                    let (fg, bg) = if highlighted { (sel_fg(), sel_bg()) } else { (accent(), menu_bg()) };
                     buf.set(
                         panel.w - 2,
                         1 + i as i32,
@@ -482,14 +486,14 @@ impl Launcher {
         fill_box(&mut buf, box_w, box_h);
 
         // Query row + separator.
-        buf.write_str(2, 1, &format!("\u{2318} {}\u{2588}", self.query), ACCENT, MENU_BG);
+        buf.write_str(2, 1, &format!("\u{2318} {}\u{2588}", self.query), accent(), menu_bg());
         for x in 1..box_w - 1 {
-            buf.set(x, 2, Cell { ch: '\u{2500}', fg: BORDER, bg: MENU_BG, attrs: Default::default() });
+            buf.set(x, 2, Cell { ch: '\u{2500}', fg: border(), bg: menu_bg(), attrs: Default::default() });
         }
 
         let mut items = Vec::new();
         if rows.is_empty() {
-            buf.write_str(2, 3, "no matches", HINT, MENU_BG);
+            buf.write_str(2, 3, "no matches", hint(), menu_bg());
         }
         for (ri, row) in rows.iter().enumerate() {
             let y = 3 + ri as i32;
@@ -539,16 +543,16 @@ fn shell_entry() -> AppEntry {
 /// Draw a dimmed, uppercase category header spanning `cw` cells from `x0`.
 fn draw_header(buf: &mut CellBuffer, x0: i32, cw: i32, row: i32, cat: &str) {
     for x in x0..x0 + cw {
-        buf.set(x, row, Cell { ch: ' ', fg: HINT, bg: MENU_BG, attrs: Default::default() });
+        buf.set(x, row, Cell { ch: ' ', fg: hint(), bg: menu_bg(), attrs: Default::default() });
     }
     let label: String = cat.to_uppercase().chars().take(cw.max(1) as usize).collect();
-    buf.write_str(x0, row, &label, HINT, MENU_BG);
+    buf.write_str(x0, row, &label, hint(), menu_bg());
 }
 
 /// Fill a buffer with the menu background and draw a rounded border.
 fn fill_box(buf: &mut CellBuffer, w: i32, h: i32) {
-    buf.fill(Cell { ch: ' ', fg: MENU_FG, bg: MENU_BG, attrs: Default::default() });
-    let b = |ch: char| Cell { ch, fg: BORDER, bg: MENU_BG, attrs: Default::default() };
+    buf.fill(Cell { ch: ' ', fg: menu_fg(), bg: menu_bg(), attrs: Default::default() });
+    let b = |ch: char| Cell { ch, fg: border(), bg: menu_bg(), attrs: Default::default() };
     for x in 0..w {
         buf.set(x, 0, b('\u{2500}'));
         buf.set(x, h - 1, b('\u{2500}'));
@@ -578,12 +582,12 @@ struct RowStyle {
 /// The name is truncated to fit the column, leaving room for the `CLI` tag.
 fn draw_row(buf: &mut CellBuffer, x0: i32, cw: i32, row: i32, name: &str, style: RowStyle) {
     let RowStyle { highlighted, marker, cli } = style;
-    let (fg, bg) = if highlighted { (SEL_FG, SEL_BG) } else { (MENU_FG, MENU_BG) };
+    let (fg, bg) = if highlighted { (sel_fg(), sel_bg()) } else { (menu_fg(), menu_bg()) };
     for x in x0..x0 + cw {
         buf.set(x, row, Cell { ch: ' ', fg, bg, attrs: Default::default() });
     }
     let lead = if marker && highlighted { "\u{25B8} " } else { "  " };
-    buf.write_str(x0, row, lead, ACCENT, bg);
+    buf.write_str(x0, row, lead, accent(), bg);
     const BADGE: &str = "CLI";
     let badge_w = if cli { BADGE.chars().count() as i32 + 1 } else { 0 };
     let avail = (cw - 2 - badge_w).max(1) as usize;
@@ -594,7 +598,7 @@ fn draw_row(buf: &mut CellBuffer, x0: i32, cw: i32, row: i32, name: &str, style:
     };
     buf.write_str(x0 + 2, row, &shown, fg, bg);
     if cli {
-        buf.write_str(x0 + cw - BADGE.chars().count() as i32, row, BADGE, ACCENT, bg);
+        buf.write_str(x0 + cw - BADGE.chars().count() as i32, row, BADGE, accent(), bg);
     }
 }
 

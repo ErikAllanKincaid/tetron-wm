@@ -25,7 +25,7 @@ Each row is the TOML key, its type, the fork default, and what it does.
 | `filemanager_view` | string | unset | File-manager view: `icon` or `list`. |
 | `recent_dirs` | list of string | `[]` | Recently used working directories; maintained by the app, not hand-set. |
 | `desktop_enabled` | bool | `true` | Show icons on the wallpaper/desktop. |
-| `desktop_pins` | list of table | Files + Store | Pinned desktop shortcuts (see "App entries"). |
+| `desktop_pins` | list of table | none | Pinned desktop shortcuts (see "App entries"); otherwise the desktop shows only real ~/Desktop contents. |
 | `desktop_positions` | map | `{}` | Saved desktop icon positions; maintained by the app. |
 | `assistant_command` | string | `opencode` | Agent CLI the ✦ assistant panel runs. |
 | `assistant_args` | list of string | `[]` | Extra arguments passed to the assistant CLI. |

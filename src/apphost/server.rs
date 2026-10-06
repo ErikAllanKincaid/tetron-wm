@@ -16,6 +16,26 @@ use std::time::Duration;
 
 /// Run the apphost event loop until a frontend sends `Shutdown`.
 pub fn run() -> std::io::Result<()> {
+    // The apphost is a separate process with its own theme global, read only by
+    // `ptyhost` for hosted-app terminal cell colors. Initialize it from the same
+    // sources the client/daemon use (TETRON_WM_THEME env, else config.theme) so a
+    // light desktop gets black-on-white terminals, then apply the independent
+    // terminal_bg/terminal_fg overrides. Read once at startup; a theme or
+    // terminal-color change takes effect on the next apphost start.
+    {
+        let cfg = crate::config::Config::load();
+        let name = std::env::var("TETRON_WM_THEME")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| cfg.theme.clone());
+        crate::theme::set(&name);
+        let bg = cfg.terminal_bg.as_deref().and_then(crate::badge::parse_color);
+        let fg = cfg.terminal_fg.as_deref().and_then(crate::badge::parse_color);
+        if bg.is_some() || fg.is_some() {
+            crate::theme::set_terminal_colors(bg, fg);
+        }
+    }
+
     let path = apphost_socket_path();
     // If another apphost is already listening (e.g. the service started it, or the
     // daemon spawned it), exit cleanly rather than rebinding the socket. Combined

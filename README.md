@@ -43,7 +43,7 @@ tetron-wm tetron-wm is the desktop layer of **tetron-os**, a GUI-less Linux that
 - **Custom apps** — add your own launcher entries (name + command) from **Settings → Apps**.
 - **Working-directory picker** — launching a coding agent (Claude Code, Aider, …) opens a browsable file-tree so it starts in the project you choose; remembers recent directories. Installing Claude Code also adds a **Claude Code ⚠️** launcher variant running `--dangerously-skip-permissions` — behind a **warning dialog** so it's never launched by accident (your own `[[launcher]]` entries can set a `warn` message too).
 - **Theming** — five built-in palettes (midnight, nord, gruvbox, dracula, and a light theme), switchable live from **Settings → Appearance**.
-- **Dock app-grouping + window rename** — windows of the same app collapse into one dock pill with a colored **letter badge** (per-app color, configurable in `[dock.badges]`); click a grouped pill to choose between its windows. **Right-click a pill** for a context menu (minimise / maximise / close / reset size — Reset re-centres a stranded or mis-sized window at half the work area). **Rename** any window (double-click its titlebar or `Ctrl+Space r`) — the label changes but it stays grouped with its app.
+- **Dock app-grouping + window rename** — windows of the same app collapse into one dock pill with a colored **letter badge** (per-app color, configurable in `[dock.badges]`); click a grouped pill to choose between its windows. **Right-click a pill** for a context menu (minimise / maximise / close / reset size — Reset re-centres a stranded or mis-sized window at half the work area). **Rename** any window (double-click its **title text** or `Ctrl+Space r`) — the label changes but it stays grouped with its app.
 - **Simple view mode** — a top-bar toggle (`⊞` desktop ⇄ `▦` simple) that flips to a tmux-style full-screen-single-app view (no window decorations), keeping the menubar + dock; the dock is your app switcher. Same running apps in both modes.
 - **Persistent daemon + thin client, with live updates** (tmux-style): apps run in a separate **apphost** process and survive client detach, SSH disconnects, **and a frontend reload** — update the binary and **reload the UI without killing your apps** (menubar **Restart**, `tetron-wm reload`, or **Settings → Update & Reload**). Closing an app window (titlebar **✕**) asks for confirmation first since it ends the process; built-in panels (Store/Settings/Files) close without asking. `tetron-wm kill` stops everything (daemon + apphost), and works even while a client is attached.
 - **Bare-console mouse (Linux)** — on a raw Linux VT with no GUI terminal, tetron-wm reads the mouse directly from the **gpm** daemon (`apt install gpm`); see [the gpm section](#mouse-on-a-bare-linux-console-gpm).
@@ -84,7 +84,7 @@ In the **file manager** (launcher → **Files**): `↑`/`↓`/`←`/`→` move t
 
 On the **desktop** (the empty wallpaper): click an icon to select, **double-click to open** (folders → the file manager, files → their default app, pins → the app), **drag** an icon to rearrange it (snaps to a grid, position saved), and **right-click** an icon (open / rename / move to Trash) or the empty desktop (new folder / clean up). Icons come from your `~/Desktop` folder plus pinned shortcuts.
 
-Mouse: click **tetron** (top-left) for the app launcher, the **`⊞`/`▦`** toggle (next to it) to switch desktop/simple view, **✦** to open/hide the AI assistant panel, your **host name `▾`** (top-right) for the Exit/Restart/Shutdown menu, titlebar buttons (`– ▢ ✕`), and **double-click a titlebar to rename** the window. Drag titlebars/edges to move/resize, drag a window to a screen edge to snap it into a grid cell, click a tray indicator (clock/volume/WiFi/…) for its popover, and click dock pills to focus (a grouped pill opens a chooser) or **right-click a pill** for its context menu (minimise / maximise / close / reset size). Scroll the wheel over a shell/app window to read its scrollback. The mouse passes through into apps that enable mouse reporting.
+Mouse: click **tetron** (top-left) for the app launcher, the **`⊞`/`▦`** toggle (next to it) to switch desktop/simple view, **✦** to open/hide the AI assistant panel, your **host name `▾`** (top-right) for the Exit/Restart/Shutdown menu, titlebar buttons (`– ▢ ✕`), and **double-click a window's title text to rename** it. Drag titlebars/edges to move/resize, drag a window to a screen edge to snap it into a grid cell, click a tray indicator (clock/volume/WiFi/…) for its popover, and click dock pills to focus (a grouped pill opens a chooser) or **right-click a pill** for its context menu (minimise / maximise / close / reset size). Scroll the wheel over a shell/app window to read its scrollback. The mouse passes through into apps that enable mouse reporting.
 
 ## Build & run
 
@@ -222,7 +222,13 @@ Persistent remote sessions work today: the daemon + apphost run on the host and 
 snapping_enabled = true   # drag-to-cell snapping
 snap_threshold = 3        # edge band (cells) that engages snapping
 window_shadows = true
-theme = "midnight"        # midnight | nord | gruvbox | dracula
+theme = "midnight"        # midnight | nord | gruvbox | dracula | light
+
+# Terminal colors, independent of the desktop theme (hex or named color).
+# Unset = follow the theme (e.g. "light" = black-on-white terminals). Set to
+# decouple, e.g. a light desktop with a dark terminal. Applied at apphost start.
+# terminal_bg = "#ffffff"
+# terminal_fg = "#1a1a1a"
 
 # AI assistant (the ✦ menubar button; also editable in Settings → Assistant)
 # assistant_command = "opencode"   # the agent CLI: "opencode" or "hermes"
@@ -299,7 +305,7 @@ Design docs and the slice-by-slice plan live in [`docs/superpowers/`](docs/super
 - **✅ Apphost/frontend split + live updates:** apps run in a separate long-lived process; the UI can **reload (or update) without killing apps** (menubar Restart, `tetron-wm reload`, Settings → Update & Reload).
 - **✅ Mouse passthrough:** full-fidelity mouse (buttons/drag/scroll/modifiers) forwarded into apps that request it, in both views.
 - **✅ Simple view mode:** `⊞`/`▦` top-bar toggle between the windowed desktop and a full-screen-single-app view.
-- **✅ Dock grouping + window rename + app badges:** same-app windows group into one pill with a colored letter badge; rename windows (double-click titlebar / `Ctrl+Space r`).
+- **✅ Dock grouping + window rename + app badges:** same-app windows group into one pill with a colored letter badge; rename windows (double-click title text / `Ctrl+Space r`).
 - **✅ Bare-console mouse (Linux):** native `gpm` support for a mouse on a raw Linux VT (no GUI terminal needed).
 - **✅ Apphost as a service:** `tetron-wm service install` runs the apphost as a per-user service (launchd / systemd `--user` / `~/.profile` fallback) that auto-starts on login and restarts on crash; the macOS LaunchAgent also restores Keychain access (e.g. Claude Code login) inside tetron-wm.
 - **✅ Smart installs:** the store detects a missing toolchain (Go/Rust/Node/Python) before an install and offers to set it up first; a confirm dialog guards closing an app window (which ends its process).
