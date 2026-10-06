@@ -39,6 +39,11 @@ carry user-visible feature work and the occasional breaking config change.
   tofu on a console.
 
 ### Fixed
+- **Confirm-dialog buttons are readable now.** The destructive confirms (Close,
+  Shut Down, Remove, the dangerous-launch Launch, Restart) drew red text on the
+  green accent -- an unreadable red-on-green, especially on the light theme. They
+  now use light text on a red fill (a proper destructive button); the benign
+  Connect button and the calendar's "today" cell use light text on the accent.
 - **Window rename triggers only on the title text now**, not anywhere on the
   titlebar, and clears any in-progress move/drag when it starts — so a
   double-click on empty titlebar space no longer accidentally starts a rename or

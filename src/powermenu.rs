@@ -599,7 +599,7 @@ impl PowerMenu {
             let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
             buf.write_str(cancel.x - f.x, cancel.y - f.y, &cancel_s, t.text, t.active_bg);
             let connect_s = format!("{:^width$}", "Connect", width = connect.w as usize);
-            buf.write_str(connect.x - f.x, connect.y - f.y, &connect_s, t.close_fg, t.accent);
+            buf.write_str(connect.x - f.x, connect.y - f.y, &connect_s, t.window_bg, t.accent);
             layers.push(Layer { z: 6000, origin: Point::new(f.x, f.y), buf, opacity: 1.0, scissor: None });
         }
 
@@ -635,7 +635,7 @@ impl PowerMenu {
             let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
             buf.write_str(cancel.x - d.x, cancel.y - d.y, &cancel_s, t.text, t.active_bg);
             let confirm_s = format!("{:^width$}", confirm_label, width = confirm.w as usize);
-            buf.write_str(confirm.x - d.x, confirm.y - d.y, &confirm_s, t.close_fg, t.accent);
+            buf.write_str(confirm.x - d.x, confirm.y - d.y, &confirm_s, t.window_bg, t.close_fg);
             layers.push(Layer { z: 6000, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None });
         }
 
@@ -679,7 +679,7 @@ impl PowerMenu {
             let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
             buf.write_str(cancel.x - d.x, cancel.y - d.y, &cancel_s, t.text, t.active_bg);
             let remove_s = format!("{:^width$}", "Remove", width = remove.w as usize);
-            buf.write_str(remove.x - d.x, remove.y - d.y, &remove_s, t.close_fg, t.accent);
+            buf.write_str(remove.x - d.x, remove.y - d.y, &remove_s, t.window_bg, t.close_fg);
             layers.push(Layer { z: 6000, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None });
         }
 

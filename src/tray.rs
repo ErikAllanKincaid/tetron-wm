@@ -469,7 +469,7 @@ impl Tray {
                         .iter()
                         .any(|e| e.year == year && e.month == month && e.day == *d);
                     let (fg, bg) = if today {
-                        (t.close_fg, t.accent)
+                        (t.window_bg, t.accent)
                     } else if has_event {
                         (t.accent, t.window_bg)
                     } else {
