@@ -8,13 +8,12 @@ fn badge_color() -> Rgba { Rgba::rgb(70, 130, 230) }
 #[test]
 fn menubar_layer_spans_top_row_and_shows_brand() {
     // 40 cols: realistic width where the Go button + app name + power button all fit.
-    let layer = render_menubar(40, "btop", &[], false, " devbox \u{25be} ");
+    let layer = render_menubar(40, "btop", &[], false);
     assert_eq!(layer.origin, Point::new(0,0));
     assert_eq!(layer.buf.height(), 1);
     let row: String = (0..40).map(|x| layer.buf.get(x,0).unwrap().ch).collect();
     assert!(row.contains("tetron"));  // left brand button (opens launcher)
-    assert!(row.contains("btop"));
-    assert!(row.contains("devbox"));  // right power button shows the host name
+    assert!(row.contains("btop"));    // focused-app name
 }
 
 #[test]
@@ -101,9 +100,9 @@ fn dock_group_pill_renders_count_glyph() {
 
 #[test]
 fn menubar_shows_mode_toggle_glyph() {
-    let desktop: String = (0..40).map(|x| render_menubar(40, "x", &[], false, " h \u{25be} ").buf.get(x, 0).unwrap().ch).collect();
+    let desktop: String = (0..40).map(|x| render_menubar(40, "x", &[], false).buf.get(x, 0).unwrap().ch).collect();
     assert!(desktop.contains('\u{229E}'), "desktop mode shows ⊞, got {desktop:?}");
-    let simple: String = (0..40).map(|x| render_menubar(40, "x", &[], true, " h \u{25be} ").buf.get(x, 0).unwrap().ch).collect();
+    let simple: String = (0..40).map(|x| render_menubar(40, "x", &[], true).buf.get(x, 0).unwrap().ch).collect();
     assert!(simple.contains('\u{25A6}'), "simple mode shows ▦, got {simple:?}");
     // region sits just right of the brand
     let r = menubar_mode_region();
@@ -112,21 +111,15 @@ fn menubar_shows_mode_toggle_glyph() {
 }
 
 #[test]
-fn menubar_has_power_button_on_right() {
-    use tetron_wm::chrome::menubar_power_region;
+fn menubar_has_no_power_button_and_tray_reaches_edge() {
+    use tetron_wm::tray::{Segment, SegmentKind};
     let width = 40;
-    let power = " devbox \u{25be} ";
-    let layer = render_menubar(width, "btop", &[], false, power);
+    // A single tray segment placed flush to the right edge (reserve = 0).
+    let seg = Segment { kind: SegmentKind::Clock, text: "09:41".into(), rect: tetron_wm::geometry::Rect::new(width - 5, 0, 5, 1) };
+    let layer = render_menubar(width, "btop", &[seg], false);
     let row: String = (0..width).map(|x| layer.buf.get(x, 0).unwrap().ch).collect();
-    assert!(row.contains("devbox"), "menubar power button should show the host name, got: {row:?}");
-    // region is on the top row, flush to the right edge
-    let r = menubar_power_region(width, power);
-    assert_eq!(r.y, 0);
-    assert_eq!(r.right(), width - 1);
-    // the region actually covers the power-button label (the 'x' in "devbox").
-    // Use a CHAR column, not `rfind`'s byte offset — the bar holds multi-byte
-    // glyphs (the ⊞ mode toggle and ✦ assistant button) left of the label.
-    let chars: Vec<char> = row.chars().collect();
-    let xcol = chars.iter().rposition(|c| *c == 'x').unwrap() as i32;
-    assert!(r.contains(Point::new(xcol, 0)));
+    // No host-name power button any more (moved into the launcher).
+    assert!(!row.contains("devbox"));
+    // The tray segment is drawn out to the right edge.
+    assert!(row.ends_with("09:41"), "tray should reach the edge, got: {row:?}");
 }

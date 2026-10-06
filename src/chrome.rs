@@ -61,7 +61,7 @@ pub struct DockItem {
 ///
 /// The layer is 1 row tall, `width` columns wide, positioned at `(0, 0)`.
 /// It displays the brand name on the left and `focused_app` at a fixed offset.
-pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Segment], simple: bool, power_label: &str) -> Layer {
+pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Segment], simple: bool) -> Layer {
     let t = crate::theme::current();
     let mut buf = CellBuffer::new(width, 1);
     buf.fill(crate::cell::Cell { ch: ' ', fg: t.text, bg: t.menubar_bg, attrs: Default::default() });
@@ -69,20 +69,17 @@ pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Se
     let mode = if simple { MODE_SIMPLE } else { MODE_DESKTOP };
     buf.write_str(MODE_X, 0, mode, t.accent, t.active_bg);
     buf.write_str(ASSIST_X, 0, ASSIST_LABEL, t.accent, t.active_bg);
-    // Power button (the host name + ▾), right-aligned, with a button-like fill.
-    let px = (width - power_label.chars().count() as i32).max(0);
-    // Status-tray segments occupy the right side, just left of the power button.
-    let tray_left = segments.iter().map(|s| s.rect.x).min().unwrap_or(px);
+    // Status-tray segments occupy the right side, out to the screen edge (the
+    // power button moved into the launcher's system section).
+    let tray_left = segments.iter().map(|s| s.rect.x).min().unwrap_or(width);
     for s in segments {
         buf.write_str(s.rect.x, 0, &s.text, t.text, t.menubar_bg);
     }
     // Focused-app name sits between the brand and the tray, truncated so it can
-    // never overwrite a tray segment or the power button on a narrow bar.
-    let right_limit = tray_left.min(px);
-    let avail = (right_limit - 1 - APP_X).max(0) as usize;
+    // never overwrite a tray segment.
+    let avail = (tray_left - 1 - APP_X).max(0) as usize;
     let app: String = focused_app.chars().take(avail).collect();
     buf.write_str(APP_X, 0, &app, t.dim, t.menubar_bg);
-    buf.write_str(px, 0, power_label, t.text, t.active_bg);
     Layer { z: 1000, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None }
 }
 
@@ -100,18 +97,6 @@ pub fn menubar_mode_region() -> Rect {
 /// Screen-space hit region for the assistant (✦) button — opens the AI chat panel.
 pub fn menubar_assistant_region() -> Rect {
     Rect::new(ASSIST_X, 0, ASSIST_LABEL.chars().count() as i32, 1)
-}
-
-/// Screen-space hit region for the menubar power button (the host name + ▾, top
-/// row, right side), used to open the Exit/Restart/Shutdown menu. `power_label`
-/// must be the same string passed to [`render_menubar`] so the widths match.
-///
-/// Returned in the same coordinate space as [`dock_hit_regions`] so input
-/// routing can detect the click without coupling to chrome rendering.
-pub fn menubar_power_region(width: i32, power_label: &str) -> Rect {
-    let pw = power_label.chars().count() as i32;
-    let px = (width - pw).max(0);
-    Rect::new(px, 0, width - px, 1)
 }
 
 /// The "new shell" quick-launch button at the dock's bottom-left corner.

@@ -11,7 +11,7 @@
 //! expose on a socket.
 
 use crate::chrome::{
-    render_menubar, render_dock, dock_hit_regions, menubar_assistant_region, menubar_brand_region, menubar_mode_region, menubar_power_region, DockItem, DockKind,
+    render_menubar, render_dock, dock_hit_regions, menubar_assistant_region, menubar_brand_region, menubar_mode_region, DockItem, DockKind,
 };
 use crate::powermenu::{PowerClick, PowerMenu, PowerOutcome};
 use crate::confirmclose::ConfirmClose;
@@ -517,8 +517,8 @@ pub struct SessionCore {
     /// Dock right-click context menu: `Some((target window, anchor x of the
     /// clicked pill))` while open, `None` when closed.
     dock_ctx: Option<(WindowId, i32)>,
-    /// Menubar power-button label: the host name + ▾ (computed once at startup).
-    power_label: String,
+    /// Short host name (computed once at startup); used in the AI briefing.
+    host_label: String,
     /// Active window rename: `Some((id, buffer))` while the user is typing a new
     /// name. `None` when no rename is in progress.
     rename: Option<(WindowId, String)>,
@@ -630,7 +630,7 @@ impl SessionCore {
             app_keys: HashMap::new(),
             dock_popup: None,
             dock_ctx: None,
-            power_label: Self::host_power_label(),
+            host_label: Self::host_short_label(),
             rename: None,
             cfg,
             w,
@@ -814,11 +814,10 @@ impl SessionCore {
 
     /// The menubar power-button label: the machine's host name + a ▾ chevron
     /// (the short host name, domain stripped, capped so it can't crowd the bar).
-    fn host_power_label() -> String {
+    fn host_short_label() -> String {
         let host = sysinfo::System::host_name().unwrap_or_else(|| "tetron-wm".into());
         let short: String = host.split('.').next().unwrap_or(&host).chars().take(20).collect();
-        let short = if short.is_empty() { "tetron-wm".to_string() } else { short };
-        format!(" {short} \u{25be} ")
+        if short.is_empty() { "tetron-wm".to_string() } else { short }
     }
 
     /// True when no non-minimized window's rect contains `p` (a click here falls
@@ -1290,7 +1289,7 @@ impl SessionCore {
     /// The current tray segments, laid out from the live snapshot.
     fn tray_segments_now(&self) -> Vec<crate::tray::Segment> {
         let st = self.tray_state.read().unwrap();
-        crate::tray::tray_segments(&st, self.w, self.power_label.chars().count() as i32, self.tray.notif_count())
+        crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
     }
 
     /// Apply a tray control intent: optimistically update the cached snapshot so
@@ -2619,7 +2618,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             return;
         };
         let Some(dir) = crate::assistant::workdir() else { return };
-        let host = self.power_label.trim().trim_end_matches('\u{25be}').trim().to_string();
+        let host = self.host_label.clone();
         if let Err(e) = crate::assistant::write_briefing(&dir, &host, &self.systems) {
             crate::dbg_log(&format!("assistant: briefing write failed: {e}"));
         }
@@ -3158,6 +3157,12 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             "@activity" => self.open_activity(),
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
+            // System actions from the launcher's bottom section — delegate to the
+            // existing power-menu flows (confirm dialog / systems popover).
+            "@systems" => { self.launcher.close(); self.power_menu.open_systems(); }
+            "@exit" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Exit); }
+            "@restart" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Restart); }
+            "@shutdown" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Shutdown); }
             _ => {
                 let cli = e.cli.unwrap_or(false);
                 let requires_cwd = e.requires_cwd.unwrap_or(false);
@@ -3531,11 +3536,6 @@ or a remote-side error — its authorized_keys was left untouched)",
             if menubar_brand_region().contains(p) {
                 self.power_menu.close();
                 self.launcher.toggle_menu();
-                return;
-            }
-            if menubar_power_region(self.w, &self.power_label).contains(p) {
-                self.launcher.close();
-                self.power_menu.toggle();
                 return;
             }
             let segs = self.tray_segments_now();
@@ -4064,9 +4064,9 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, self.power_label.chars().count() as i32, self.tray.notif_count())
+            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
         };
-        layers.push(render_menubar(self.w, &app_name, &segs, false, &self.power_label));
+        layers.push(render_menubar(self.w, &app_name, &segs, false));
         layers.push(render_dock(self.w, self.h, &self.dock_items()));
         layers.extend(self.render_dock_ctx());
 
@@ -4274,9 +4274,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             .unwrap_or_default();
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, self.power_label.chars().count() as i32, self.tray.notif_count())
+            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
         };
-        layers.push(render_menubar(self.w, &app_name, &segs, true, &self.power_label));
+        layers.push(render_menubar(self.w, &app_name, &segs, true));
         layers.push(render_dock(self.w, self.h, &self.dock_items()));
         layers.extend(self.render_dock_ctx());
 
@@ -4823,6 +4823,27 @@ fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_system_actions_open_power_flows() {
+        let entry = |cmd: &str| crate::config::AppEntry {
+            name: cmd.into(),
+            command: cmd.into(),
+            args: Vec::new(),
+            category: None,
+            requires_cwd: None,
+            cwd: None,
+            cli: None,
+            warn: None,
+        };
+        let mut core = SessionCore::new(80, 24, crate::config::Config::default());
+        assert!(!core.power_menu.is_open());
+        core.launch_entry(entry("@exit"));
+        assert!(core.power_menu.is_open(), "@exit should open the power confirm dialog");
+        core.power_menu.close();
+        core.launch_entry(entry("@systems"));
+        assert!(core.power_menu.is_open(), "@systems should open the systems popover");
+    }
 
     #[test]
     fn wheel_over_volume_segment_yields_volume_intent() {

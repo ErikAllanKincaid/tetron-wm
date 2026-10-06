@@ -7,6 +7,18 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Changed
+- **Power actions moved into the launcher.** The top-right host-name button is
+  gone; the launcher's bottom section now holds **Systems**, **Exit**, **Restart**,
+  **Shutdown** (Systems opens a top-left popover; the others open their confirm
+  dialog). Reuses the existing power/systems flows.
+- **Volume sits in the far-right corner** of the menubar (past the clock), flush
+  to the screen edge — a fixed, eyes-free spot to scroll to change volume. Its
+  level is zero-shift padded so changing digits (5 → 100) never nudges the other
+  segments.
+- **The menubar clock shows the time only** (`HH:MM`); the date/day live in the
+  calendar popover (one click on the clock).
+- **Tray drop-priority** sheds CPU → Mem → Battery → Bell → Tetron → Wi-Fi →
+  Bluetooth under width pressure; the clock and volume are always kept.
 - **Renamed from `tuiui` to `tetron-wm` (breaking).** This is a fork of upstream
   `jaylfc/tuiui`; sharing the name let installs and the in-app updater collide
   with upstream. The binary, crate, config dir (`~/.config/tetron-wm`), state dir,

@@ -57,10 +57,6 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
         let g = status(if b.charging { Status::BatteryCharging } else { Status::Battery });
         texts.push((SegmentKind::Battery, format!("{} {}%", g, b.pct)));
     }
-    texts.push((
-        SegmentKind::Volume,
-        format!("{} {}", status(volume_status(&state.volume)), state.volume.level),
-    ));
     if state.caps.bluetooth || state.bluetooth.enabled {
         texts.push((SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth))));
     }
@@ -85,26 +81,32 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
     if bells > 0 {
         texts.push((SegmentKind::Bell, format!("{} {bells}", status(Status::Bell))));
     }
-    // Clock shows date + time ("Wed 04 Jun 09:41"); narrows to time-only first.
-    let clock_full = if state.clock.date.is_empty() {
-        state.clock.time.clone()
-    } else {
-        format!("{} {}", state.clock.date, state.clock.time)
-    };
-    texts.push((SegmentKind::Clock, clock_full));
+    // Clock is time-only ("09:41"); one click on it drops down the full calendar.
+    texts.push((SegmentKind::Clock, state.clock.time.clone()));
+    // Volume sits at the far right, past the clock — a fixed corner the user can
+    // shove the pointer into and scroll to change volume without looking.
+    texts.push((
+        SegmentKind::Volume,
+        // Fixed 3-wide level so the segment width never changes (5 → 100): the
+        // corner stays put and nothing to its left shifts as the volume moves.
+        format!("{} {:>3}", status(volume_status(&state.volume)), state.volume.level),
+    ));
 
-    // When out of space: first shrink the clock to time-only, then drop Cpu,
-    // Mem, Battery (the clock itself is always kept).
-    let avail = width - reserve - 1;
+    // When out of space, shed low-priority segments first. Volume and the clock
+    // are never in this list, so they are always kept.
+    let avail = width - reserve;
     let total = |v: &[(SegmentKind, String)]| -> i32 {
         v.iter().map(|(_, t)| t.chars().count() as i32 + GAP).sum()
     };
-    if total(&texts) > avail {
-        if let Some(c) = texts.iter_mut().find(|(k, _)| *k == SegmentKind::Clock) {
-            c.1 = state.clock.time.clone();
-        }
-    }
-    for k in [SegmentKind::Cpu, SegmentKind::Mem, SegmentKind::Battery] {
+    for k in [
+        SegmentKind::Cpu,
+        SegmentKind::Mem,
+        SegmentKind::Battery,
+        SegmentKind::Bell,
+        SegmentKind::Tetron,
+        SegmentKind::Wifi,
+        SegmentKind::Bluetooth,
+    ] {
         if total(&texts) <= avail {
             break;
         }
@@ -112,7 +114,9 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
     }
 
     // Right-align: lay out from the right edge leftward, then return left→right.
-    let mut x = width - reserve - 1;
+    // The rightmost segment reaches the final column (no trailing gap) so a scroll
+    // at the very edge still lands on Volume.
+    let mut x = width - reserve;
     let mut out: Vec<Segment> = Vec::new();
     for (kind, text) in texts.iter().rev() {
         let w = text.chars().count() as i32;

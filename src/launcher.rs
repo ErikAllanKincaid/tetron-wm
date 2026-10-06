@@ -29,6 +29,8 @@ fn accent() -> Rgba { crate::theme::current().accent }
 enum MenuEntry {
     Launch(AppEntry),
     Submenu { label: String, items: Vec<MenuEntry> },
+    /// A non-selectable divider line (nav and clicks skip it).
+    Separator,
 }
 
 impl MenuEntry {
@@ -36,10 +38,34 @@ impl MenuEntry {
         match self {
             MenuEntry::Launch(a) => &a.name,
             MenuEntry::Submenu { label, .. } => label,
+            MenuEntry::Separator => "",
         }
     }
     fn is_submenu(&self) -> bool {
         matches!(self, MenuEntry::Submenu { .. })
+    }
+    fn is_separator(&self) -> bool {
+        matches!(self, MenuEntry::Separator)
+    }
+    /// Entries drawn with a `▸` "opens more" marker: real submenus, and the
+    /// Systems action (which opens the systems popover).
+    fn has_marker(&self) -> bool {
+        self.is_submenu() || matches!(self, MenuEntry::Launch(a) if a.command == "@systems")
+    }
+}
+
+/// A bottom-of-menu system action entry (`@`-sentinel command routed by the
+/// session's `launch_entry`, like `@files`/`@store`).
+fn system_entry(name: &str, command: &str) -> AppEntry {
+    AppEntry {
+        name: name.into(),
+        command: command.into(),
+        args: Vec::new(),
+        category: None,
+        requires_cwd: None,
+        cwd: None,
+        cli: None,
+        warn: None,
     }
 }
 
@@ -139,6 +165,14 @@ impl Launcher {
                 items: apps.into_iter().map(MenuEntry::Launch).collect(),
             }
         }));
+        // Bottom system section: a divider, then Systems (opens the systems
+        // popover) above Exit / Restart / Shutdown (each opens a confirm dialog).
+        // Routed by the session's `launch_entry` via their `@`-sentinel commands.
+        root.push(MenuEntry::Separator);
+        root.push(MenuEntry::Launch(system_entry("Systems", "@systems")));
+        root.push(MenuEntry::Launch(system_entry("Exit", "@exit")));
+        root.push(MenuEntry::Launch(system_entry("Restart", "@restart")));
+        root.push(MenuEntry::Launch(system_entry("Shutdown", "@shutdown")));
         self.menu_root = root;
     }
 
@@ -179,8 +213,10 @@ impl Launcher {
     /// Spotlight walks `selected`.
     pub fn move_up(&mut self) {
         if self.open == Some(LauncherMode::Menu) {
-            if let Some(last) = self.path.last_mut() {
-                *last = last.saturating_sub(1);
+            if let Some(next) = self.next_selectable(-1) {
+                if let Some(last) = self.path.last_mut() {
+                    *last = next;
+                }
             }
         } else {
             self.selected = self.selected.saturating_sub(1);
@@ -191,10 +227,9 @@ impl Launcher {
     /// Spotlight walks the filtered list.
     pub fn move_down(&mut self) {
         if self.open == Some(LauncherMode::Menu) {
-            let n = self.focused_len();
-            if let Some(last) = self.path.last_mut() {
-                if n > 0 && *last + 1 < n {
-                    *last += 1;
+            if let Some(next) = self.next_selectable(1) {
+                if let Some(last) = self.path.last_mut() {
+                    *last = next;
                 }
             }
         } else {
@@ -203,6 +238,53 @@ impl Launcher {
                 self.selected += 1;
             }
         }
+    }
+
+    /// The current (deepest open) menu level's entries — the slice `*path.last()`
+    /// indexes into.
+    fn current_entries(&self) -> &[MenuEntry] {
+        let mut entries: &[MenuEntry] = &self.menu_root;
+        let depth = self.path.len().saturating_sub(1);
+        for &sel in self.path.iter().take(depth) {
+            match entries.get(sel.min(entries.len().saturating_sub(1))) {
+                Some(MenuEntry::Submenu { items, .. }) => entries = items,
+                _ => break,
+            }
+        }
+        entries
+    }
+
+    /// Next selectable row index stepping by `dir` from the current selection,
+    /// skipping separators. `None` when there is none in that direction (keep put).
+    fn next_selectable(&self, dir: i32) -> Option<usize> {
+        let entries = self.current_entries();
+        let n = entries.len() as i32;
+        if n == 0 {
+            return None;
+        }
+        let cur = (*self.path.last().unwrap_or(&0)).min(entries.len() - 1) as i32;
+        let mut i = cur + dir;
+        while (0..n).contains(&i) {
+            if !entries[i as usize].is_separator() {
+                return Some(i as usize);
+            }
+            i += dir;
+        }
+        None
+    }
+
+    /// The entry under screen point `p` (any open panel), or `None`.
+    fn row_at(&self, p: Point) -> Option<&MenuEntry> {
+        let geom = self.panel_geometry(self.last_w.get(), self.last_h.get());
+        let levels = self.levels();
+        for (gi, (_k, _panel, rows)) in geom.iter().enumerate() {
+            for (i, r) in rows.iter().enumerate() {
+                if r.contains(p) {
+                    return levels.get(gi).and_then(|(entries, _)| entries.get(i));
+                }
+            }
+        }
+        None
     }
 
     /// The visible panels: for each open level, (entries, selected_row). Includes a
@@ -240,21 +322,6 @@ impl Launcher {
         last
     }
 
-    fn focused_len(&self) -> usize {
-        // length of the list the focused index points into
-        let mut entries: &[MenuEntry] = &self.menu_root;
-        for (k, &sel) in self.path.iter().enumerate() {
-            if k + 1 == self.path.len() {
-                return entries.len();
-            }
-            match entries.get(sel.min(entries.len().saturating_sub(1))) {
-                Some(MenuEntry::Submenu { items, .. }) => entries = items,
-                _ => return entries.len(),
-            }
-        }
-        entries.len()
-    }
-
     /// Descend into the focused submenu (if any, and non-empty).
     pub fn expand(&mut self) {
         if let Some(MenuEntry::Submenu { items, .. }) = self.focused_entry() {
@@ -280,7 +347,7 @@ impl Launcher {
                 None
             }
             Some(MenuEntry::Launch(a)) => Some(a),
-            None => None,
+            Some(MenuEntry::Separator) | None => None,
         }
     }
 
@@ -401,16 +468,24 @@ impl Launcher {
             let mut buf = CellBuffer::new(panel.w, panel.h);
             fill_box(&mut buf, panel.w, panel.h);
             for (i, e) in entries.iter().enumerate() {
+                let y = 1 + i as i32;
+                if e.is_separator() {
+                    // A divider line across the panel's inner width.
+                    for x in 1..panel.w - 1 {
+                        buf.set(x, y, Cell { ch: '\u{2500}', fg: border(), bg: menu_bg(), attrs: Default::default() });
+                    }
+                    continue;
+                }
                 let highlighted = i == *sel;
                 let label = e.label();
                 let cli = matches!(e, MenuEntry::Launch(a) if a.cli.unwrap_or(false));
-                draw_row(&mut buf, 1, panel.w - 2, 1 + i as i32, label, RowStyle { highlighted, marker: false, cli });
-                if e.is_submenu() {
-                    // submenu marker at the right edge of the row
+                draw_row(&mut buf, 1, panel.w - 2, y, label, RowStyle { highlighted, marker: false, cli });
+                if e.has_marker() {
+                    // "opens more" marker at the right edge of the row
                     let (fg, bg) = if highlighted { (sel_fg(), sel_bg()) } else { (accent(), menu_bg()) };
                     buf.set(
                         panel.w - 2,
-                        1 + i as i32,
+                        y,
                         Cell { ch: '\u{25B8}', fg, bg, attrs: Default::default() },
                     );
                 }
@@ -426,6 +501,10 @@ impl Launcher {
     /// Mouse-move: select the (level,row) under `p`, truncating deeper levels.
     pub fn hover(&mut self, p: Point) {
         if self.open != Some(LauncherMode::Menu) {
+            return;
+        }
+        // A separator is not selectable: leave the highlight where it was.
+        if self.row_at(p).map(|e| e.is_separator()).unwrap_or(false) {
             return;
         }
         let geom = self.panel_geometry(self.last_w.get(), self.last_h.get());
@@ -447,6 +526,10 @@ impl Launcher {
     /// to dismiss the menu would launch/descend the selection.
     pub fn click(&mut self, p: Point) -> Option<AppEntry> {
         if self.open != Some(LauncherMode::Menu) || !self.point_in_menu(p) {
+            return None;
+        }
+        // A click on a separator is a no-op (don't activate the stale selection).
+        if self.row_at(p).map(|e| e.is_separator()).unwrap_or(false) {
             return None;
         }
         self.hover(p);
@@ -672,8 +755,12 @@ mod tests {
             app("Aaa", "Games"), app("Bbb", "Games"), app("Ccc", "Tools"),
         ]);
         l.toggle_menu();
-        // root: a "Shell" quick-launch first, then the category submenus (sorted)
-        assert_eq!(l.menu_labels(), vec!["Shell", "Games", "Tools"]);
+        // root: a "Shell" quick-launch, the category submenus (sorted), then a
+        // separator and the system section (Systems/Exit/Restart/Shutdown).
+        assert_eq!(
+            l.menu_labels(),
+            vec!["Shell", "Games", "Tools", "", "Systems", "Exit", "Restart", "Shutdown"]
+        );
         assert_eq!(l.path_for_test(), vec![0]); // Shell selected first
         l.move_down(); // select Games (root index 1)
         assert_eq!(l.path_for_test(), vec![1]);
@@ -689,6 +776,26 @@ mod tests {
         l.toggle_menu(); l.toggle_menu(); // reopen fresh
         l.move_down(); l.expand(); l.collapse();
         assert_eq!(l.path_for_test(), vec![1]);
+    }
+
+    #[test]
+    fn system_section_skips_separator_and_yields_sentinels() {
+        let mut l = Launcher::new(vec![app("Aaa", "Games"), app("Ccc", "Tools")]);
+        l.toggle_menu();
+        // Shell(0) Games(1) Tools(2) sep(3) Systems(4) Exit(5) Restart(6) Shutdown(7)
+        l.move_down(); // Games(1)
+        l.move_down(); // Tools(2)
+        assert_eq!(l.path_for_test(), vec![2]);
+        l.move_down(); // skip separator(3) → Systems(4)
+        assert_eq!(l.path_for_test(), vec![4]);
+        assert_eq!(l.activate().map(|e| e.command), Some("@systems".to_string()));
+        l.move_down(); // Exit(5)
+        assert_eq!(l.activate().map(|e| e.command), Some("@exit".to_string()));
+        // move_up skips the separator on the way back up too
+        l.move_up(); // Systems(4)
+        assert_eq!(l.path_for_test(), vec![4]);
+        l.move_up(); // skip separator(3) → Tools(2)
+        assert_eq!(l.path_for_test(), vec![2]);
     }
 
     #[test]

@@ -154,14 +154,14 @@ fn item_rect(w: i32, i: usize) -> Rect {
     Rect::new(d.x + 1, d.y + 1 + i as i32, d.w - 2, 1)
 }
 
-/// The Systems submenu panel, cascading left from the dropdown's Systems row.
+/// The Systems popover panel. Opened from the launcher, so it is anchored at the
+/// top-left (just under the menubar, near the launcher) rather than the old
+/// top-right power button.
 fn systems_rect(w: i32, n_systems: usize) -> Rect {
-    let box_w = 30;
+    let box_w = 30.min(w.max(1));
     let rows = n_systems as i32 + 2; // Local + systems + Add Remote…
     let box_h = rows + 2; // border rows
-    let d = dropdown_rect(w);
-    let x = (d.x - box_w + 1).max(0);
-    Rect::new(x, item_rect(w, SYSTEMS_ROW).y, box_w, box_h)
+    Rect::new(0, 1, box_w, box_h)
 }
 
 /// Screen rect of submenu row `i`: 0 = Local, 1..=n = saved systems,
@@ -250,7 +250,7 @@ impl PowerMenu {
     /// Whether the menu is showing anything (dropdown, submenu, form, or confirm
     /// dialog). When true the menu is modal and the session routes clicks to it.
     pub fn is_open(&self) -> bool {
-        self.open || self.confirm.is_some() || self.forget.is_some() || self.form.is_some()
+        self.open || self.systems_open || self.confirm.is_some() || self.forget.is_some() || self.form.is_some()
     }
 
     /// Whether the Add Remote form is open (the client forwards typed chars).
@@ -274,6 +274,25 @@ impl PowerMenu {
         self.forget = None;
         self.systems_open = false;
         self.form = None;
+    }
+
+    /// Open the confirm dialog for `action` directly (e.g. from the launcher's
+    /// system section), as if its dropdown row had been clicked.
+    pub fn confirm_action(&mut self, action: PowerAction) {
+        self.form = None;
+        self.forget = None;
+        self.systems_open = false;
+        self.confirm = Some(action);
+    }
+
+    /// Open the Systems submenu directly (e.g. from the launcher). Opens the
+    /// standalone systems popover (top-left), not the old top-right dropdown.
+    pub fn open_systems(&mut self) {
+        self.form = None;
+        self.forget = None;
+        self.confirm = None;
+        self.open = false;
+        self.systems_open = true;
     }
 
     // ── Add Remote form input (keyboard path, driven via ClientMsg) ─────────────
@@ -467,20 +486,12 @@ impl PowerMenu {
                 self.form = Some(AddForm::default());
                 return PowerClick::Consumed;
             }
-            if systems_rect(w, n).contains(p) {
-                return PowerClick::Consumed;
-            }
-            if item_rect(w, SYSTEMS_ROW).contains(p) {
-                self.systems_open = false;
-                return PowerClick::Consumed;
-            }
-            // Fall through: a click on the dropdown itself keeps routing below;
-            // anywhere else closes everything.
-            if !dropdown_rect(w).contains(p) {
+            // A click inside the popover (but not on a row) is consumed; anywhere
+            // outside closes it.
+            if !systems_rect(w, n).contains(p) {
                 self.close();
-                return PowerClick::Consumed;
             }
-            self.systems_open = false;
+            return PowerClick::Consumed;
         }
 
         if self.open {
@@ -526,7 +537,7 @@ impl PowerMenu {
             layers.push(Layer { z: 5200, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None });
         }
 
-        if self.open && self.systems_open {
+        if self.systems_open {
             let n = systems.len();
             let s = systems_rect(w, n);
             let mut buf = CellBuffer::new(s.w, s.h);
@@ -822,6 +833,31 @@ mod tests {
             other => panic!("expected a switch, got {other:?}"),
         }
         assert!(!m.is_open());
+    }
+
+    #[test]
+    fn open_systems_anchors_top_left_without_dropdown() {
+        let (w, h) = (120, 40);
+        let s = one_system();
+        let mut m = PowerMenu::new();
+        m.open_systems();
+        assert!(m.is_open());
+        assert!(m.systems_open);
+        assert!(!m.open, "the launcher entry point does not open the old dropdown");
+        // Anchored top-left (near the launcher), not the old top-right position.
+        assert_eq!(systems_rect(w, s.len()).x, 0);
+        let layers = m.render(w, h, &s, &[]);
+        assert!(!layers.is_empty(), "systems popover renders");
+        assert!(layers.iter().all(|l| l.origin.x < w - 10), "no top-right dropdown");
+    }
+
+    #[test]
+    fn confirm_action_opens_centered_confirm_dialog() {
+        let mut m = PowerMenu::new();
+        m.confirm_action(PowerAction::Shutdown);
+        assert!(m.is_open());
+        assert_eq!(m.confirm, Some(PowerAction::Shutdown));
+        assert!(!m.open && !m.systems_open);
     }
 
     #[test]

@@ -22,9 +22,10 @@ fn sample() -> SystemState {
 #[test]
 fn segments_are_right_aligned_and_on_row_zero() {
     let segs = tray_segments(&sample(), 100, 9, 0);
-    let clock = segs.iter().find(|s| s.kind == SegmentKind::Clock).unwrap();
+    // Volume is the farthest-right segment (a fixed eyes-free corner knob).
+    let vol = segs.iter().find(|s| s.kind == SegmentKind::Volume).unwrap();
     let max_x = segs.iter().map(|s| s.rect.x + s.rect.w).max().unwrap();
-    assert_eq!(clock.rect.x + clock.rect.w, max_x);
+    assert_eq!(vol.rect.x + vol.rect.w, max_x);
     assert!(segs.iter().all(|s| s.rect.y == 0));
 }
 
@@ -33,6 +34,7 @@ fn narrow_width_drops_cpu_but_keeps_clock() {
     let wide = tray_segments(&sample(), 100, 9, 0);
     let narrow = tray_segments(&sample(), 24, 9, 0);
     assert!(narrow.iter().any(|s| s.kind == SegmentKind::Clock));
+    assert!(narrow.iter().any(|s| s.kind == SegmentKind::Volume), "volume is always kept");
     assert!(!narrow.iter().any(|s| s.kind == SegmentKind::Cpu));
     assert!(wide.iter().any(|s| s.kind == SegmentKind::Cpu));
 }
@@ -81,13 +83,10 @@ fn closed_tray_renders_nothing() {
 }
 
 #[test]
-fn clock_segment_shows_date_and_time_when_wide() {
+fn clock_segment_is_time_only() {
+    // The clock shows only the time now; the date/day live in the calendar popover.
     let segs = tray_segments(&sample(), 100, 9, 0);
     let clock = segs.iter().find(|s| s.kind == SegmentKind::Clock).unwrap();
-    assert_eq!(clock.text, "Wed 04 Jun 09:41");
-    // When space is tight the clock narrows to time-only instead of vanishing.
-    let narrow = tray_segments(&sample(), 24, 9, 0);
-    let clock = narrow.iter().find(|s| s.kind == SegmentKind::Clock).unwrap();
     assert_eq!(clock.text, "09:41");
 }
 

@@ -34,18 +34,14 @@ fn click_dock_focuses_window() {
 }
 
 #[test]
-fn clicking_power_button_opens_menu_without_quitting() {
+fn far_right_menubar_click_does_not_quit() {
     let mut core = SessionCore::new(80, 24, Config::default());
     assert!(!core.quit_requested());
-    assert!(!core.power_menu_open());
-    // The power button (host name + ▾) is right-aligned, so the far-right cell of
-    // the menubar is always inside it regardless of the host-name length.
+    // The power button is gone (Exit/Restart/Shutdown moved into the launcher's
+    // system section). A far-right menubar click now lands on the tray and must
+    // never quit the session.
     core.apply(ClientMsg::MouseDown(Point::new(79, 0)));
-    assert!(core.power_menu_open(), "power button should open the menu");
-    assert!(!core.quit_requested(), "opening the menu must not quit immediately");
-    // A click elsewhere dismisses the menu.
-    core.apply(ClientMsg::MouseDown(Point::new(1, 12)));
-    assert!(!core.power_menu_open(), "click outside should dismiss the menu");
+    assert!(!core.quit_requested(), "a menubar click must not quit");
     core.shutdown();
 }
 
