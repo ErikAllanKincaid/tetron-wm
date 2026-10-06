@@ -14,11 +14,20 @@ carry user-visible feature work and the occasional breaking config change.
   release assets (`tetron-wm-<target>.tar.gz`) are all renamed. Existing installs
   must be reinstalled; config/service paths do not migrate automatically.
 - **Menubar launcher button now reads `tetron`**, not the full binary name.
+- **The theme now applies to every surface.** Terminals, the launcher, the file
+  manager, desktop icon labels, the Store, Settings, and the Activity Monitor all
+  read the active theme instead of a hardcoded midnight palette, so theme switches
+  (and the light theme) are no longer skin-deep.
+- **Finer window borders** — a thin green line instead of a wide white band.
+- **No default desktop pins** — the desktop shows only the real contents of
+  `~/Desktop`; add pins via `[[desktop_pins]]`.
 
 ### Added
 - **Light theme** — a fifth, and first light, palette (`theme = "light"`, or cycle
   it in Settings → Appearance): paper wallpaper, black-on-white terminals, light
   panels, tetron-green highlights.
+- **`terminal_bg` / `terminal_fg` config keys** — decouple terminal colors from the
+  desktop theme (hex or named color); unset = follow the theme.
 
 ### Fixed
 - **Window rename triggers only on the title text now**, not anywhere on the

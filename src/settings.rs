@@ -7,11 +7,15 @@ use crate::cell::{Cell, Rgba};
 use crate::config::{AppEntry, Config};
 use crate::geometry::Point;
 
-const BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
-const FG: Rgba = Rgba { r: 200, g: 208, b: 220, a: 255 };
-const DIM: Rgba = Rgba { r: 120, g: 130, b: 150, a: 255 };
-const SEL_BG: Rgba = Rgba { r: 45, g: 58, b: 85, a: 255 };
-const ACCENT: Rgba = Rgba { r: 108, g: 182, b: 255, a: 255 };
+// Chrome colors follow the active desktop theme (were hardcoded midnight, which
+// left Settings dark under every theme). Named `pal_*` to avoid colliding with
+// local `bg`/`fg` bindings in the render code.
+fn pal_bg() -> Rgba { crate::theme::current().window_bg }
+fn pal_fg() -> Rgba { crate::theme::current().text }
+fn pal_dim() -> Rgba { crate::theme::current().dim }
+fn pal_sel() -> Rgba { crate::theme::current().active_bg }
+fn pal_accent() -> Rgba { crate::theme::current().accent }
+// Semantic success color (e.g. the "on"/checked state); not theme-swapped.
 const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
 
 const SIDEBAR_W: i32 = 18;
@@ -360,24 +364,24 @@ impl Settings {
     /// Render the panel into a `w × h` content buffer.
     pub fn render(&self, w: i32, h: i32) -> CellBuffer {
         let mut buf = CellBuffer::new(w, h);
-        buf.fill(Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() });
+        buf.fill(Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() });
 
         // Sidebar.
         for (i, s) in SECTIONS.iter().enumerate() {
             let y = 1 + i as i32;
             let sel = i == self.section;
-            let (fg, bg) = if sel { (ACCENT, SEL_BG) } else { (DIM, BG) };
+            let (fg, bg) = if sel { (pal_accent(), pal_sel()) } else { (pal_dim(), pal_bg()) };
             for x in 0..SIDEBAR_W {
                 buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });
             }
             buf.write_str(2, y, s, fg, bg);
         }
         for y in 0..h {
-            buf.set(SIDEBAR_W, y, Cell { ch: '\u{2502}', fg: DIM, bg: BG, attrs: Default::default() });
+            buf.set(SIDEBAR_W, y, Cell { ch: '\u{2502}', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
         }
 
         let cx = SIDEBAR_W + 2;
-        buf.write_str(cx, 1, SECTIONS[self.section], ACCENT, BG);
+        buf.write_str(cx, 1, SECTIONS[self.section], pal_accent(), pal_bg());
 
         match self.section {
             0 => {
@@ -398,18 +402,18 @@ impl Settings {
                 self.row(&mut buf, cx, 4, 1, "Update & Reload", String::new());
                 self.row(&mut buf, cx, 5, 2, "Channel", format!("\u{25C2} {} \u{25B8}", self.cfg.update_branch));
                 let sha = &crate::GIT_SHA[..crate::GIT_SHA.len().min(7)];
-                buf.write_str(cx, 7, &format!("installed: v{} ({})", crate::VERSION, sha), DIM, BG);
+                buf.write_str(cx, 7, &format!("installed: v{} ({})", crate::VERSION, sha), pal_dim(), pal_bg());
                 if !self.update_status.is_empty() {
-                    let col = if self.update_status.contains("available") { GREEN } else { DIM };
-                    buf.write_str(cx, 8, &self.update_status, col, BG);
+                    let col = if self.update_status.contains("available") { GREEN } else { pal_dim() };
+                    buf.write_str(cx, 8, &self.update_status, col, pal_bg());
                 }
                 if self.cfg.update_branch != "main" {
-                    buf.write_str(cx, 9, "dev channel: builds from source (slower).", DIM, BG);
+                    buf.write_str(cx, 9, "dev channel: builds from source (slower).", pal_dim(), pal_bg());
                 }
                 if self.apphost_outdated {
                     self.row(&mut buf, cx, 6, 3, "Restart app server", "(closes apps)".into());
-                    buf.write_str(cx, 10, "The app server predates this update; some features", DIM, BG);
-                    buf.write_str(cx, 11, "won't work until it restarts (your apps will close).", DIM, BG);
+                    buf.write_str(cx, 10, "The app server predates this update; some features", pal_dim(), pal_bg());
+                    buf.write_str(cx, 11, "won't work until it restarts (your apps will close).", pal_dim(), pal_bg());
                 }
             }
             3 => self.render_apps(&mut buf, cx, w),
@@ -420,9 +424,9 @@ impl Settings {
                 let mark = if crate::assistant::agent_available(agent) { "" } else { " (not installed)" };
                 self.row(&mut buf, cx, 3, 0, "Open as", format!("\u{25C2} {} \u{25B8}", self.cfg.assistant_mode));
                 self.row(&mut buf, cx, 4, 1, "Agent", format!("\u{25C2} {agent} \u{25B8}{mark}"));
-                buf.write_str(cx, 6, "The \u{2726} menubar button opens the assistant.", DIM, BG);
-                buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tetron-wm/assistant", DIM, BG);
-                buf.write_str(cx, 8, "Extra args: assistant_args in config.toml.", DIM, BG);
+                buf.write_str(cx, 6, "The \u{2726} menubar button opens the assistant.", pal_dim(), pal_bg());
+                buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tetron-wm/assistant", pal_dim(), pal_bg());
+                buf.write_str(cx, 8, "Extra args: assistant_args in config.toml.", pal_dim(), pal_bg());
             }
             4 => {
                 for (i, (key, label)) in DEFAULT_APP_ROLES.iter().enumerate() {
@@ -432,9 +436,9 @@ impl Settings {
                 }
             }
             _ => {
-                buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", FG, BG);
-                buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", DIM, BG);
-                buf.write_str(cx, 6, "github.com/ErikAllanKincaid/tetron-wm", DIM, BG);
+                buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
+                buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", pal_dim(), pal_bg());
+                buf.write_str(cx, 6, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
             }
         }
         buf
@@ -443,55 +447,55 @@ impl Settings {
     /// Render the Apps section: either the add form or the custom-app list.
     fn render_apps(&self, buf: &mut CellBuffer, cx: i32, w: i32) {
         if let Some(e) = self.edit.as_ref() {
-            buf.write_str(cx, 3, "Add a custom app", FG, BG);
+            buf.write_str(cx, 3, "Add a custom app", pal_fg(), pal_bg());
             self.field(buf, cx, 5, "Name", &e.name, e.field == 0);
             self.field(buf, cx, 6, "Command", &e.command, e.field == 1);
-            buf.write_str(cx, 8, "Enter save \u{00B7} \u{2191}\u{2193} switch field \u{00B7} Esc cancel", DIM, BG);
+            buf.write_str(cx, 8, "Enter save \u{00B7} \u{2191}\u{2193} switch field \u{00B7} Esc cancel", pal_dim(), pal_bg());
             return;
         }
 
         if self.cfg.launcher.is_empty() {
-            buf.write_str(cx, 3, "No custom apps yet.", DIM, BG);
+            buf.write_str(cx, 3, "No custom apps yet.", pal_dim(), pal_bg());
         }
         for (i, a) in self.cfg.launcher.iter().enumerate() {
             let y = 3 + i as i32;
             let sel = i == self.sel;
             let marker = if sel { "\u{25B8} " } else { "  " };
-            buf.write_str(cx, y, marker, ACCENT, BG);
-            buf.write_str(cx + 2, y, &a.name, if sel { FG } else { DIM }, BG);
+            buf.write_str(cx, y, marker, pal_accent(), pal_bg());
+            buf.write_str(cx + 2, y, &a.name, if sel { pal_fg() } else { pal_dim() }, pal_bg());
             let cmd = command_line(a);
             let cmd_x = cx + 16;
             let max = (w - cmd_x - 12).max(4) as usize;
-            buf.write_str(cmd_x, y, &truncate(&cmd, max), DIM, BG);
+            buf.write_str(cmd_x, y, &truncate(&cmd, max), pal_dim(), pal_bg());
             if sel {
-                buf.write_str(w - 12, y, "\u{2190} remove", DIM, BG);
+                buf.write_str(w - 12, y, "\u{2190} remove", pal_dim(), pal_bg());
             }
         }
         // "＋ Add app…" row.
         let add_y = 3 + self.cfg.launcher.len() as i32;
         let add_sel = self.sel == self.cfg.launcher.len();
         let marker = if add_sel { "\u{25B8} " } else { "  " };
-        buf.write_str(cx, add_y, marker, ACCENT, BG);
-        buf.write_str(cx + 2, add_y, "\u{FF0B} Add app\u{2026}", if add_sel { GREEN } else { DIM }, BG);
+        buf.write_str(cx, add_y, marker, pal_accent(), pal_bg());
+        buf.write_str(cx + 2, add_y, "\u{FF0B} Add app\u{2026}", if add_sel { GREEN } else { pal_dim() }, pal_bg());
     }
 
     /// Draw one labelled form field with a block cursor on the focused field.
     fn field(&self, buf: &mut CellBuffer, x: i32, y: i32, label: &str, value: &str, focused: bool) {
-        let lcol = if focused { ACCENT } else { DIM };
-        buf.write_str(x, y, &format!("{label}:"), lcol, BG);
+        let lcol = if focused { pal_accent() } else { pal_dim() };
+        buf.write_str(x, y, &format!("{label}:"), lcol, pal_bg());
         let vx = x + 10;
         let shown = if focused { format!("{value}\u{2588}") } else { value.to_string() };
-        buf.write_str(vx, y, &shown, FG, BG);
+        buf.write_str(vx, y, &shown, pal_fg(), pal_bg());
     }
 
     fn row(&self, buf: &mut CellBuffer, x: i32, y: i32, idx: usize, label: &str, value: String) {
         let sel = idx == self.sel && self.item_count() > 0;
         let marker = if sel { "\u{25B8} " } else { "  " };
-        buf.write_str(x, y, marker, ACCENT, BG);
-        buf.write_str(x + 2, y, label, if sel { FG } else { DIM }, BG);
+        buf.write_str(x, y, marker, pal_accent(), pal_bg());
+        buf.write_str(x + 2, y, label, if sel { pal_fg() } else { pal_dim() }, pal_bg());
         let vx = x + 30;
-        let vcol = if value.contains("on") { GREEN } else { FG };
-        buf.write_str(vx, y, &value, vcol, BG);
+        let vcol = if value.contains("on") { GREEN } else { pal_fg() };
+        buf.write_str(vx, y, &value, vcol, pal_bg());
     }
 }
 
