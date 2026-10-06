@@ -1036,6 +1036,24 @@ impl SessionCore {
 
     /// Scroll the scrollback of the PTY app window under `p`. No-op when the
     /// pointer isn't over an app window (native widgets handle their own scroll).
+    /// The volume intent for a wheel event over the Volume tray segment (menubar
+    /// row) — up = louder, ignoring `natural_scroll`. `None` when the pointer is
+    /// not on that segment, so the caller falls through to PTY scrollback.
+    fn volume_scroll_intent(&self, p: Point, lines: i32) -> Option<crate::system::ControlIntent> {
+        use crate::system::ControlIntent;
+        if p.y != 0 {
+            return None;
+        }
+        let on_volume = self
+            .tray_segments_now()
+            .iter()
+            .any(|s| s.kind == crate::tray::SegmentKind::Volume && s.rect.contains(p));
+        if !on_volume {
+            return None;
+        }
+        Some(if lines > 0 { ControlIntent::VolumeUp } else { ControlIntent::VolumeDown })
+    }
+
     fn scroll_app_at(&mut self, p: Point, lines: i32) {
         // "Natural" scrolling inverts the wheel: down goes back into history.
         let lines = if self.cfg.natural_scroll { -lines } else { lines };
@@ -2315,7 +2333,14 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Shutdown => self.shutdown = true,
             ClientMsg::Reload => self.reload = true,
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
-            ClientMsg::ScrollAt { p, lines } => self.scroll_app_at(p, lines),
+            ClientMsg::ScrollAt { p, lines } => {
+                // Wheel over the Volume tray segment adjusts the system volume;
+                // otherwise it scrolls the window under the pointer.
+                match self.volume_scroll_intent(p, lines) {
+                    Some(intent) => self.apply_intent(intent),
+                    None => self.scroll_app_at(p, lines),
+                }
+            }
             ClientMsg::PowerFormChar(c) => self.power_menu.form_char(c),
             ClientMsg::PowerFormBackspace => self.power_menu.form_backspace(),
             ClientMsg::PowerFormNext => self.power_menu.form_next(),
@@ -4798,6 +4823,23 @@ fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wheel_over_volume_segment_yields_volume_intent() {
+        use crate::system::ControlIntent;
+        let core = SessionCore::new(120, 30, crate::config::Config::default());
+        let seg = core
+            .tray_segments_now()
+            .into_iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Volume)
+            .expect("a volume segment is always present");
+        let on = Point::new(seg.rect.x, 0);
+        assert_eq!(core.volume_scroll_intent(on, 3), Some(ControlIntent::VolumeUp));
+        assert_eq!(core.volume_scroll_intent(on, -3), Some(ControlIntent::VolumeDown));
+        // Off the segment (wrong row, or a different column) is not consumed.
+        assert_eq!(core.volume_scroll_intent(Point::new(seg.rect.x, 1), 3), None);
+        assert_eq!(core.volume_scroll_intent(Point::new(0, 0), 3), None);
+    }
 
     #[test]
     fn compat_dialog_arms_only_for_old_hosts_with_apps() {

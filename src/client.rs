@@ -543,6 +543,10 @@ pub(crate) fn route_mouse(
         // Middle-button press: primary-selection paste into the app under `p`.
         (B::Middle, A::Down) => send(out, &ClientMsg::MousePaste(p))?,
         (_, A::Move) => send(out, &ClientMsg::MouseMove(p))?,
+        // Menubar row is chrome: always a positional scroll so the daemon can
+        // route it (e.g. volume over the tray), never the focused widget's scroll.
+        (_, A::ScrollUp) if p.y == 0 => send(out, &ClientMsg::ScrollAt { p, lines: 3 })?,
+        (_, A::ScrollDown) if p.y == 0 => send(out, &ClientMsg::ScrollAt { p, lines: -3 })?,
         (_, A::ScrollUp) if f.store_focused => send(out, &ClientMsg::StoreUp)?,
         (_, A::ScrollDown) if f.store_focused => send(out, &ClientMsg::StoreDown)?,
         (_, A::ScrollUp) if f.filemanager_focused => send(out, &ClientMsg::FileManagerUp)?,

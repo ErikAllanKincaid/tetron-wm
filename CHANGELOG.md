@@ -26,6 +26,10 @@ carry user-visible feature work and the occasional breaking config change.
   high in the tile.
 
 ### Added
+- **Scroll the wheel over the Volume tray segment to change the system volume**
+  (up = louder, ±5 per notch), instead of it falling through to window scrollback.
+  Works regardless of which window is focused (the menubar row is treated as
+  chrome, so a focused Store/Files/Logs no longer swallows the wheel there).
 - **Choose truecolor vs 256-color** — a `truecolor` config key (and
   `TETRON_WM_TRUECOLOR=1/0` env override) forces 24-bit color on or off. Auto-
   detection only enabled truecolor for known terminals or when `COLORTERM`
