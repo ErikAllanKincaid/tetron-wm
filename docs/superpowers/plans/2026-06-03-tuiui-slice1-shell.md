@@ -1,8 +1,8 @@
-# Tuiui Slice 1 — Shell Implementation Plan
+# Tetron-wm Slice 1 — Shell Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A single Rust binary `tuiui` that renders a floating-window terminal desktop — a top menubar + bottom dock, with 2–3 bundled terminal apps each running in its own PTY inside a mouse-draggable, resizable, snappable window.
+**Goal:** A single Rust binary `tetron-wm` that renders a floating-window terminal desktop — a top menubar + bottom dock, with 2–3 bundled terminal apps each running in its own PTY inside a mouse-draggable, resizable, snappable window.
 
 **Architecture:** Pure logic core (geometry, cells, compositor, window manager, input routing) with zero I/O, wrapped by I/O adapters (a `crossterm` terminal backend and a `portable-pty` + `vt100` process host). A `SessionCore` owns the window-manager state and app instances and talks to the front-end render loop through an in-process `ClientMsg`/`CoreMsg` protocol designed to later cross a socket.
 
@@ -28,7 +28,7 @@ src/
   chrome.rs         # render menubar + dock into layers; dock hit regions — PURE
   input.rs          # RawEvent -> Action (WM action | ForwardToApp) + coord translation — PURE
   session.rs        # SessionCore, ClientMsg, CoreMsg — owns wm + apps
-  config.rs         # Config struct, read ~/.config/tuiui/config.toml, defaults
+  config.rs         # Config struct, read ~/.config/tetron-wm/config.toml, defaults
 tests/
   geometry_tests.rs
   cell_tests.rs
@@ -61,7 +61,7 @@ Run: `git checkout -b slice-1-shell`
 
 ```toml
 [package]
-name = "tuiui"
+name = "tetron-wm"
 version = "0.1.0"
 edition = "2021"
 
@@ -74,11 +74,11 @@ toml = "0.8"
 dirs = "5"
 
 [lib]
-name = "tuiui"
+name = "tetron-wm"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tuiui"
+name = "tetron-wm"
 path = "src/main.rs"
 ```
 
@@ -105,7 +105,7 @@ Create each `src/<mod>.rs` listed above as an empty file for now (tasks fill the
 
 ```rust
 fn main() {
-    println!("tuiui");
+    println!("tetron-wm");
 }
 ```
 
@@ -127,7 +127,7 @@ Expected: compiles, `crate_builds` passes. (Empty modules are fine.)
 
 ```bash
 git add -A
-git commit -m "Scaffold tuiui crate: deps, module layout, smoke test"
+git commit -m "Scaffold tetron-wm crate: deps, module layout, smoke test"
 ```
 
 ---
@@ -143,7 +143,7 @@ Pure `Point`/`Rect` and the snapping math. Cell coordinates; `i32` so windows ca
 - [ ] **Step 1: Write failing tests** (`tests/geometry_tests.rs`)
 
 ```rust
-use tuiui::geometry::{Point, Rect, SnapZone, snap_zone, snapped_rect};
+use tetron_wm::geometry::{Point, Rect, SnapZone, snap_zone, snapped_rect};
 
 #[test]
 fn contains_point() {
@@ -257,7 +257,7 @@ git add -A && git commit -m "Add geometry: Point, Rect, snapping math"
 - [ ] **Step 1: Write failing tests** (`tests/cell_tests.rs`)
 
 ```rust
-use tuiui::cell::{Rgba, Cell, CellAttrs};
+use tetron_wm::cell::{Rgba, Cell, CellAttrs};
 
 #[test]
 fn opaque_over_keeps_src() {
@@ -347,8 +347,8 @@ impl Default for Cell {
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::buffer::CellBuffer;
-use tuiui::cell::{Cell, Rgba};
+use tetron_wm::buffer::CellBuffer;
+use tetron_wm::cell::{Cell, Rgba};
 
 #[test]
 fn new_buffer_is_default_filled() {
@@ -434,10 +434,10 @@ Composites z-ordered `Layer`s onto a base buffer (alpha-aware), overlays a curso
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::compositor::{Compositor, Layer, CellChange};
-use tuiui::buffer::CellBuffer;
-use tuiui::cell::{Cell, Rgba};
-use tuiui::geometry::Point;
+use tetron_wm::compositor::{Compositor, Layer, CellChange};
+use tetron_wm::buffer::CellBuffer;
+use tetron_wm::cell::{Cell, Rgba};
+use tetron_wm::geometry::Point;
 
 fn glyph(ch: char, bg: Rgba) -> Cell { Cell { ch, fg: Rgba::rgb(255,255,255), bg, attrs: Default::default() } }
 
@@ -659,9 +659,9 @@ Owns windows, focus, z-order, and the move/resize/snap operations. Pure — no I
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::wm::WindowManager;
-use tuiui::window::{WindowState};
-use tuiui::geometry::{Rect, Point, SnapZone};
+use tetron_wm::wm::WindowManager;
+use tetron_wm::window::{WindowState};
+use tetron_wm::geometry::{Rect, Point, SnapZone};
 
 fn wm() -> WindowManager { WindowManager::new(Rect::new(0,1,80,22)) } // work area
 
@@ -826,7 +826,7 @@ impl WindowManager {
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::config::Config;
+use tetron_wm::config::Config;
 
 #[test]
 fn defaults_are_sane() {
@@ -893,9 +893,9 @@ fn default_shell() -> String { std::env::var("SHELL").unwrap_or_else(|_| "bash".
 impl Config {
     pub fn from_toml_str(s: &str) -> Result<Config, toml::de::Error> { toml::from_str(s) }
 
-    /// Load from ~/.config/tuiui/config.toml, falling back to defaults on any error.
+    /// Load from ~/.config/tetron-wm/config.toml, falling back to defaults on any error.
     pub fn load() -> Config {
-        let path = dirs::config_dir().map(|d| d.join("tuiui").join("config.toml"));
+        let path = dirs::config_dir().map(|d| d.join("tetron-wm").join("config.toml"));
         if let Some(p) = path {
             if let Ok(text) = std::fs::read_to_string(&p) {
                 if let Ok(cfg) = Config::from_toml_str(&text) { return cfg; }
@@ -923,9 +923,9 @@ Renders the menubar (top row) and dock (bottom row) into compositor layers, and 
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::chrome::{render_menubar, render_dock, dock_hit_regions, DockItem};
-use tuiui::geometry::Point;
-use tuiui::window::WindowId;
+use tetron_wm::chrome::{render_menubar, render_dock, dock_hit_regions, DockItem};
+use tetron_wm::geometry::Point;
+use tetron_wm::window::WindowId;
 
 #[test]
 fn menubar_layer_spans_top_row_and_shows_brand() {
@@ -933,7 +933,7 @@ fn menubar_layer_spans_top_row_and_shows_brand() {
     assert_eq!(layer.origin, Point::new(0,0));
     assert_eq!(layer.buf.height(), 1);
     let row: String = (0..20).map(|x| layer.buf.get(x,0).unwrap().ch).collect();
-    assert!(row.contains("Tuiui"));
+    assert!(row.contains("Tetron-wm"));
     assert!(row.contains("btop"));
 }
 
@@ -981,7 +981,7 @@ pub struct DockItem { pub id: WindowId, pub label: String, pub focused: bool }
 pub fn render_menubar(width: i32, focused_app: &str) -> Layer {
     let mut buf = CellBuffer::new(width, 1);
     buf.fill(crate::cell::Cell { ch: ' ', fg: TEXT, bg: MENUBAR_BG, attrs: Default::default() });
-    buf.write_str(1, 0, "✦ Tuiui", BRAND, MENUBAR_BG);
+    buf.write_str(1, 0, "✦ Tetron-wm", BRAND, MENUBAR_BG);
     buf.write_str(10, 0, focused_app, TEXT, MENUBAR_BG);
     Layer { z: 1000, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None }
 }
@@ -1034,15 +1034,15 @@ Adds a function turning a `Window` + its app content buffer into a layer (titleb
 - [ ] **Step 1: Append failing tests to `tests/wm_tests.rs`**
 
 ```rust
-use tuiui::wm::render_window;
-use tuiui::buffer::CellBuffer;
+use tetron_wm::wm::render_window;
+use tetron_wm::buffer::CellBuffer;
 
 #[test]
 fn render_window_draws_title_and_content() {
     let mut m = wm();
     let id = m.add_window("btop".into(), Rect::new(0,1,12,5));
     let mut content = CellBuffer::new(10, 3);
-    content.write_str(0,0,"hello", tuiui::cell::Rgba::rgb(255,255,255), tuiui::cell::Rgba::TRANSPARENT);
+    content.write_str(0,0,"hello", tetron_wm::cell::Rgba::rgb(255,255,255), tetron_wm::cell::Rgba::TRANSPARENT);
     let layers = render_window(m.get(id).unwrap(), &content, true);
     // shadow layer + window layer
     assert!(layers.len() >= 1);
@@ -1126,9 +1126,9 @@ Maps a raw event + current state into an `Action`. Pure decision function; the l
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::input::{route_mouse, MouseKind, Hit, Action};
-use tuiui::geometry::{Rect, Point};
-use tuiui::window::{Window, WindowId, WindowState};
+use tetron_wm::input::{route_mouse, MouseKind, Hit, Action};
+use tetron_wm::geometry::{Rect, Point};
+use tetron_wm::window::{Window, WindowId, WindowState};
 
 fn win(id: u64, rect: Rect, z: i32) -> Window {
     Window { id: WindowId(id), title: "t".into(), rect, z, state: WindowState::Floating, restore_rect: rect }
@@ -1263,9 +1263,9 @@ pub fn route_mouse(kind: MouseKind, p: Point, windows: &[Window], drag: Option<H
 - [ ] **Step 1: Write failing tests** (test the pure ANSI writer + caps via a capture buffer)
 
 ```rust
-use tuiui::terminal::{Caps, frame_to_ansi};
-use tuiui::compositor::CellChange;
-use tuiui::cell::{Cell, Rgba};
+use tetron_wm::terminal::{Caps, frame_to_ansi};
+use tetron_wm::compositor::CellChange;
+use tetron_wm::cell::{Cell, Rgba};
 
 #[test]
 fn truecolor_change_emits_sgr_and_glyph() {
@@ -1388,7 +1388,7 @@ Spawns a child in a PTY, pumps its output through a `vt100::Parser` on a reader 
 - [ ] **Step 1: Write failing tests** (scripted child via `printf`)
 
 ```rust
-use tuiui::ptyhost::AppInstance;
+use tetron_wm::ptyhost::AppInstance;
 use std::time::Duration;
 
 #[test]
@@ -1533,9 +1533,9 @@ Owns the `WindowManager` and the `AppInstance`s, maps `WindowId -> AppInstance`,
 - [ ] **Step 1: Write failing tests**
 
 ```rust
-use tuiui::session::{SessionCore, ClientMsg};
-use tuiui::config::Config;
-use tuiui::geometry::Point;
+use tetron_wm::session::{SessionCore, ClientMsg};
+use tetron_wm::config::Config;
+use tetron_wm::geometry::Point;
 
 #[test]
 fn launching_app_creates_window_and_dock_entry() {
@@ -1747,11 +1747,11 @@ Ties the front-end (terminal backend + crossterm event reader) to the `SessionCo
 - [ ] **Step 1: Implement `src/main.rs`**
 
 ```rust
-use tuiui::compositor::Compositor;
-use tuiui::config::Config;
-use tuiui::session::{SessionCore, ClientMsg};
-use tuiui::terminal::Terminal;
-use tuiui::geometry::Point;
+use tetron_wm::compositor::Compositor;
+use tetron_wm::config::Config;
+use tetron_wm::session::{SessionCore, ClientMsg};
+use tetron_wm::terminal::Terminal;
+use tetron_wm::geometry::Point;
 use crossterm::event::{self, Event, MouseEventKind, MouseButton, KeyCode, KeyModifiers, KeyEventKind};
 use std::time::Duration;
 
@@ -1841,7 +1841,7 @@ fn encode_key(code: KeyCode, mods: KeyModifiers) -> Vec<u8> {
 
 **Files:** none (verification) — fixes land in the relevant module.
 
-- [ ] **Step 1: Create a test config** at `~/.config/tuiui/config.toml`:
+- [ ] **Step 1: Create a test config** at `~/.config/tetron-wm/config.toml`:
 
 ```toml
 snapping_enabled = true

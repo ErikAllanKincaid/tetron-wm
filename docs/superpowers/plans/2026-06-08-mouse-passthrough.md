@@ -4,7 +4,7 @@
 
 **Goal:** Forward full-fidelity mouse (all buttons, drag, scroll, modifiers) into the focused
 PTY app when that app has requested mouse reporting — identically in desktop and simple modes —
-using the app's own encoding (SGR or legacy), without disturbing tuiui's existing chrome/WM
+using the app's own encoding (SGR or legacy), without disturbing tetron-wm's existing chrome/WM
 mouse handling.
 
 **Architecture:** Shared mouse types + a pure encoder in `src/mouse.rs`. The apphost reports
@@ -486,8 +486,8 @@ area gating using a fake/echo if practical; otherwise rely on the encoder's own 
 ```rust
 #[test]
 fn app_mouse_area_none_without_mouse_mode() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     // A bare shell hasn't enabled mouse reporting → no app area, passthrough off.
@@ -595,7 +595,7 @@ cargo build 2>&1 | tail -3 && cargo test 2>&1 | grep -cE "test result: ok" && ca
 
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 - **btop**: click panels / sort columns, scroll the process list.
 - **yazi**: click files, scroll.
@@ -607,7 +607,7 @@ tuiui kill; tuiui
 
 - [ ] **Step 3: Update memory**
 
-Add to `tuiui-roadmap-state`: mouse passthrough DONE (apphost reports `AppMouse`; `src/mouse.rs`
+Add to `tetron-wm-roadmap-state`: mouse passthrough DONE (apphost reports `AppMouse`; `src/mouse.rs`
 encoder; `Flags.app_area` gating; forwards SGR/legacy incl. scroll/drag/mods/alt-scroll; both
 modes). Note native gpm is the next planned item.
 

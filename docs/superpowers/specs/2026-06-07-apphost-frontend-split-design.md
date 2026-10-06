@@ -1,7 +1,7 @@
 # Apphost / Frontend Split — Design
 
 **Status:** Approved direction (process split, decided 2026-06-06). This spec details
-it and phases the build. Goal: **live updates** — update tuiui and reload the whole
+it and phases the build. Goal: **live updates** — update tetron-wm and reload the whole
 UI while running apps stay alive with their full terminal state.
 
 ## Problem
@@ -9,7 +9,7 @@ UI while running apps stay alive with their full terminal state.
 Today one process (the daemon) owns *both* the running apps (PTYs + `alacritty`
 terminals + child processes) *and* the frontend (window manager, compositor,
 launcher, desktop, settings, the client-facing socket). Any update requires
-`tuiui kill`, which destroys the apps. We want to replace the frontend without
+`tetron-wm kill`, which destroys the apps. We want to replace the frontend without
 killing apps.
 
 ## Architecture: two processes
@@ -18,7 +18,7 @@ killing apps.
    `alacritty_terminal::Term`, reader thread, the `kittygfx` graphics tap). Holds an
    opaque per-app "frontend metadata" blob (window geometry/title/z — apphost never
    interprets it). Exposes a Unix socket. It rarely changes, so it rarely needs
-   restarting; restarting it (`tuiui kill`) is the only thing that drops apps.
+   restarting; restarting it (`tetron-wm kill`) is the only thing that drops apps.
 2. **frontend** — everything else: `SessionCore` (wm, layout/tiling, launcher,
    desktop icons, settings, tray, compositor) + the existing client-facing socket.
    Connects to apphost as a client. **Replaceable**: kill + relaunch to update; it
@@ -68,13 +68,13 @@ rebuilt empty/default on restart.
 
 ## Update flow
 
-- **`tuiui`** (launcher binary, `main.rs`): ensure apphost running (spawn detached if
+- **`tetron-wm`** (launcher binary, `main.rs`): ensure apphost running (spawn detached if
   the apphost socket is absent) → ensure frontend running (spawn if the frontend
   socket is absent, told where the apphost socket is) → attach the client to the
   frontend (unchanged client path).
-- **`tuiui reload`** (new): tell the frontend to exit, then the launcher restarts it
+- **`tetron-wm reload`** (new): tell the frontend to exit, then the launcher restarts it
   (new binary) against the same apphost → windows + apps restored. apphost untouched.
-- **`tuiui kill`**: stop both (drops apps) — the full reset, as today.
+- **`tetron-wm kill`**: stop both (drops apps) — the full reset, as today.
 - **In-app:** Settings → Updates → "Update & Reload" = install new binary, then
   trigger `reload`. Replaces today's "kill & restart everything".
 
@@ -90,11 +90,11 @@ rebuilt empty/default on restart.
   the design). Fully in one process; all 203 tests still pass. **This carves the seam
   with zero user-visible change — the safe foundation.**
 - **Phase 2 — Separate process + IPC.** Define `proto.rs`; implement the apphost
-  binary path (`tuiui --apphost`) running `LocalAppHost` behind the socket; implement
+  binary path (`tetron-wm --apphost`) running `LocalAppHost` behind the socket; implement
   a `RemoteAppHost` (same API as `LocalAppHost`) that talks over the socket and caches
   `AppFrame`s. `SessionCore` uses `RemoteAppHost`. `main.rs` spawns/connects apphost
   before the frontend. Apps now survive a frontend restart.
-- **Phase 3 — Update UX.** `tuiui reload` + the reconnect/restore-from-`meta` path +
+- **Phase 3 — Update UX.** `tetron-wm reload` + the reconnect/restore-from-`meta` path +
   the in-app "Update & Reload" button; wire `SetMeta` each frame and `Roster` rebuild.
 
 ## Risks
@@ -116,7 +116,7 @@ rebuilt empty/default on restart.
 - Phase 2: `proto` serde round-trips; a `RemoteAppHost`↔`LocalAppHost` loopback test
   over an in-memory/socket pair (spawn → AppFrame received → input echoed).
 - Phase 3: restart-restore test (spawn app, drop+recreate frontend handle, Roster
-  rebuilds the window). Manual: `tuiui reload` keeps a running btop alive.
+  rebuilds the window). Manual: `tetron-wm reload` keeps a running btop alive.
 
 ## Out of scope (later)
 

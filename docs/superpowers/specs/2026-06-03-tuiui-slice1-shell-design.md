@@ -1,23 +1,23 @@
-# Tuiui — Slice 1: "The Shell proves itself"
+# Tetron-wm — Slice 1: "The Shell proves itself"
 
 **Status:** Approved design, ready for implementation planning.
 **Date:** 2026-06-03
-**Parent:** `2026-06-03-tuiui-vision-design.md`
+**Parent:** `2026-06-03-tetron-wm-vision-design.md`
 
 ## Goal
 
-Prove the riskiest, most-defining capabilities of Tuiui in a single runnable binary: **composite overlapping floating windows, each hosting a real terminal app, driven by a mouse cursor, with a dock to switch between them.** If this works, the whole concept works.
+Prove the riskiest, most-defining capabilities of Tetron-wm in a single runnable binary: **composite overlapping floating windows, each hosting a real terminal app, driven by a mouse cursor, with a dock to switch between them.** If this works, the whole concept works.
 
 ## In scope
 
-- A single-process binary (`tuiui`) that takes over the terminal (raw mode, alternate screen, mouse capture) and renders a desktop.
+- A single-process binary (`tetron-wm`) that takes over the terminal (raw mode, alternate screen, mouse capture) and renders a desktop.
 - **Compositor** rendering z-ordered layers to the terminal with double-buffered diffing; a rendered **mouse cursor**; alpha-blended window shadows.
 - **Process/PTY host**: run 2–3 **bundled** apps (configurable list, e.g. `btop`, `lazygit`, a shell) each in its own PTY, parse with `vt100`, expose as a window's content.
 - **Window manager**: floating overlapping windows with titlebars; focus + z-order (click to raise); **drag titlebar to move**; **drag edge/corner to resize**; close button; **drag-to-edge snapping** to half-screen (the one snapping assist proven in this slice).
-- **Minimal chrome**: top menubar (static: `✦ Tuiui` + focused app name + clock) and a **bottom dock** listing running apps; clicking a dock entry focuses/raises that window.
+- **Minimal chrome**: top menubar (static: `✦ Tetron-wm` + focused app name + clock) and a **bottom dock** listing running apps; clicking a dock entry focuses/raises that window.
 - **Input routing**: events over chrome/titlebars/borders go to the window manager; events inside a focused window's content area are forwarded to that app's PTY (translated to the app's local coordinates).
 - **Capability detection**: detect truecolor + mouse mode (SGR-1016 pixel if available, else SGR-1006 cell); render accordingly. Cell-accurate mouse is the baseline that must work everywhere.
-- **Read-only config**: read bundled-app list, snap-threshold, and toggles from `~/.config/tuiui/config.toml` if present, else sane defaults. (Writing/Settings UI is Slice 4.)
+- **Read-only config**: read bundled-app list, snap-threshold, and toggles from `~/.config/tetron-wm/config.toml` if present, else sane defaults. (Writing/Settings UI is Slice 4.)
 - Clean teardown: quit hotkey kills child PTYs, restores the terminal.
 - **Core/client boundary present in-process**: the window/app state lives behind a `SessionCore` interface that communicates with the renderer/input front-end via a message type, so Slice 2 can move it across a socket without restructuring.
 
@@ -73,7 +73,7 @@ Daemon/socket/SSH attach & persistence (Slice 2); the Store, catalog sync, insta
 
 ## Done when
 
-- `tuiui` launches, shows menubar + dock + desktop.
+- `tetron-wm` launches, shows menubar + dock + desktop.
 - 2–3 bundled apps open in floating windows; each runs and renders correctly (`btop` animates, `lazygit` is interactive).
 - Windows can be moved, resized, raised, focused, and closed with the mouse; drag-to-edge snaps to halves.
 - Keyboard/mouse reach the focused app; the quit chord restores the terminal with no leaked child processes.

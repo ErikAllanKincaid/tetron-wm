@@ -2,7 +2,7 @@
 
 ## What I'm fixing
 
-You have a wedged `tuiui` stack and you want a built-in way to see and kill the apps `tuiui` is running.
+You have a wedged `tetron-wm` stack and you want a built-in way to see and kill the apps `tetron-wm` is running.
 
 ### Root cause of the blank shell (no code change required)
 
@@ -10,12 +10,12 @@ From `ps`/`lsof`/socket ownership:
 
 | PID     | Role                       | Started          | Socket it owns                       | Notes                                                                                  |
 |---------|----------------------------|------------------|--------------------------------------|----------------------------------------------------------------------------------------|
-| `3194`  | `tuiui` front-end client   | Thu 18:17 (1d+)  | none (fds point at dead daemon peer) | **Stale** — orphan client attached to a long-gone daemon.                              |
-| `1633`  | `tuiui --apphost`          | Thu 18:17 (1d+)  | `apphost.sock`                       | Owns the live apps from yesterday.                                                     |
-| `86161` | `tuiui --daemon` (fresh)   | 7:53 pm (4 min)  | `daemon.sock`, `daemon-ctl.sock`     | Rebound the daemon socket; re-used the apphost already running.                        |
+| `3194`  | `tetron-wm` front-end client   | Thu 18:17 (1d+)  | none (fds point at dead daemon peer) | **Stale** — orphan client attached to a long-gone daemon.                              |
+| `1633`  | `tetron-wm --apphost`          | Thu 18:17 (1d+)  | `apphost.sock`                       | Owns the live apps from yesterday.                                                     |
+| `86161` | `tetron-wm --daemon` (fresh)   | 7:53 pm (4 min)  | `daemon.sock`, `daemon-ctl.sock`     | Rebound the daemon socket; re-used the apphost already running.                        |
 | `90291` | `.kilo`                    | 7:54 pm (3 min)  | unix-pair to nothing                 | **R+ 100% CPU**, three orphaned socket fds → Kilo is spinning on broken pipes.         |
 
-The daemon's `serve_client` loop is **single-client-serial** (`src/daemon.rs:97` `for stream in listener.incoming()`). When a second `tuiui` client attached, the first one's stream was severed; the orphan is PID `3194`. The new Kilo window is blank because the apphost's Kilo child is wedged on dead sockets (100% CPU, no readable peer).
+The daemon's `serve_client` loop is **single-client-serial** (`src/daemon.rs:97` `for stream in listener.incoming()`). When a second `tetron-wm` client attached, the first one's stream was severed; the orphan is PID `3194`. The new Kilo window is blank because the apphost's Kilo child is wedged on dead sockets (100% CPU, no readable peer).
 
 **Claude Code sessions (PIDs `12013`, `10103`) are untouched.**
 
@@ -23,8 +23,8 @@ The daemon's `serve_client` loop is **single-client-serial** (`src/daemon.rs:97`
 
 ```bash
 kill 3194 1633 86161 90291 2>/dev/null
-rm -f /var/folders/gh/52p2m9rs61d04xmmbb4mxsnh0000gn/T/tuiui-jay/{daemon,daemon-ctl,apphost}.sock
-tuiui
+rm -f /var/folders/gh/52p2m9rs61d04xmmbb4mxsnh0000gn/T/tetron-wm-jay/{daemon,daemon-ctl,apphost}.sock
+tetron-wm
 ```
 
 This unblocks you immediately. Everything below is the new feature.
@@ -35,28 +35,28 @@ This unblocks you immediately. Everything below is the new feature.
 
 Two surfaces, both driving the same data:
 
-1. **CLI** — `tuiui ps` (list hosted apps) and `tuiui kill-app <id>` (kill one). Lives next to the existing `tuiui kill` / `tuiui reload` in `src/main.rs`. Uses the apphost socket directly, so it works from any TTY or over SSH.
+1. **CLI** — `tetron-wm ps` (list hosted apps) and `tetron-wm kill-app <id>` (kill one). Lives next to the existing `tetron-wm kill` / `tetron-wm reload` in `src/main.rs`. Uses the apphost socket directly, so it works from any TTY or over SSH.
 2. **In-app panel** — a new built-in window (`Ctrl+Space m`, plus a dock/menubar entry) showing a live, auto-refreshing table of hosted apps with `k` / `K` to kill, mirroring the Settings/Store/Filter pattern. No new process: it runs inside the existing daemon, which already has the `AppHost` trait handle.
 
 ### CLI scope
 
 ```
-$ tuiui ps
+$ tetron-wm ps
 APPID  PID     CMD                                 COLSxROWS  AGE     STATE
 1      58312   /opt/homebrew/bin/kilo              120x40     2m      alive
 2      —       /bin/zsh                            80x24      1h12m   alive
 3      —       /opt/homebrew/bin/lazygit           200x50     18s     dead (exit 0)
 
-$ tuiui kill-app 1
-tuiui: sent kill to app 1 (kilo, pid 58312)
-$ tuiui kill-app 999
-tuiui: no such app (have: 1, 2, 3)
-$ tuiui kill-app all
-tuiui: sent kill to 3 app(s)
+$ tetron-wm kill-app 1
+tetron-wm: sent kill to app 1 (kilo, pid 58312)
+$ tetron-wm kill-app 999
+tetron-wm: no such app (have: 1, 2, 3)
+$ tetron-wm kill-app all
+tetron-wm: sent kill to 3 app(s)
 ```
 
-- `tuiui ps` and `tuiui kill-app` are subcommands of the **front-end `tuiui` binary** in `src/main.rs` (not `--daemon` / `--apphost`). They connect to the apphost socket directly using the same path resolution as the daemon (`src/protocol.rs:118` `apphost_socket_path()`).
-- Both send a new apphost request and read a structured response, then exit. They do **not** require a client to be attached — they work even with `tuiui` running headless.
+- `tetron-wm ps` and `tetron-wm kill-app` are subcommands of the **front-end `tetron-wm` binary** in `src/main.rs` (not `--daemon` / `--apphost`). They connect to the apphost socket directly using the same path resolution as the daemon (`src/protocol.rs:118` `apphost_socket_path()`).
+- Both send a new apphost request and read a structured response, then exit. They do **not** require a client to be attached — they work even with `tetron-wm` running headless.
 - "age" comes from a spawn timestamp the apphost tracks (new field on `AppInstance`).
 - "pid" comes from `portable_pty::Child::process_id()` — already on the trait, just not surfaced.
 
@@ -114,14 +114,14 @@ The CLI side does need a protocol change — see below.
 | `src/main.rs` (CLI helper)                 | `fn cmd_ps()` and `fn cmd_kill_app(id: &str)`: connect to apphost, send `ListApps`, print, exit. Use `serde_json` for the wire format. |
 | `Cargo.toml`                               | No new deps. `portable_pty` and `serde_json` already in.                                                                             |
 | `tests/`                                   | One new test: spawn 3 apps via `RemoteAppHost::spawn` over a loopback socket, send `ListApps`, assert 3 rows. Reuse the pattern at `src/apphost/remote.rs:209-251`. |
-| `README.md`                                | Add `Ctrl+Space m` to the shortcuts table; add a one-liner for `tuiui ps`/`tuiui kill-app` next to `tuiui kill`/`reload` in the "Persistent daemon" paragraph. |
+| `README.md`                                | Add `Ctrl+Space m` to the shortcuts table; add a one-liner for `tetron-wm ps`/`tetron-wm kill-app` next to `tetron-wm kill`/`reload` in the "Persistent daemon" paragraph. |
 
 ## Things I'm explicitly NOT doing
 
 - **Not** changing the apphost `Kill` semantics (it already kills a single app by id). The CLI just dispatches the same `HostReq::Kill { app }`.
 - **Not** adding a force-kill / SIGKILL path. The portable-pty `Child::kill()` is the right level — process group, SIGTERM-equivalent on macOS/Linux.
-- **Not** showing the daemon/apphost processes themselves. The user's spec was "apps tuiui is managing"; those don't change per-launch and we already have `tuiui service status` for them.
-- **Not** adding a "kill all" key to the in-app panel (only `K` for "kill all dead", which is a no-cost cleanup). Closing the daemon is what `tuiui kill` is for.
+- **Not** showing the daemon/apphost processes themselves. The user's spec was "apps tetron-wm is managing"; those don't change per-launch and we already have `tetron-wm service status` for them.
+- **Not** adding a "kill all" key to the in-app panel (only `K` for "kill all dead", which is a no-cost cleanup). Closing the daemon is what `tetron-wm kill` is for.
 - **Not** touching the Claude Code sessions.
 
 ## Verification
@@ -135,12 +135,12 @@ cargo clippy --all-targets --quiet
 cargo build --release
 
 # Manual: in one terminal
-tuiui &
+tetron-wm &
 # launch a few apps from inside (e.g. via the launcher), then in a different TTY:
-tuiui ps                       # should show them
-tuiui kill-app 1               # kills app 1
-tuiui ps                       # app 1 gone
-# In the running tuiui, Ctrl+Space m should show the same list, with r/k working
+tetron-wm ps                       # should show them
+tetron-wm kill-app 1               # kills app 1
+tetron-wm ps                       # app 1 gone
+# In the running tetron-wm, Ctrl+Space m should show the same list, with r/k working
 ```
 
 The recovery commands at the top are independent of this work — you can run them now to get unstuck before any of the code is written.

@@ -32,7 +32,7 @@
 - [ ] **Step 1: Write the failing test** (append to `tests/geometry_tests.rs`):
 
 ```rust
-use tuiui::geometry::Grid;
+use tetron_wm::geometry::Grid;
 
 #[test]
 fn grid_cell_rects_tile_the_work_area() {
@@ -149,7 +149,7 @@ git commit -m "tiling: Grid cell math (cell_rect/cell_at/index round-trip)"
 - [ ] **Step 1: Write the failing test** (append to `tests/wm_tests.rs`):
 
 ```rust
-use tuiui::geometry::Grid;
+use tetron_wm::geometry::Grid;
 
 #[test]
 fn send_to_cell_places_window_in_grid() {

@@ -39,7 +39,7 @@
 - [ ] **Step 2: Write the failing test** (`tests/kittygfx_tests.rs`):
 
 ```rust
-use tuiui::kittygfx::{GraphicsTap, GraphicsCmd};
+use tetron_wm::kittygfx::{GraphicsTap, GraphicsCmd};
 
 /// Build a Kitty graphics APC: ESC _ G <control> ; <payload> ESC \
 fn apc(control: &str, payload: &str) -> Vec<u8> {
@@ -249,7 +249,7 @@ git commit -m "kittygfx: graphics APC splitter + command control parsing"
 - [ ] **Step 1: Append tests:**
 
 ```rust
-use tuiui::kittygfx::GraphicsState;
+use tetron_wm::kittygfx::GraphicsState;
 
 fn tiny_png() -> Vec<u8> {
     // 1x1 red PNG, generated via the image crate.
@@ -264,7 +264,7 @@ fn direct_png_transmit_decodes() {
     use base64::Engine;
     let png = tiny_png();
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=7", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=7", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 0, 0);
     assert!(st.png(7).is_some());
@@ -277,7 +277,7 @@ fn raw_rgba_transmit_decodes() {
     // 2x2 RGBA = 16 bytes
     let raw: Vec<u8> = (0..16).map(|i| i as u8).collect();
     let b64 = base64::engine::general_purpose::STANDARD.encode(&raw);
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=t,f=32,t=d,s=2,v=2,i=3", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=t,f=32,t=d,s=2,v=2,i=3", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 0, 0);
     assert!(st.png(3).is_some());
@@ -290,9 +290,9 @@ fn chunked_transmit_reassembles() {
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
     let (a, b) = b64.split_at(b64.len() / 2);
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=5,m=1", a)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=d,i=5,m=1", a)), 0, 0);
     assert!(st.png(5).is_none()); // not complete yet
-    st.apply(&tuiui::kittygfx::parse_one(&apc("i=5,m=0", b)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("i=5,m=0", b)), 0, 0);
     assert!(st.png(5).is_some());
 }
 ```
@@ -481,7 +481,7 @@ Task 2 already implemented `place`/`delete`/`query`/temp-file; this task locks t
 fn transmit_and_display_places_at_cursor() {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&tiny_png());
-    let cmd = tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=4,r=2", &b64));
+    let cmd = tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=4,r=2", &b64));
     let mut st = GraphicsState::new();
     st.apply(&cmd, 6, 3);
     assert_eq!(st.placements.len(), 1);
@@ -494,19 +494,19 @@ fn delete_all_and_by_id() {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&tiny_png());
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=1,c=1,r=1", &b64)), 0, 0);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=1,r=1", &b64)), 1, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=1,c=1,r=1", &b64)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=T,f=100,t=d,i=2,c=1,r=1", &b64)), 1, 0);
     assert_eq!(st.placements.len(), 2);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=d,d=i,i=1", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=d,d=i,i=1", "")), 0, 0);
     assert_eq!(st.placements.len(), 1);
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=d,d=A", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=d,d=A", "")), 0, 0);
     assert!(st.placements.is_empty());
 }
 
 #[test]
 fn query_pushes_ok_reply() {
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=q,i=99", "")), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=q,i=99", "")), 0, 0);
     assert_eq!(st.queries.len(), 1);
     assert!(st.queries[0].windows(2).any(|w| w == b"OK"));
 }
@@ -514,13 +514,13 @@ fn query_pushes_ok_reply() {
 #[test]
 fn temp_file_source_is_read() {
     use base64::Engine;
-    let dir = std::env::temp_dir().join(format!("tuiui-a2-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-a2-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("img.png");
     std::fs::write(&path, tiny_png()).unwrap();
     let path_b64 = base64::engine::general_purpose::STANDARD.encode(path.to_string_lossy().as_bytes());
     let mut st = GraphicsState::new();
-    st.apply(&tuiui::kittygfx::parse_one(&apc("a=t,f=100,t=t,i=8", &path_b64)), 0, 0);
+    st.apply(&tetron_wm::kittygfx::parse_one(&apc("a=t,f=100,t=t,i=8", &path_b64)), 0, 0);
     assert!(st.png(8).is_some());
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -677,8 +677,8 @@ git commit -m "session: emit hosted-app graphics placements (A2) in build_frame"
 
 ### Task 6: Manual yazi verification + docs
 
-- [ ] **Step 1:** Full gate green. `cargo install --path . --root ~/.local --force`; on a **Ghostty/Kitty/WezTerm** terminal, `tuiui kill ; tuiui`.
-- [ ] **Step 2:** Install yazi (`Store → yazi`, or `brew install yazi`). Launch it in a tuiui window, navigate to a folder with images. **Expected:** the preview image renders inside the window.
+- [ ] **Step 1:** Full gate green. `cargo install --path . --root ~/.local --force`; on a **Ghostty/Kitty/WezTerm** terminal, `tetron-wm kill ; tetron-wm`.
+- [ ] **Step 2:** Install yazi (`Store → yazi`, or `brew install yazi`). Launch it in a tetron-wm window, navigate to a folder with images. **Expected:** the preview image renders inside the window.
   - If nothing renders, add a temporary debug log in the reader thread (`eprintln!` the captured `cmd.control` to a file) to see whether yazi emits graphics at all (TERM/query detection), what medium it uses, and the cursor cell — then iterate. This is the spike's learning loop.
 - [ ] **Step 3:** Record findings in `docs/superpowers/specs/2026-06-05-graphics-passthrough-a2-design.md` (a "Spike results" section: did yazi emit? medium? positioning accuracy? what's needed for full fidelity). Update `README.md` only if it works (note "experimental: images in hosted apps like yazi"). Commit:
 

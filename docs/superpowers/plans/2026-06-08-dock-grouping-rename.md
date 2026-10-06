@@ -435,8 +435,8 @@ In `tests/session_tests.rs`:
 ```rust
 #[test]
 fn two_same_app_windows_group_in_dock() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
     let mut core = SessionCore::new(120, 40, Config::default());
     let launch = |c: &mut SessionCore| c.apply(ClientMsg::Launch { name: "Claude".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     launch(&mut core);
@@ -449,8 +449,8 @@ fn two_same_app_windows_group_in_dock() {
 
 #[test]
 fn rename_changes_label_not_grouping() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "Claude".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     core.apply(ClientMsg::RenameFocused);
@@ -476,7 +476,7 @@ cargo build 2>&1 | tail -3 && cargo test 2>&1 | grep -cE "test result: ok" && ca
 - [ ] **Step 3: Deploy + manual**
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 Open Claude → dock shows `C Claude`. Double-click its titlebar (or Ctrl+Space r), type `appname`,
 Enter → dock shows `C appname`. Open a second Claude → dock collapses to `C Claude ²`; click it →
@@ -485,7 +485,7 @@ Claude (config), and add `[dock] badges` entries (e.g. `kilo = "yellow"`) take e
 
 - [ ] **Step 4: Update memory + README**
 
-`tuiui-roadmap-state`: dock grouping + window rename + app badges DONE. README "What works today":
+`tetron-wm-roadmap-state`: dock grouping + window rename + app badges DONE. README "What works today":
 add dock grouping + rename + per-app badges; document `[dock.badges]` in the Configuration section.
 
 ---

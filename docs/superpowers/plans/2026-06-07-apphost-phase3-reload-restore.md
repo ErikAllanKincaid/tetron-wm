@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the live-update payoff user-visible: a fresh frontend rebuilds its app windows from the apphost roster, `tuiui reload` (and the in-app Restart / "Update & Reload") restarts only the frontend while apps keep running, and the menubar Restart item becomes active.
+**Goal:** Make the live-update payoff user-visible: a fresh frontend rebuilds its app windows from the apphost roster, `tetron-wm reload` (and the in-app Restart / "Update & Reload") restarts only the frontend while apps keep running, and the menubar Restart item becomes active.
 
 **Architecture:** The frontend serializes each app window's geometry/title/state into the apphost's opaque per-app `meta` each tick (via `set_meta`). On (re)connect, `RemoteAppHost` reads the `Roster` synchronously, and `SessionCore` rebuilds one window per app from its `meta`. A new `ClientMsg::Reload` / `Flags.reload` pair makes the daemon exit **without** tearing down the apphost; the thin client reconnects (spawning a fresh — possibly updated — daemon), which restores the windows.
 
 **Tech Stack:** Rust 2021, the Phase 2 apphost (`AppHost`/`LocalAppHost`/`RemoteAppHost`, `proto.rs`), `serde_json`, `src/window.rs` (`Window { title, rect, z, minimized }`), `src/wm.rs` (`add_window`, `minimize`).
 
-**Reference:** Spec `docs/superpowers/specs/2026-06-07-apphost-frontend-split-design.md` (Phase 3). Phase 2 is implemented: apps run in `tuiui --apphost`; the frontend uses `RemoteAppHost`; `AppHost::{set_meta, meta, shutdown_host}` exist; `SessionCore::with_apphost` injects the host.
+**Reference:** Spec `docs/superpowers/specs/2026-06-07-apphost-frontend-split-design.md` (Phase 3). Phase 2 is implemented: apps run in `tetron-wm --apphost`; the frontend uses `RemoteAppHost`; `AppHost::{set_meta, meta, shutdown_host}` exist; `SessionCore::with_apphost` injects the host.
 
 ---
 
@@ -19,7 +19,7 @@
 - `daemon.rs::run()`: `ensure_apphost()` → `SessionCore::with_apphost` → auto-launch `cfg.apps` → `for stream in listener.incoming() { serve_client(...); core.clear_quit(); if shutdown_requested { break } }` → `remove_file(socket)` → `core.shutdown()`.
 - `daemon.rs::serve_client()`: 16ms loop; builds `Flags { ..., detach: core.quit_requested() }`; sends `FrameMsg`; `if core.quit_requested() { return }`.
 - `client.rs::run(stream) -> io::Result<()>`: reader thread sets `detached=true` on `flags.detach` or EOF; main loop breaks on `detached`. The `q` leader key breaks (detach); `Q` sends Shutdown then breaks.
-- `main.rs::attach(spawn_if_missing)`: connects (spawning `--daemon` if missing) then `tuiui::client::run(stream)`.
+- `main.rs::attach(spawn_if_missing)`: connects (spawning `--daemon` if missing) then `tetron_wm::client::run(stream)`.
 - `powermenu.rs`: `PowerAction::{Exit,Restart,Shutdown}`; `Restart::enabled()` returns `false` (dimmed "(soon)"); `PowerOutcome::{Detach,Shutdown}`; `on_click` maps confirm → outcome.
 - Settings "Install Update" (`session.rs` ~line 861, `SettingsAction::InstallUpdate`) launches a shell running `cargo install --git ... ; <message>`.
 
@@ -100,8 +100,8 @@ Add to the session test module (or `tests/session_tests.rs`) a test using the in
 ```rust
 #[test]
 fn sync_app_meta_records_window_state() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
     let mut core = SessionCore::new(100, 30, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     core.sync_app_meta();
@@ -251,8 +251,8 @@ Add a restore unit test to `tests/session_tests.rs`:
 ```rust
 #[test]
 fn restore_rebuilds_app_window_from_meta() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
     // Launch an app, push its meta, then simulate a fresh frontend over the SAME
     // in-process host by constructing a new SessionCore around a host that already
     // owns the app. We approximate this by reusing the same core: drop its window
@@ -304,14 +304,14 @@ git commit --no-verify -m "apphost: restore app windows from roster meta on (re)
 
 ---
 
-## Task 3: Reload plumbing — `ClientMsg::Reload`, `Flags.reload`, daemon reload-exit, client reconnect, `tuiui reload`
+## Task 3: Reload plumbing — `ClientMsg::Reload`, `Flags.reload`, daemon reload-exit, client reconnect, `tetron-wm reload`
 
 **Files:**
 - Modify: `src/session.rs` (Reload msg + flag)
 - Modify: `src/protocol.rs` (`Flags.reload`)
 - Modify: `src/daemon.rs` (send reload flag; exit without tearing down apphost)
 - Modify: `src/client.rs` (`ClientExit` enum; reconnect on reload)
-- Modify: `src/main.rs` (attach reconnect loop; `tuiui reload`)
+- Modify: `src/main.rs` (attach reconnect loop; `tetron-wm reload`)
 
 - [ ] **Step 1: `ClientMsg::Reload` + a `reload` flag on the core**
 
@@ -414,7 +414,7 @@ pub enum ClientExit {
 ```
 Ensure every existing `return Ok(())`/fall-through in `run` is updated to return a `ClientExit` (the leader-`q`/`Q` `break`s fall through to the final return → `Detached`, which is correct; just fix the final `Ok(())`).
 
-- [ ] **Step 5: `main.rs` reconnect loop + `tuiui reload`**
+- [ ] **Step 5: `main.rs` reconnect loop + `tetron-wm reload`**
 
 In `src/main.rs`:
 - Change `attach` so it loops on `ClientExit::Reload`, re-attaching (which spawns a fresh — updated — daemon because the old one exited):
@@ -424,7 +424,7 @@ fn attach(spawn_if_missing: bool) -> std::io::Result<()> {
         let path = socket_path();
         if UnixStream::connect(&path).is_err() {
             if !spawn_if_missing {
-                eprintln!("tuiui: no daemon running (start it with `tuiui`)");
+                eprintln!("tetron-wm: no daemon running (start it with `tetron-wm`)");
                 return Ok(());
             }
             spawn_daemon()?;
@@ -434,14 +434,14 @@ fn attach(spawn_if_missing: bool) -> std::io::Result<()> {
                 std::thread::sleep(Duration::from_millis(50));
             }
             if !ready {
-                eprintln!("tuiui: daemon failed to start");
+                eprintln!("tetron-wm: daemon failed to start");
                 return Ok(());
             }
         }
         let stream = UnixStream::connect(&path)?;
-        match tuiui::client::run(stream)? {
-            tuiui::client::ClientExit::Detached => return Ok(()),
-            tuiui::client::ClientExit::Reload => {
+        match tetron_wm::client::run(stream)? {
+            tetron_wm::client::ClientExit::Detached => return Ok(()),
+            tetron_wm::client::ClientExit::Reload => {
                 // The daemon is restarting; wait briefly for the old socket to
                 // drop, then loop to spawn/connect the fresh daemon.
                 for _ in 0..100 {
@@ -461,13 +461,13 @@ fn attach(spawn_if_missing: bool) -> std::io::Result<()> {
 fn reload() -> std::io::Result<()> {
     match UnixStream::connect(socket_path()) {
         Ok(mut stream) => {
-            let mut buf = serde_json::to_vec(&tuiui::session::ClientMsg::Reload)
+            let mut buf = serde_json::to_vec(&tetron_wm::session::ClientMsg::Reload)
                 .map_err(std::io::Error::other)?;
             buf.push(b'\n');
             stream.write_all(&buf)?;
-            println!("tuiui: reload requested");
+            println!("tetron-wm: reload requested");
         }
-        Err(_) => println!("tuiui: no daemon running"),
+        Err(_) => println!("tetron-wm: no daemon running"),
     }
     Ok(())
 }
@@ -482,7 +482,7 @@ cargo build 2>&1 | tail -20
 cargo test 2>&1 | grep -E "test result|error\[|FAILED" | tail -25     # all pass
 cargo clippy --all-targets 2>&1 | tail -20                            # zero warnings
 git add src/session.rs src/protocol.rs src/daemon.rs src/client.rs src/main.rs
-git commit --no-verify -m "apphost: tuiui reload — restart frontend only, keep apps alive (client reconnects)"
+git commit --no-verify -m "apphost: tetron-wm reload — restart frontend only, keep apps alive (client reconnects)"
 ```
 
 ---
@@ -521,7 +521,7 @@ pub enum PowerOutcome {
 ```
 - In `render`'s confirm-dialog `match action`, give Restart a real message + label:
 ```rust
-                PowerAction::Restart => ("Restart tuiui? The UI reloads; your apps keep running.", "Restart"),
+                PowerAction::Restart => ("Restart tetron-wm? The UI reloads; your apps keep running.", "Restart"),
 ```
 - Remove the dimming/`(soon)` rendering of disabled items (all items render with `t.text` now).
 
@@ -574,21 +574,21 @@ git commit --no-verify -m "menubar: enable Restart action (reloads the frontend,
 
 - [ ] **Step 1: Make the installer trigger a reload when it finishes**
 
-In `src/session.rs`, in the `SettingsAction::InstallUpdate` arm, change the shell command tail so it runs `tuiui reload` after a successful install (the install runs in a hosted shell window inside the apphost, so it survives the reload; `tuiui reload` reconnects the frontend with the new binary):
+In `src/session.rs`, in the `SettingsAction::InstallUpdate` arm, change the shell command tail so it runs `tetron-wm reload` after a successful install (the install runs in a hosted shell window inside the apphost, so it survives the reload; `tetron-wm reload` reconnects the frontend with the new binary):
 
 ```rust
                     Some(crate::settings::SettingsAction::InstallUpdate) => {
                         let cmd = format!(
-                            "clear; echo 'Updating tuiui from {repo} …'; echo; \
-cargo install --git {repo} --force && {{ echo; echo 'Reloading tuiui …'; tuiui reload; }} || \
-echo 'Update failed — tuiui not reloaded.'; exec \"$SHELL\"",
+                            "clear; echo 'Updating tetron-wm from {repo} …'; echo; \
+cargo install --git {repo} --force && {{ echo; echo 'Reloading tetron-wm …'; tetron-wm reload; }} || \
+echo 'Update failed — tetron-wm not reloaded.'; exec \"$SHELL\"",
                             repo = crate::REPO_URL,
                         );
-                        self.launch("update tuiui".into(), "sh".into(), vec!["-lc".into(), cmd]);
+                        self.launch("update tetron-wm".into(), "sh".into(), vec!["-lc".into(), cmd]);
                     }
 ```
 
-NOTE: `tuiui` must be on `$PATH` inside the spawned shell (it is, via `~/.local/bin`; the shell is `-lc` so it loads the login profile). If `tuiui` is not found the `&&` chain just won't reload — safe.
+NOTE: `tetron-wm` must be on `$PATH` inside the spawned shell (it is, via `~/.local/bin`; the shell is `-lc` so it loads the login profile). If `tetron-wm` is not found the `&&` chain just won't reload — safe.
 
 - [ ] **Step 2: (Optional) rename the Settings action label**
 
@@ -623,21 +623,21 @@ Expected: build OK; suite count ≥ before; clippy `0`.
 
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 
 - [ ] **Step 3: Manual reload test (the payoff)**
 
 1. Launch an app (e.g. btop or a shell), note its window position and the child PID (`pgrep -fa <app>`).
-2. Open the menu (top-right "tuiui ▾") → **Restart** → confirm. The UI should briefly reload and the app window should reappear in place; the child PID is unchanged (apps survived).
-3. Confirm two processes throughout: `pgrep -fa 'tuiui --apphost'` (unchanged PID across the reload) and `tuiui --daemon` (NEW PID after reload).
-4. `tuiui reload` from a shell window → same effect.
+2. Open the menu (top-right "tetron-wm ▾") → **Restart** → confirm. The UI should briefly reload and the app window should reappear in place; the child PID is unchanged (apps survived).
+3. Confirm two processes throughout: `pgrep -fa 'tetron-wm --apphost'` (unchanged PID across the reload) and `tetron-wm --daemon` (NEW PID after reload).
+4. `tetron-wm reload` from a shell window → same effect.
 5. Settings → Update & Reload → runs `cargo install` then reloads (only if you want to exercise the network path).
 6. Menu → **Shutdown** → confirm: both processes exit.
 
 - [ ] **Step 4: Update memory**
 
-Update `tuiui-roadmap-state`: apphost Phase 3 (reload + restore + Restart enabled + Update & Reload) DONE; the live-update goal is fully realized. Note `[[tuiui-live-update-idea]]` is now implemented.
+Update `tetron-wm-roadmap-state`: apphost Phase 3 (reload + restore + Restart enabled + Update & Reload) DONE; the live-update goal is fully realized. Note `[[tetron-wm-live-update-idea]]` is now implemented.
 
 ---
 
@@ -646,5 +646,5 @@ Update `tuiui-roadmap-state`: apphost Phase 3 (reload + restore + Restart enable
 - **Reload flash:** the frontend fully restarts, so there is a brief blank/redraw. Acceptable — apps and their terminal state are preserved in the apphost.
 - **Auto-launch vs restore:** `cfg.apps` is auto-launched only when `restore_windows_from_host` restored zero windows, preventing duplicate launches on reload. (The user currently has no auto-launch apps, so this is moot today but correct.)
 - **Meta volume:** `sync_app_meta` only sends on change, so a static window costs nothing after the first frame.
-- **`tuiui reload` with no attached client:** the daemon exits and stays down (apps remain in the apphost); the next `tuiui` rebuilds them. The in-app Restart path always has an attached client that reconnects, so it is seamless.
+- **`tetron-wm reload` with no attached client:** the daemon exits and stays down (apps remain in the apphost); the next `tetron-wm` rebuilds them. The in-app Restart path always has an attached client that reconnects, so it is seamless.
 - **Synchronous roster read:** `RemoteAppHost::connect` blocks on the first message. The server always sends `Roster` first; if a future server change reorders this, restore would mis-handle a non-roster first message — `apply_evt` handles any variant safely, but keep `Roster`-first as an invariant.

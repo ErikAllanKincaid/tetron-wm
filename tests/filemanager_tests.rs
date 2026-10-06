@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs;
-use tuiui::filemanager::{FileManager, Overlay, ViewMode};
-use tuiui::geometry::Point;
+use tetron_wm::filemanager::{FileManager, Overlay, ViewMode};
+use tetron_wm::geometry::Point;
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-fm-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-fm-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -97,7 +97,7 @@ fn parent_navigates_up() {
 
 #[test]
 fn activate_file_requests_open_action() {
-    use tuiui::filemanager::FileManagerAction;
+    use tetron_wm::filemanager::FileManagerAction;
     let d = tmp("open");
     fs::write(d.join("notes.md"), b"# hi").unwrap();
     let mut handlers = BTreeMap::new();
@@ -117,7 +117,7 @@ fn activate_file_requests_open_action() {
 
 #[test]
 fn activate_image_requests_open_image() {
-    use tuiui::filemanager::FileManagerAction;
+    use tetron_wm::filemanager::FileManagerAction;
     let d = tmp("img");
     fs::write(d.join("p.png"), b"\x89PNG").unwrap(); // ext is enough for classify
     let mut handlers = BTreeMap::new();
@@ -180,15 +180,15 @@ fn copy_paste_duplicates_into_cwd() {
 #[test]
 fn delete_moves_to_trash_after_confirm() {
     let d = tmp("del");
-    let marker = format!("tuiui-fm-del-{}.txt", std::process::id());
+    let marker = format!("tetron-wm-fm-del-{}.txt", std::process::id());
     fs::write(d.join(&marker), b"x").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
     fm.select_at(0, false, false);
     fm.begin_delete();
-    assert!(matches!(fm.overlay(), Some(tuiui::filemanager::Overlay::ConfirmDelete { .. })));
+    assert!(matches!(fm.overlay(), Some(tetron_wm::filemanager::Overlay::ConfirmDelete { .. })));
     fm.confirm_delete();
     assert!(!d.join(&marker).exists());
-    if let Some(td) = tuiui::fileops::trash_dir() {
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
         let _ = fs::remove_file(td.join(&marker));
     }
     let _ = fs::remove_dir_all(&d);
@@ -196,7 +196,7 @@ fn delete_moves_to_trash_after_confirm() {
 
 #[test]
 fn get_info_overlay_opens_for_focused_entry() {
-    use tuiui::filemanager::Overlay;
+    use tetron_wm::filemanager::Overlay;
     let d = tmp("getinfo");
     fs::write(d.join("a.txt"), b"hello").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
@@ -222,7 +222,7 @@ fn thumbnail_requests_lists_image_entries() {
 
 #[test]
 fn role_icon_requests_lists_non_image_entries_only() {
-    use tuiui::openwith::Role;
+    use tetron_wm::openwith::Role;
     let d = tmp("roleicon");
     fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     fs::write(d.join("note.txt"), b"hi").unwrap();
@@ -240,7 +240,7 @@ fn role_icon_requests_lists_non_image_entries_only() {
 
 #[test]
 fn set_thumb_then_placement_is_reported() {
-    use tuiui::geometry::Rect;
+    use tetron_wm::geometry::Rect;
     let d = tmp("thumbplace");
     fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());

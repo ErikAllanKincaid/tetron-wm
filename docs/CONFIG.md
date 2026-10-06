@@ -1,6 +1,6 @@
-# tuiui (NRO fork) configuration reference
+# tetron-wm (NRO fork) configuration reference
 
-Configuration lives at `~/.config/tuiui/config.toml`. Every option has a default, so the file is optional: with no config at all, the defaults below apply. You only add keys you want to change. A ready-to-edit, fully-commented template is `config.example.toml` in the repo root.
+Configuration lives at `~/.config/tetron-wm/config.toml`. Every option has a default, so the file is optional: with no config at all, the defaults below apply. You only add keys you want to change. A ready-to-edit, fully-commented template is `config.example.toml` in the repo root.
 
 This is the NRO fork, whose defaults differ from upstream tuiui in three places (noted below): snapping and window shadows are off, and the default theme is nord.
 
@@ -78,5 +78,5 @@ These behaviors are fixed in this fork and do not need configuration:
 
 ## Notes
 
-- Changes take effect on the next tuiui launch (Settings → Appearance can toggle a subset live).
+- Changes take effect on the next tetron-wm launch (Settings → Appearance can toggle a subset live).
 - The live Settings UI exposes snapping, snap threshold, grid rows/cols, gap, auto-tile, launch-maximized, shadows, theme, assistant, and updates; the remaining keys are file-only or app-managed.

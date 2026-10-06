@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-tuiui is distributed under the PolyForm Noncommercial 1.0.0 license. It incorporates the following third-party Rust crates, each of which is redistributed under its own permissive open-source license. The applicable license texts are reproduced in full in the "Full license texts" section below.
+tetron-wm is distributed under the PolyForm Noncommercial 1.0.0 license. It incorporates the following third-party Rust crates, each of which is redistributed under its own permissive open-source license. The applicable license texts are reproduced in full in the "Full license texts" section below.
 
 Total third-party crates: **168**
 

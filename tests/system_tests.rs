@@ -1,4 +1,4 @@
-use tuiui::system::{bars_glyph, mem_pct, volume_glyph, VolumeInfo};
+use tetron_wm::system::{bars_glyph, mem_pct, volume_glyph, VolumeInfo};
 
 #[test]
 fn signal_bars_fill_left_to_right() {
@@ -25,7 +25,7 @@ fn mem_pct_rounds_and_guards_zero() {
 
 #[cfg(target_os = "macos")]
 mod macos_argv {
-    use tuiui::system::macos::*;
+    use tetron_wm::system::macos::*;
 
     #[test]
     fn set_volume_builds_osascript_and_clamps() {
@@ -45,7 +45,7 @@ mod macos_argv {
 
 #[cfg(target_os = "linux")]
 mod linux_argv {
-    use tuiui::system::linux::*;
+    use tetron_wm::system::linux::*;
 
     #[test]
     fn set_volume_builds_wpctl_and_clamps() {

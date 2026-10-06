@@ -44,7 +44,7 @@ pub enum Role { Image, Video, Audio, Text, Code, Archive, Pdf, Directory, Execut
 /// What to do when opening a path.
 pub enum OpenAction {
     Navigate,                 // a directory → the FM cd's into it
-    Builtin(&'static str),    // a tuiui viewer, e.g. "@image"
+    Builtin(&'static str),    // a tetron-wm viewer, e.g. "@image"
     RunApp { command: String, args: Vec<String> }, // launch a TUI app with the file
     OpenWithMenu,             // unknown → let the user pick
 }

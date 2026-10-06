@@ -5,7 +5,7 @@ desktop and simple view modes.
 
 ## Problem / goal
 
-The mouse currently only drives tuiui's own chrome (menubar, dock, launcher hover) and, in
+The mouse currently only drives tetron-wm's own chrome (menubar, dock, launcher hover) and, in
 desktop mode, window management. It is never delivered to the running app, so btop/yazi/vim/
 lazygit/tmux can't be used with the mouse. Goal: when the pointer is over a **focused app
 that has requested mouse reporting**, forward the event (all buttons, drag, scroll, modifiers)
@@ -99,7 +99,7 @@ bytes to write to the PTY, or `None` if this event shouldn't be forwarded for th
 ## Behaviour across modes
 
 Identical: pointer over a focused mouse-app's content → forwarded to the app; everything else
-→ tuiui chrome. Desktop mode additionally keeps title-bar drag / border resize (those cells
+→ tetron-wm chrome. Desktop mode additionally keeps title-bar drag / border resize (those cells
 are outside `app_area`). Simple mode forwards across the whole work area.
 
 ## Testing

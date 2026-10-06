@@ -5,7 +5,7 @@ Usage:
     curl -fsSL https://raw.githubusercontent.com/rothgar/awesome-tuis/master/README.md -o /tmp/awesome-tuis.md
     python3 scripts/gen_catalog.py /tmp/awesome-tuis.md
 
-The catalog is the seed of the Tuiui store: every app's name, category,
+The catalog is the seed of the Tetron-wm store: every app's name, category,
 description and homepage, plus a best-effort binary-name guess used to detect
 already-installed apps on $PATH.
 """

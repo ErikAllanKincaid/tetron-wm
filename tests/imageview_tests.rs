@@ -1,4 +1,4 @@
-use tuiui::imageview::ImageView;
+use tetron_wm::imageview::ImageView;
 
 #[test]
 fn placeholder_shows_filename_and_reports_id() {

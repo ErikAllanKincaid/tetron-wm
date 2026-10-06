@@ -1,6 +1,6 @@
-# tuiui — project memory for coding agents
+# tetron-wm — project memory for coding agents
 
-tuiui is a window manager & desktop for the terminal, in Rust. Floating
+tetron-wm is a window manager & desktop for the terminal, in Rust. Floating
 windows, dock, cascading launcher, app store (600+ curated TUIs), file
 manager, desktop icons, menubar tray, mouse — rendered as cells over a
 daemon/client socket, like a graphical tmux.
@@ -40,8 +40,8 @@ by `config.update_branch`:
 - **dev** — `cargo install --git --branch dev` (source build, for testing).
 
 The updater reloads via the freshly-installed binary's **absolute path** (a
-bare `tuiui reload` can miss `$PATH` in the non-interactive `sh -lc` it runs
-in) and logs each step (`update: …`) to `~/tuiui-debug.log`. The debug log now
+bare `tetron-wm reload` can miss `$PATH` in the non-interactive `sh -lc` it runs
+in) and logs each step (`update: …`) to `~/tetron-wm-debug.log`. The debug log now
 **appends across reloads** — `dbg_init` used to truncate on every daemon start,
 wiping the very update trace needed to debug it. The long-standing "update
 from Settings gets stuck" report (investigation log:
@@ -58,7 +58,7 @@ parsed.
 ## Architecture (the three processes)
 
 ```
-client (tuiui)  ←socket→  daemon (tuiui --daemon)  ←socket→  apphost (tuiui --apphost)
+client (tetron-wm)  ←socket→  daemon (tetron-wm --daemon)  ←socket→  apphost (tetron-wm --apphost)
 thin renderer              owns SessionCore (all UI state)    owns the PTY apps
 real terminal              composites frames, routes input    survives UI reloads
 ```
@@ -69,7 +69,7 @@ real terminal              composites frames, routes input    survives UI reload
   `main.rs` is also where ssh "system switches" run (the client owns the real
   terminal, so interactive prompts work there and nowhere else).
 - **daemon** (`src/daemon.rs`): serves one client at a time; out-of-band
-  control socket accepts any `ClientMsg` (the `tuiui launch/tile/theme/msg`
+  control socket accepts any `ClientMsg` (the `tetron-wm launch/tile/theme/msg`
   CLI and the AI assistant use it).
 - **session** (`src/session.rs`, the big one): `SessionCore` is the
   `ClientMsg`-in / frame-out boundary. All UI widgets live here as fields.
@@ -98,7 +98,7 @@ real terminal              composites frames, routes input    survives UI reload
 - **Shelling out**: only via `crate::system::run_capped` (hard timeout).
   Never block the render loop on the network — see the poller's separate
   thread for slow probes.
-- **Logging**: `crate::dbg_log` (always on, `~/tuiui-debug.log`, 4MB cap).
+- **Logging**: `crate::dbg_log` (always on, `~/tetron-wm-debug.log`, 4MB cap).
   Log every external effect (ssh, scp, installs, spawns) with enough detail
   to debug from the log alone; users paste it via the in-app Logs viewer.
 - **Geometry/hit-testing**: render and hit-test must share the same rect
@@ -110,8 +110,8 @@ real terminal              composites frames, routes input    survives UI reload
 
 `src/assistant.rs` + the `agent/` folder. `agent/*.md` is the single source
 of truth for everything the in-app agent is told — embedded via
-`include_str!`, stamped into `~/.local/share/tuiui/assistant/` at launch as
-`AGENTS.md`, the context file the assistant reads on startup. tuiui
+`include_str!`, stamped into `~/.local/share/tetron-wm/assistant/` at launch as
+`AGENTS.md`, the context file the assistant reads on startup. tetron-wm
 standardises on the **opencode** CLI (`DEFAULT_AGENT`), with **hermes** as a
 supported alternative (`AGENTS`) — Settings → Assistant switches between the
 two, stored in `assistant_command`, which can also point the panel at any

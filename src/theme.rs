@@ -30,7 +30,7 @@ const fn rgb(r: u8, g: u8, b: u8) -> Rgba {
 }
 
 impl Theme {
-    /// The default dark theme (tuiui's original palette).
+    /// The default dark theme (tetron-wm's original palette).
     pub const fn midnight() -> Self {
         Theme {
             desktop_bg: rgb(44, 46, 50),
@@ -114,19 +114,44 @@ impl Theme {
         }
     }
 
+    /// Light — paper ground, black-on-white terminals, tetron-green highlights.
+    /// The only light preset. `accent` is a darkened green (`#2E7D32`) so button
+    /// labels stay legible on the light panels, while the logo green `#4CAF50`
+    /// carries the highlight as the window `border`.
+    pub const fn light() -> Self {
+        Theme {
+            desktop_bg: rgb(236, 230, 216),
+            window_bg: rgb(255, 255, 255),
+            title_focus: rgb(215, 233, 205),
+            title_blur: rgb(229, 224, 212),
+            title_fg: rgb(43, 43, 43),
+            border: rgb(76, 175, 80),
+            shadow: Rgba { r: 50, g: 45, b: 30, a: 51 },
+            ctrl_fg: rgb(106, 106, 106),
+            close_fg: rgb(209, 82, 76),
+            menubar_bg: rgb(231, 226, 214),
+            dock_bg: rgb(231, 226, 214),
+            text: rgb(26, 26, 26),
+            dim: rgb(110, 106, 94),
+            accent: rgb(46, 125, 50),
+            active_bg: rgb(215, 233, 205),
+        }
+    }
+
     /// Resolve a theme by name (falls back to `midnight`).
     pub fn named(name: &str) -> Self {
         match name.to_lowercase().as_str() {
             "nord" => Self::nord(),
             "gruvbox" => Self::gruvbox(),
             "dracula" => Self::dracula(),
+            "light" => Self::light(),
             _ => Self::midnight(),
         }
     }
 }
 
 /// The names of the built-in presets (for the Settings cycler).
-pub const PRESETS: &[&str] = &["midnight", "nord", "gruvbox", "dracula"];
+pub const PRESETS: &[&str] = &["midnight", "nord", "gruvbox", "dracula", "light"];
 
 fn slot() -> &'static RwLock<Theme> {
     static THEME: OnceLock<RwLock<Theme>> = OnceLock::new();

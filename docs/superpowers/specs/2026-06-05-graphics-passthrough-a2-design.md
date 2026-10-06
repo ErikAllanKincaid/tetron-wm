@@ -2,13 +2,13 @@
 
 **Status:** Approved design (2026-06-05). Subsystem **A2** of the desktop-OS
 roadmap — the research spike that lets **hosted PTY apps** (yazi previews, `timg`,
-later a terminal browser) display real images inside a tuiui window. Scoped as a
+later a terminal browser) display real images inside a tetron-wm window. Scoped as a
 **minimal spike**: prove the end-to-end path with yazi, defer full fidelity.
 
 **Goal:** When a hosted app emits Kitty graphics escapes, capture them before our
 embedded emulator swallows them, decode the image, and render it inside the app's
 window — reusing the A1 image layer (`ImageStore` + `ImagePlacement` + the client's
-Kitty renderer) for output. Validation: **yazi's image preview shows inside a tuiui
+Kitty renderer) for output. Validation: **yazi's image preview shows inside a tetron-wm
 window** (on a Ghostty/Kitty/WezTerm outer terminal).
 
 **Architecture:** A stateful **graphics-splitting tap** sits in the PTY reader

@@ -5,26 +5,26 @@ it auto-starts on login and restarts on crash, on macOS, Linux, and WSL.
 
 ## Goal
 
-`tuiui service install` registers `tuiui --apphost` (the process that owns running apps) as a
+`tetron-wm service install` registers `tetron-wm --apphost` (the process that owns running apps) as a
 per-user background service. It auto-starts on login and restarts on failure, so apps stay alive
-in the background and the daemon/client always find a running apphost. `tuiui service uninstall`
-removes it; `tuiui service status` reports state. The frontend daemon is unchanged (still spawned
+in the background and the daemon/client always find a running apphost. `tetron-wm service uninstall`
+removes it; `tetron-wm service status` reports state. The frontend daemon is unchanged (still spawned
 on attach; it's the replaceable UI).
 
 ## Backends (chosen at runtime by platform + capability)
 
-1. **macOS → launchd LaunchAgent.** Write `~/Library/LaunchAgents/co.uk.janlabs.tuiui-apphost.plist`,
+1. **macOS → launchd LaunchAgent.** Write `~/Library/LaunchAgents/tetron-wm-apphost.plist`,
    then `launchctl bootstrap gui/$UID <plist>` (fallback `launchctl load -w`). `RunAtLoad=true`;
    `KeepAlive = { SuccessfulExit = false }` (restart on crash, NOT on a clean exit — so a clean
-   apphost exit from `tuiui kill` / "already running" does not loop).
+   apphost exit from `tetron-wm kill` / "already running" does not loop).
 2. **Linux/WSL with a usable systemd `--user` instance → systemd user service.** Write
-   `~/.config/systemd/user/tuiui-apphost.service`, then `systemctl --user daemon-reload` +
-   `systemctl --user enable --now tuiui-apphost.service`. `Restart=on-failure`,
+   `~/.config/systemd/user/tetron-wm-apphost.service`, then `systemctl --user daemon-reload` +
+   `systemctl --user enable --now tetron-wm-apphost.service`. `Restart=on-failure`,
    `WantedBy=default.target`. (Note linger: without `loginctl enable-linger $USER` a user service
    stops at logout — acceptable; mention it in `status`.)
 3. **No usable systemd (old WSL / minimal distros) → `~/.profile` hook fallback.** Append a guarded
-   block (between `# >>> tuiui apphost >>>` / `# <<< tuiui apphost <<<` markers) that, on a login
-   shell, starts `tuiui --apphost` in the background if its socket isn't already up. Best-effort:
+   block (between `# >>> tetron-wm apphost >>>` / `# <<< tetron-wm apphost <<<` markers) that, on a login
+   shell, starts `tetron-wm --apphost` in the background if its socket isn't already up. Best-effort:
    no supervision (no restart-on-crash), starts when a login shell runs. `uninstall` strips the block.
 
 **systemd detection (`has_user_systemd`):** run `systemctl --user show-environment`; treat success
@@ -40,11 +40,11 @@ The user installs from their shell, so the captured values are correct. (`USER`/
 are provided by launchd/systemd; the socket dir logic already falls back to the temp dir on macOS.)
 
 `ExecStart` / `ProgramArguments` use `std::env::current_exe()` resolved at install time (the
-installed `tuiui` binary path).
+installed `tetron-wm` binary path).
 
 ## Apphost idempotency (avoid service ↔ daemon races)
 
-The daemon still spawns `tuiui --apphost` on demand if the socket is absent. To avoid two apphosts
+The daemon still spawns `tetron-wm --apphost` on demand if the socket is absent. To avoid two apphosts
 fighting over the socket, `apphost::server::run()` first tries to connect to the existing socket;
 if a live apphost answers, it logs and **exits cleanly (Ok)** instead of rebinding. Combined with
 "restart on failure only", a redundant service start exits without a restart loop, and the daemon's
@@ -52,11 +52,11 @@ on-demand spawn and the service coexist (whichever binds first wins; the other e
 
 ## CLI (`src/main.rs` + `src/service.rs`)
 
-- `tuiui service install` — set up + start the service for this platform.
-- `tuiui service uninstall` — stop + remove it (and strip the profile block / plist / unit).
-- `tuiui service status` — print which backend is in use, whether it's installed/running, and any
+- `tetron-wm service install` — set up + start the service for this platform.
+- `tetron-wm service uninstall` — stop + remove it (and strip the profile block / plist / unit).
+- `tetron-wm service status` — print which backend is in use, whether it's installed/running, and any
   follow-up tips (e.g. enable systemd in WSL, or `loginctl enable-linger`).
-- `tuiui service` (no subcommand) → print usage.
+- `tetron-wm service` (no subcommand) → print usage.
 
 `src/service.rs` separates **pure generators** (plist string, systemd unit string, profile snippet
 — given exe path + env map) from the **effectful** install/uninstall (write files, run
@@ -73,9 +73,9 @@ platform tools.
 - **macOS:** generated plist passes `plutil -lint` (validated in dev without loading it).
 - **Apphost idempotency:** a unit/loopback check that a second `run()` against a live socket returns
   promptly without error (or at least that the connect-probe path is exercised).
-- **Manual (user, per platform):** `tuiui service install` then reboot/relogin → `pgrep -fa
-  'tuiui --apphost'` shows it; kill it → it restarts (systemd/launchd) within seconds; `tuiui`
-  attaches instantly; `tuiui service uninstall` removes it. On WSL, both the systemd and the
+- **Manual (user, per platform):** `tetron-wm service install` then reboot/relogin → `pgrep -fa
+  'tetron-wm --apphost'` shows it; kill it → it restarts (systemd/launchd) within seconds; `tetron-wm`
+  attaches instantly; `tetron-wm service uninstall` removes it. On WSL, both the systemd and the
   `~/.profile`-fallback paths.
 
 ## Out of scope

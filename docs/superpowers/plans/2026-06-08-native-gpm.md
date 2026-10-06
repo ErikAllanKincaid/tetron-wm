@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give tuiui a mouse on a bare Linux console by speaking the `gpm` socket protocol
+**Goal:** Give tetron-wm a mouse on a bare Linux console by speaking the `gpm` socket protocol
 directly (no `libgpm` link → MIT-clean), feeding events through the same client mouse pipeline.
 Linux-console-only; a no-op everywhere else; cross-platform-compilable.
 
@@ -125,7 +125,7 @@ Create `src/gpm.rs`:
 //! Native `gpm` (General Purpose Mouse) client for the bare Linux console.
 //!
 //! Speaks the `/dev/gpmctl` socket protocol directly — no `libgpm` linkage, so it
-//! does not affect tuiui's MIT licensing. Linux-console-only; a no-op elsewhere.
+//! does not affect tetron-wm's MIT licensing. Linux-console-only; a no-op elsewhere.
 
 use crate::mouse::{MouseAction, MouseButton, MouseInput, MouseMods};
 
@@ -251,13 +251,13 @@ Append to `src/gpm.rs`:
 
 ```rust
 /// Start the gpm reader if we're on a Linux console and gpm is reachable.
-/// No-op on other platforms or when not on a VT (unless `TUIUI_GPM=1`).
+/// No-op on other platforms or when not on a VT (unless `TETRON_WM_GPM=1`).
 #[cfg(target_os = "linux")]
 pub fn start(flags: std::sync::Arc<std::sync::Mutex<crate::protocol::Flags>>, out: std::os::unix::net::UnixStream) {
     use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
 
-    let force = std::env::var("TUIUI_GPM").ok();
+    let force = std::env::var("TETRON_WM_GPM").ok();
     if force.as_deref() == Some("0") {
         return;
     }
@@ -478,17 +478,17 @@ gpm path is Linux-only.)
 This must be verified by the user on the bare-metal Debian box:
 ```bash
 sudo apt install gpm           # and ensure the gpm service is running on the VT
-# build/install tuiui on Debian (cargo install --path .), then on a bare console (Ctrl-Alt-F3):
-tuiui
+# build/install tetron-wm on Debian (cargo install --path .), then on a bare console (Ctrl-Alt-F3):
+tetron-wm
 ```
-Move/click the mouse: it should drive tuiui chrome (menubar/dock), windows, and in-app
-passthrough. If it doesn't, run with `TUIUI_DEBUG=1 tuiui` and check `~/tuiui-debug.log` for
-`gpm: connected (vc=…)` and reader status; `TUIUI_GPM=1` forces an attempt if VC detection
+Move/click the mouse: it should drive tetron-wm chrome (menubar/dock), windows, and in-app
+passthrough. If it doesn't, run with `TETRON_WM_DEBUG=1 tetron-wm` and check `~/tetron-wm-debug.log` for
+`gpm: connected (vc=…)` and reader status; `TETRON_WM_GPM=1` forces an attempt if VC detection
 misfires. Report the log lines back for iteration.
 
 - [ ] **Step 3: Update memory**
 
-Add to `tuiui-roadmap-state`: native gpm DONE (Linux-console mouse via `/dev/gpmctl` socket
+Add to `tetron-wm-roadmap-state`: native gpm DONE (Linux-console mouse via `/dev/gpmctl` socket
 protocol, no libgpm; pure parse/map tested; live-verified on Debian = pending user). Note macOS
 can't test the live path.
 

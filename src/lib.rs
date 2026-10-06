@@ -48,22 +48,24 @@ pub mod assistant;
 /// The crate version (from Cargo.toml).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The git commit this binary was built from (stamped by `build.rs`).
-pub const GIT_SHA: &str = env!("TUIUI_GIT_SHA");
-/// Upstream repository the in-app updater checks/installs from.
-pub const REPO_URL: &str = "https://github.com/jaylfc/tuiui";
+pub const GIT_SHA: &str = env!("TETRON_WM_GIT_SHA");
+/// Repository the in-app updater checks/installs from. This is the tetron-wm
+/// fork (adds the tetron mesh-VPN integration), not upstream jaylfc/tuiui --
+/// pointing it upstream would self-update over the tetron patches.
+pub const REPO_URL: &str = "https://github.com/ErikAllanKincaid/tetron-wm";
 
-/// Max size of `~/tuiui-debug.log` before it's reset, so a long-running session
+/// Max size of `~/tetron-wm-debug.log` before it's reset, so a long-running session
 /// can't grow it without bound.
 const DBG_LOG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Append a timestamped line to `~/tuiui-debug.log`. Always on — events are
-/// low-frequency and the in-app Logs viewer (launcher → tuiui → Logs) reads
+/// Append a timestamped line to `~/tetron-wm-debug.log`. Always on — events are
+/// low-frequency and the in-app Logs viewer (launcher → tetron-wm → Logs) reads
 /// this file, so there must be something to show without re-running with an
 /// env var. The log is capped at [`DBG_LOG_MAX_BYTES`]: once exceeded it's
 /// reset (keeping the most recent activity), so it never grows out of hand.
 pub fn dbg_log(msg: &str) {
     let Some(home) = dirs::home_dir() else { return };
-    let path = home.join("tuiui-debug.log");
+    let path = home.join("tetron-wm-debug.log");
     use std::io::Write;
     // Reset the log if it has grown past the cap (events are low-frequency, so the
     // per-call stat is negligible).
@@ -81,7 +83,7 @@ pub fn dbg_log(msg: &str) {
     }
 }
 
-/// Append a session-start banner to `~/tuiui-debug.log` (running version, git
+/// Append a session-start banner to `~/tetron-wm-debug.log` (running version, git
 /// sha, and binary path). Called once at daemon startup.
 ///
 /// Deliberately APPENDS rather than truncates: when an in-app update reloads
@@ -103,7 +105,7 @@ pub fn dbg_init() {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "?".into());
-    dbg_log(&format!("=== tuiui session start (v{VERSION}, git {GIT_SHA}, exe {exe}) ==="));
+    dbg_log(&format!("=== tetron-wm session start (v{VERSION}, git {GIT_SHA}, exe {exe}) ==="));
 }
 pub mod protocol;
 pub mod daemon;

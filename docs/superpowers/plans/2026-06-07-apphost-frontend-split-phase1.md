@@ -158,7 +158,7 @@ pub mod apphost;
 
 - [ ] **Step 2: Run the tests to verify they pass**
 
-Run: `cargo test -p tuiui apphost::host::tests 2>&1 | tail -20`
+Run: `cargo test -p tetron-wm apphost::host::tests 2>&1 | tail -20`
 (If the package name differs, use `cargo test apphost::host::tests`.)
 Expected: `spawn_then_list_then_remove` and `ids_are_unique_and_increasing` PASS.
 
@@ -635,10 +635,10 @@ Expected: build OK, all tests pass, zero clippy warnings.
 
 - [ ] **Step 3: Manual smoke (deploy + run)**
 
-Per the dev loop (see memory `tuiui-dev-loop`):
+Per the dev loop (see memory `tetron-wm-dev-loop`):
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 Manually verify: launch an app from the launcher (e.g. a shell), type into it (input
 works), resize/move its window (PTY resizes), close it (process is reaped), open a
@@ -646,7 +646,7 @@ graphics app (yazi/chafa placement still renders). Behavior must match pre-Phase
 
 - [ ] **Step 4: Update the roadmap memory**
 
-Append to `tuiui-roadmap-state` memory: "apphost/frontend split Phase 1 (in-process
+Append to `tetron-wm-roadmap-state` memory: "apphost/frontend split Phase 1 (in-process
 LocalAppHost boundary, WinContent::App(AppId)) DONE; Phase 2 (separate process + IPC) and
 Phase 3 (update UX) pending." Add the one-line pointer is already present; just update the
 body. (Do this via the Write tool, not a commit.)

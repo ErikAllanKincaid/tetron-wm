@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use tuiui::dirpicker::{DirLister, DirPicker, PendingLaunch};
+use tetron_wm::dirpicker::{DirLister, DirPicker, PendingLaunch};
 
 use std::cell::RefCell;
 

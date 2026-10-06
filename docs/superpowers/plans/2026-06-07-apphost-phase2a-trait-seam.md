@@ -393,7 +393,7 @@ Expected: build OK; test-suite count unchanged or higher; clippy count `0`.
 
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 Launch an app, type into it, open a graphics app (chafa/yazi) — graphics still render. Identical to before.
 

@@ -1,7 +1,7 @@
-use tuiui::chrome::DockKind;
-use tuiui::session::{SessionCore, ClientMsg};
-use tuiui::config::{AppEntry, Config};
-use tuiui::geometry::Point;
+use tetron_wm::chrome::DockKind;
+use tetron_wm::session::{SessionCore, ClientMsg};
+use tetron_wm::config::{AppEntry, Config};
+use tetron_wm::geometry::Point;
 
 #[test]
 fn launching_app_creates_window_and_dock_entry() {
@@ -91,7 +91,7 @@ fn open_settings_creates_focused_settings_window() {
 #[test]
 fn image_window_emits_a_visible_placement() {
     // Write a tiny real PNG to a temp file.
-    let dir = std::env::temp_dir().join(format!("tuiui-img-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-img-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("x.png");
     let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([10, 20, 30, 255]));
@@ -111,7 +111,7 @@ fn image_window_emits_a_visible_placement() {
 
 #[test]
 fn file_manager_emits_thumbnail_placement_for_image() {
-    let dir = std::env::temp_dir().join(format!("tuiui-fmthumb-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-fmthumb-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255]));
@@ -134,7 +134,7 @@ fn file_manager_emits_role_icon_placement_for_non_image_entry() {
     // these have no real thumbnail, so the Icon view should place the shared
     // per-role tile (same image id for every entry of that role) instead of
     // falling back to a bare glyph.
-    let dir = std::env::temp_dir().join(format!("tuiui-fmrole-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-fmrole-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("note.txt"), b"hello").unwrap();
@@ -156,7 +156,7 @@ fn file_manager_emits_role_icon_placement_for_non_image_entry() {
 
 /// Drive the background thumbnail loader until `build_frame` emits an image
 /// placement (or a timeout), returning that frame.
-fn pump_until_image(core: &mut SessionCore) -> tuiui::session::Frame {
+fn pump_until_image(core: &mut SessionCore) -> tetron_wm::session::Frame {
     for _ in 0..200 {
         core.pump_thumbnails();
         let frame = core.build_frame();
@@ -170,7 +170,7 @@ fn pump_until_image(core: &mut SessionCore) -> tuiui::session::Frame {
 
 #[test]
 fn desktop_click_selects_and_double_click_opens_files() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskwire-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskwire-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::create_dir(dir.join("proj")).unwrap();
@@ -181,7 +181,7 @@ fn desktop_click_selects_and_double_click_opens_files() {
     // "proj" is the only icon (idx 0); derive a point inside its tile (the layout
     // is right-aligned, so don't assume top-left).
     let tr = core.desktop_icon_tile_for_test(0);
-    let p = tuiui::geometry::Point::new(tr.x + 1, tr.y + 1);
+    let p = tetron_wm::geometry::Point::new(tr.x + 1, tr.y + 1);
     core.apply(ClientMsg::MouseDown(p));
     assert_eq!(core.desktop_selection_len_for_test(), 1);
     let before = core.window_count();
@@ -193,12 +193,12 @@ fn desktop_click_selects_and_double_click_opens_files() {
 
 #[test]
 fn desktop_new_folder_via_menu_creates_dir() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskmk-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskmk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let mut core = SessionCore::new(100, 30, Config { desktop_pins: vec![], ..Config::default() });
     core.set_desktop_dir_for_test(dir.clone());
-    core.apply(ClientMsg::MouseRightDown(tuiui::geometry::Point::new(60, 20))); // empty desktop menu
+    core.apply(ClientMsg::MouseRightDown(tetron_wm::geometry::Point::new(60, 20))); // empty desktop menu
     // Drive new-folder directly via the editing messages (menu click tested in unit tests):
     core.begin_desktop_new_folder_for_test();
     for c in "Stuff".chars() {
@@ -212,7 +212,7 @@ fn desktop_new_folder_via_menu_creates_dir() {
 
 #[test]
 fn right_click_fm_entry_opens_context_menu() {
-    let dir = std::env::temp_dir().join(format!("tuiui-fmctx-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-fmctx-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("entry.txt"), b"hi").unwrap();
@@ -233,7 +233,7 @@ fn right_click_fm_entry_opens_context_menu() {
 
 #[test]
 fn right_click_fm_toolbar_does_not_open_context_menu() {
-    let dir = std::env::temp_dir().join(format!("tuiui-fmctx2-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-fmctx2-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("entry.txt"), b"hi").unwrap();
@@ -265,7 +265,7 @@ fn open_file_manager_creates_focused_window_and_is_single_instance() {
 
 #[test]
 fn desktop_image_icon_emits_thumbnail_placement() {
-    let dir = std::env::temp_dir().join(format!("tuiui-deskthumb-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-deskthumb-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([9, 9, 9, 255]));
@@ -343,7 +343,7 @@ fn cascade_keyboard_launches_app_from_submenu() {
 
 #[test]
 fn mode_toggle_switches_view() {
-    use tuiui::chrome::menubar_mode_region;
+    use tetron_wm::chrome::menubar_mode_region;
     let mut core = SessionCore::new(120, 40, Config::default());
     assert!(!core.simple_mode());
     let r = menubar_mode_region();
@@ -356,7 +356,7 @@ fn mode_toggle_switches_view() {
 
 #[test]
 fn simple_mode_renders_focused_app_fullscreen_without_desktop() {
-    use tuiui::chrome::menubar_mode_region;
+    use tetron_wm::chrome::menubar_mode_region;
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     core.apply(ClientMsg::MouseDown(Point::new(menubar_mode_region().x, 0)));
@@ -386,7 +386,7 @@ fn tray_popover_click_launches_over_a_covering_window() {
     // mouse_select (which runs first on MouseDown) did not count the tray as an
     // overlay, so it swallowed the click as a text-selection on the window
     // beneath and the launch never fired.
-    use tuiui::tray::SegmentKind;
+    use tetron_wm::tray::SegmentKind;
     let cfg = Config { launch_maximized: true, ..Config::default() };
     let mut core = SessionCore::new(120, 40, cfg);
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
@@ -494,7 +494,7 @@ fn spurious_teleport_drag_does_not_fling_window() {
 
 #[test]
 fn dock_plus_button_opens_a_shell_window() {
-    use tuiui::chrome::dock_new_shell_region;
+    use tetron_wm::chrome::dock_new_shell_region;
     let mut core = SessionCore::new(120, 40, Config::default());
     let before = core.window_count();
     let r = dock_new_shell_region(40); // bottom-left of a height-40 screen
@@ -507,7 +507,7 @@ fn dock_plus_button_opens_a_shell_window() {
 fn closing_launcher_by_clicking_brand_does_not_launch_shell() {
     // Open the launcher (click the brand), then click the brand again to close it.
     // Closing must NOT activate the auto-selected first row (now "Shell").
-    use tuiui::chrome::menubar_brand_region;
+    use tetron_wm::chrome::menubar_brand_region;
     let mut core = SessionCore::new(120, 40, Config::default());
     let before = core.window_count();
     let p = Point::new(menubar_brand_region().x + 1, 0);
@@ -576,7 +576,7 @@ fn closing_filemanager_does_not_confirm() {
 
 #[test]
 fn dock_right_click_ignored_while_another_overlay_is_open() {
-    use tuiui::session::dock_ctx_row_rect;
+    use tetron_wm::session::dock_ctx_row_rect;
     // With the launcher open, right-clicking a dock pill must NOT open the dock
     // context menu underneath it: its click-capture runs before the launcher's,
     // so a hidden menu would silently eat the next click.
@@ -584,7 +584,7 @@ fn dock_right_click_ignored_while_another_overlay_is_open() {
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let before = core.focused_window_rect_for_test().unwrap();
     let items = core.dock_items_for_test();
-    let (_, pill) = tuiui::chrome::dock_hit_regions(120, 40, &items)[0];
+    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
     core.apply(ClientMsg::ToggleMenu); // open the launcher (a blocking overlay)
     assert!(core.launcher_open());
     core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
@@ -598,7 +598,7 @@ fn dock_right_click_ignored_while_another_overlay_is_open() {
 
 #[test]
 fn dock_ctx_menu_stays_on_screen_on_tiny_terminal() {
-    use tuiui::session::dock_ctx_rect;
+    use tetron_wm::session::dock_ctx_rect;
     // On a terminal shorter than the menu box, y must clamp to 0 (never
     // negative) so the rows stay rendered and clickable — render and hit-test
     // share this fn, so the clamp keeps them aligned.
@@ -609,11 +609,11 @@ fn dock_ctx_menu_stays_on_screen_on_tiny_terminal() {
 
 #[test]
 fn dock_right_click_reset_centres_at_half_size() {
-    use tuiui::session::dock_ctx_row_rect;
+    use tetron_wm::session::dock_ctx_row_rect;
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let items = core.dock_items_for_test();
-    let (_, pill) = tuiui::chrome::dock_hit_regions(120, 40, &items)[0];
+    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
     core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
     // Click row 3 (Reset size) using the same geometry the session renders with.
     let row = dock_ctx_row_rect(pill.x, 120, 40, 3);
@@ -626,12 +626,12 @@ fn dock_right_click_reset_centres_at_half_size() {
 
 #[test]
 fn dock_right_click_elsewhere_dismisses_without_acting() {
-    use tuiui::session::dock_ctx_row_rect;
+    use tetron_wm::session::dock_ctx_row_rect;
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let before = core.focused_window_rect_for_test().unwrap();
     let items = core.dock_items_for_test();
-    let (_, pill) = tuiui::chrome::dock_hit_regions(120, 40, &items)[0];
+    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
     core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
     // A click far from the menu dismisses it and must not move/close anything.
     core.apply(ClientMsg::MouseDown(Point::new(2, 5)));
@@ -764,7 +764,7 @@ fn warn_flagged_launcher_app_cancel_does_not_launch() {
     core.shutdown();
 }
 
-/// The `tuiui launch` escape hatch (ClientMsg::Launch) applies the same
+/// The `tetron-wm launch` escape hatch (ClientMsg::Launch) applies the same
 /// help-then-shell wrapper to a bare launch of a catalog-flagged CLI tool
 /// (gum is `"cli": true` in the embedded catalog) — previously it spawned the
 /// bare binary, which printed usage and instantly died (the gap flagged by
@@ -786,7 +786,7 @@ fn bare_cli_launch_via_client_msg_wraps_in_shell() {
     core.shutdown();
 }
 
-/// Explicit args mean an intentional invocation — `tuiui launch gum choose a`
+/// Explicit args mean an intentional invocation — `tetron-wm launch gum choose a`
 /// must run exactly as given, no wrapper. (The window is named after the
 /// catalog CLI app "gum" but runs `true` so the spawn succeeds on any
 /// machine — the point is that the CLI flag must NOT rewrite an invocation

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** `tuiui service install|uninstall|status` that runs `tuiui --apphost` as a per-user
+**Goal:** `tetron-wm service install|uninstall|status` that runs `tetron-wm --apphost` as a per-user
 service (launchd / systemd `--user` / `~/.profile` fallback), so apps stay alive and auto-start.
 
 **Architecture:** New `src/service.rs` with pure generators (plist/unit/profile strings) + effectful
@@ -15,7 +15,7 @@ existing `crate::protocol::apphost_socket_path`.
 **Reference:** Spec `docs/superpowers/specs/2026-06-08-apphost-service-design.md`.
 
 **IMPORTANT (dev machine safety):** This is built/tested on macOS. Do **NOT** run
-`tuiui service install` during development — it would register a real launchd agent on the user's
+`tetron-wm service install` during development — it would register a real launchd agent on the user's
 Mac. Validate only: the unit tests, and `plutil -lint` on a plist written to a **temp** file. The
 user verifies real install on each platform.
 
@@ -62,17 +62,17 @@ git commit --no-verify -m "apphost: exit cleanly if another instance is already 
 
 - [ ] **Step 1:** Pure types/helpers + generators (copy verbatim):
 ```rust
-//! Install `tuiui --apphost` as a per-user service (launchd / systemd --user /
+//! Install `tetron-wm --apphost` as a per-user service (launchd / systemd --user /
 //! ~/.profile fallback) so the app host auto-starts and restarts on crash.
 
 use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
-const LAUNCHD_LABEL: &str = "co.uk.janlabs.tuiui-apphost";
-const SYSTEMD_UNIT: &str = "tuiui-apphost.service";
-const PROFILE_START: &str = "# >>> tuiui apphost >>>";
-const PROFILE_END: &str = "# <<< tuiui apphost <<<";
+const LAUNCHD_LABEL: &str = "tetron-wm-apphost";
+const SYSTEMD_UNIT: &str = "tetron-wm-apphost.service";
+const PROFILE_START: &str = "# >>> tetron-wm apphost >>>";
+const PROFILE_END: &str = "# <<< tetron-wm apphost <<<";
 
 /// Which backend this platform uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +119,7 @@ pub fn systemd_unit(exe: &str, env: &[(String, String)]) -> String {
         env_lines.push_str(&format!("Environment={k}={v}\n"));
     }
     format!(
-        "[Unit]\nDescription=tuiui apphost (keeps your terminal apps alive)\nAfter=default.target\n\n\
+        "[Unit]\nDescription=tetron-wm apphost (keeps your terminal apps alive)\nAfter=default.target\n\n\
 [Service]\nType=simple\nExecStart={exe} --apphost\nRestart=on-failure\nRestartSec=2\n{env_lines}\n\
 [Install]\nWantedBy=default.target\n"
     )
@@ -129,7 +129,7 @@ pub fn systemd_unit(exe: &str, env: &[(String, String)]) -> String {
 pub fn profile_block(exe: &str, sock: &str) -> String {
     format!(
         "{PROFILE_START}\n\
-# Auto-start the tuiui apphost in the background (no systemd available).\n\
+# Auto-start the tetron-wm apphost in the background (no systemd available).\n\
 if command -v {exe} >/dev/null 2>&1 && [ ! -S \"{sock}\" ]; then\n  \
 ( {exe} --apphost >/dev/null 2>&1 & )\nfi\n\
 {PROFILE_END}\n"
@@ -192,7 +192,7 @@ pub fn install() -> io::Result<()> {
                 // Older macOS fallback.
                 let _ = Command::new("launchctl").args(["load", "-w", &ps]).status();
             }
-            println!("tuiui: apphost service installed (launchd: {LAUNCHD_LABEL}).");
+            println!("tetron-wm: apphost service installed (launchd: {LAUNCHD_LABEL}).");
             Ok(())
         }
         Backend::Systemd => {
@@ -202,10 +202,10 @@ pub fn install() -> io::Result<()> {
             let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).status();
             let st = Command::new("systemctl").args(["--user", "enable", "--now", SYSTEMD_UNIT]).status()?;
             if !st.success() {
-                eprintln!("tuiui: `systemctl --user enable --now {SYSTEMD_UNIT}` failed.");
+                eprintln!("tetron-wm: `systemctl --user enable --now {SYSTEMD_UNIT}` failed.");
             }
-            println!("tuiui: apphost service installed (systemd --user: {SYSTEMD_UNIT}).");
-            println!("tuiui: tip — `loginctl enable-linger $USER` keeps it running across logout.");
+            println!("tetron-wm: apphost service installed (systemd --user: {SYSTEMD_UNIT}).");
+            println!("tetron-wm: tip — `loginctl enable-linger $USER` keeps it running across logout.");
             Ok(())
         }
         Backend::Profile => {
@@ -218,11 +218,11 @@ pub fn install() -> io::Result<()> {
             std::fs::write(&path, text)?;
             // Start it now too (best-effort).
             let _ = Command::new(&exe).arg("--apphost").spawn();
-            println!("tuiui: apphost auto-start added to {} (no systemd detected).", path.display());
+            println!("tetron-wm: apphost auto-start added to {} (no systemd detected).", path.display());
             Ok(())
         }
         Backend::Unsupported => {
-            eprintln!("tuiui: service install is not supported on this platform.");
+            eprintln!("tetron-wm: service install is not supported on this platform.");
             Ok(())
         }
     }
@@ -237,14 +237,14 @@ pub fn uninstall() -> io::Result<()> {
                 let _ = Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &path.to_string_lossy()]).status();
                 let _ = std::fs::remove_file(&path);
             }
-            println!("tuiui: apphost service removed (launchd).");
+            println!("tetron-wm: apphost service removed (launchd).");
             Ok(())
         }
         Backend::Systemd => {
             let _ = Command::new("systemctl").args(["--user", "disable", "--now", SYSTEMD_UNIT]).status();
             if let Some(path) = systemd_unit_path() { let _ = std::fs::remove_file(&path); }
             let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).status();
-            println!("tuiui: apphost service removed (systemd --user).");
+            println!("tetron-wm: apphost service removed (systemd --user).");
             Ok(())
         }
         Backend::Profile => {
@@ -253,7 +253,7 @@ pub fn uninstall() -> io::Result<()> {
                     std::fs::write(&path, strip_profile_block(&text))?;
                 }
             }
-            println!("tuiui: apphost auto-start removed from ~/.profile.");
+            println!("tetron-wm: apphost auto-start removed from ~/.profile.");
             Ok(())
         }
         Backend::Unsupported => Ok(()),
@@ -263,7 +263,7 @@ pub fn uninstall() -> io::Result<()> {
 /// Print which backend is used and whether the apphost is currently running.
 pub fn status() -> io::Result<()> {
     let running = std::os::unix::net::UnixStream::connect(crate::protocol::apphost_socket_path()).is_ok();
-    println!("tuiui apphost service:");
+    println!("tetron-wm apphost service:");
     println!("  backend:  {:?}", backend());
     println!("  running:  {}", if running { "yes (socket is up)" } else { "no" });
     match backend() {
@@ -284,7 +284,7 @@ pub fn status() -> io::Result<()> {
     Ok(())
 }
 
-/// Remove the guarded tuiui block from profile text (idempotent).
+/// Remove the guarded tetron-wm block from profile text (idempotent).
 fn strip_profile_block(text: &str) -> String {
     let mut out = String::new();
     let mut skipping = false;
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn launchd_plist_has_apphost_keepalive_and_env() {
-        let p = launchd_plist(LAUNCHD_LABEL, "/usr/local/bin/tuiui", &env());
+        let p = launchd_plist(LAUNCHD_LABEL, "/usr/local/bin/tetron-wm", &env());
         assert!(p.contains("<string>--apphost</string>"));
         assert!(p.contains(LAUNCHD_LABEL));
         assert!(p.contains("<key>RunAtLoad</key><true/>"));
@@ -318,8 +318,8 @@ mod tests {
 
     #[test]
     fn systemd_unit_has_execstart_restart_and_env() {
-        let u = systemd_unit("/usr/local/bin/tuiui", &env());
-        assert!(u.contains("ExecStart=/usr/local/bin/tuiui --apphost"));
+        let u = systemd_unit("/usr/local/bin/tetron-wm", &env());
+        assert!(u.contains("ExecStart=/usr/local/bin/tetron-wm --apphost"));
         assert!(u.contains("Restart=on-failure"));
         assert!(u.contains("Environment=PATH=/usr/bin:/bin"));
         assert!(u.contains("WantedBy=default.target"));
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn profile_block_is_guarded_and_starts_apphost() {
-        let b = profile_block("/usr/local/bin/tuiui", "/run/x/apphost.sock");
+        let b = profile_block("/usr/local/bin/tetron-wm", "/run/x/apphost.sock");
         assert!(b.starts_with(PROFILE_START));
         assert!(b.trim_end().ends_with(PROFILE_END));
         assert!(b.contains("--apphost"));
@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn strip_profile_block_is_idempotent() {
         let base = "export FOO=1\n";
-        let with = format!("{base}{}", profile_block("/x/tuiui", "/s.sock"));
+        let with = format!("{base}{}", profile_block("/x/tetron-wm", "/s.sock"));
         assert_eq!(strip_profile_block(&with), base);
         assert_eq!(strip_profile_block(base), base); // no-op when absent
     }
@@ -351,8 +351,8 @@ cargo test service:: 2>&1 | tail -15
 cargo build 2>&1 | tail -5
 cargo clippy --all-targets 2>&1 | tail -10
 # Validate the generated plist WITHOUT installing it (macOS):
-cat > /tmp/tuiui_plist_check.rs <<'EOF'
-fn main() { print!("{}", tuiui::service::launchd_plist("co.uk.janlabs.tuiui-apphost", "/usr/local/bin/tuiui", &[("PATH".to_string(), "/usr/bin".to_string())])); }
+cat > /tmp/tetron_wm_plist_check.rs <<'EOF'
+fn main() { print!("{}", tetron_wm::service::launchd_plist("tetron-wm-apphost", "/usr/local/bin/tetron-wm", &[("PATH".to_string(), "/usr/bin".to_string())])); }
 EOF
 # (or just write the test plist via a throwaway and run `plutil -lint` on it)
 ```
@@ -364,18 +364,18 @@ git commit --no-verify -m "service: per-user apphost service generators + instal
 
 ---
 
-## Task 3: `tuiui service …` CLI
+## Task 3: `tetron-wm service …` CLI
 
 **Files:** Modify `src/main.rs`
 
 - [ ] **Step 1:** Add the subcommand to `main`'s match:
 ```rust
         Some("service") => match std::env::args().nth(2).as_deref() {
-            Some("install") => tuiui::service::install(),
-            Some("uninstall") => tuiui::service::uninstall(),
-            Some("status") | None => tuiui::service::status(),
+            Some("install") => tetron_wm::service::install(),
+            Some("uninstall") => tetron_wm::service::uninstall(),
+            Some("status") | None => tetron_wm::service::status(),
             Some(other) => {
-                eprintln!("tuiui service: unknown '{other}' (try: install, uninstall, status)");
+                eprintln!("tetron-wm service: unknown '{other}' (try: install, uninstall, status)");
                 Ok(())
             }
         },
@@ -389,7 +389,7 @@ cargo build 2>&1 | tail -5
 cargo test 2>&1 | grep -E "test result|FAILED" | tail -10
 cargo clippy --all-targets 2>&1 | tail -10
 git add src/main.rs
-git commit --no-verify -m "cli: tuiui service install|uninstall|status"
+git commit --no-verify -m "cli: tetron-wm service install|uninstall|status"
 ```
 
 ---
@@ -399,7 +399,7 @@ git commit --no-verify -m "cli: tuiui service install|uninstall|status"
 - [ ] Full gate: `cargo build && cargo test && cargo clippy` clean.
 - [ ] macOS dev: write the generated plist to a temp file and run `plutil -lint <tmp>` to confirm it's
   valid. Do NOT `launchctl bootstrap` it on the dev machine.
-- [ ] README: add a short "Run as a service" section (`tuiui service install` per platform, the WSL
+- [ ] README: add a short "Run as a service" section (`tetron-wm service install` per platform, the WSL
   systemd note, `uninstall`/`status`).
 - [ ] Memory: note the service feature (apphost-only, launchd/systemd/profile, idempotent apphost).
 - [ ] Manual (user): real install on macOS / Linux / WSL (both systemd and profile paths).
@@ -410,7 +410,7 @@ git commit --no-verify -m "cli: tuiui service install|uninstall|status"
   branches compile on every platform; only the generators are unit-tested, the effectful parts run
   the platform tools. `libc::getuid` is available on all unix.
 - **No dev-machine side effects:** never run `install` during dev; the launchd/systemd commands only
-  fire when the user runs `tuiui service install`.
+  fire when the user runs `tetron-wm service install`.
 - **Idempotency:** the apphost connect-probe + "restart on failure only" keeps the service and the
   daemon's on-demand spawn from looping or double-binding.
 - **Env baking:** `service_env()` captures PATH/HOME/SHELL/LANG at install time so the service apphost

@@ -1,6 +1,6 @@
-use tuiui::input::{route_mouse, MouseKind, Hit, Action};
-use tuiui::geometry::{Rect, Point};
-use tuiui::window::{Window, WindowId, WindowState};
+use tetron_wm::input::{route_mouse, MouseKind, Hit, Action};
+use tetron_wm::geometry::{Rect, Point};
+use tetron_wm::window::{Window, WindowId, WindowState};
 
 fn win(id: u64, rect: Rect, z: i32) -> Window {
     Window { id: WindowId(id), title: "t".into(), rect, z, state: WindowState::Floating, restore_rect: rect, minimized: false }

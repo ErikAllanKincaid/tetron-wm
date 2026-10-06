@@ -1,10 +1,30 @@
 # Changelog
 
-All notable changes to tuiui are recorded here. The project uses
+All notable changes to tetron-wm are recorded here. The project uses
 [semantic versioning](https://semver.org); while pre-1.0, minor versions may
 carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
+
+### Changed
+- **Renamed from `tuiui` to `tetron-wm` (breaking).** This is a fork of upstream
+  `jaylfc/tuiui`; sharing the name let installs and the in-app updater collide
+  with upstream. The binary, crate, config dir (`~/.config/tetron-wm`), state dir,
+  log, socket, service unit (`tetron-wm-apphost`), `TETRON_WM_*` env vars, and
+  release assets (`tetron-wm-<target>.tar.gz`) are all renamed. Existing installs
+  must be reinstalled; config/service paths do not migrate automatically.
+- **Menubar launcher button now reads `tetron`**, not the full binary name.
+
+### Added
+- **Light theme** — a fifth, and first light, palette (`theme = "light"`, or cycle
+  it in Settings → Appearance): paper wallpaper, black-on-white terminals, light
+  panels, tetron-green highlights.
+
+### Fixed
+- **Install/update now pull from the fork, not upstream.** `install.sh`, the in-app
+  updater, and the Systems remote-installer pointed at `jaylfc/tuiui`, so a prebuilt
+  install or a Settings → Updates run fetched upstream and dropped the tetron
+  integration. All now target `ErikAllanKincaid/tetron-wm`.
 
 ## [0.14.1] — 2026-10-05
 
@@ -20,7 +40,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [0.14.0] — 2026-10-05
 
 ### Added
-- `tuiui --version` (and `-V`) prints the version.
+- `tetron-wm --version` (and `-V`) prints the version.
 
 ### Changed
 - **Version scheme now tracks tetron core's minor.** Addons version as
@@ -71,12 +91,12 @@ carry user-visible feature work and the occasional breaking config change.
 ## [0.2.12] — 2026-07-19
 
 ### Fixed
-- **`tuiui launch <cli-tool>` no longer opens a window that instantly dies.**
+- **`tetron-wm launch <cli-tool>` no longer opens a window that instantly dies.**
   The v0.2.11 help-then-shell wrapper for catalog-tagged CLI tools only
-  applied to the launcher menu / Spotlight / Store paths; the `tuiui launch`
+  applied to the launcher menu / Spotlight / Store paths; the `tetron-wm launch`
   escape hatch (used by the AI assistant and scripts) still spawned the bare
-  binary, which printed usage and exited. A bare `tuiui launch gum` now gets
-  the same wrapper; passing args (`tuiui launch gum choose a b`) runs the
+  binary, which printed usage and exited. A bare `tetron-wm launch gum` now gets
+  the same wrapper; passing args (`tetron-wm launch gum choose a b`) runs the
   command exactly as given.
 
 ## [0.2.11] — 2026-07-04
@@ -121,7 +141,7 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Changed
 - **The debug log now survives a reload, and records the version + binary** of
-  every daemon start. `dbg_init` previously *truncated* `~/tuiui-debug.log` on
+  every daemon start. `dbg_init` previously *truncated* `~/tetron-wm-debug.log` on
   each daemon startup — so an in-app update that reloaded the daemon wiped its
   own trace, leaving the log useless for diagnosing update failures. It now
   appends a richer banner (`v<version>, git <sha>, exe <path>`) and the reload
@@ -144,17 +164,17 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Fixed
 - **In-app update could "succeed" without changing the running version**: the
-  updater reloads by running a bare `tuiui reload`, but it runs in a
+  updater reloads by running a bare `tetron-wm reload`, but it runs in a
   non-interactive `sh -lc` whose PATH may not include the install dir
   (`~/.local/bin` is added by interactive shell config, not a login `sh`). When
-  `tuiui` wasn't found, `install.sh` still wrote the new binary but the daemon
+  `tetron-wm` wasn't found, `install.sh` still wrote the new binary but the daemon
   never restarted onto it — so the version never moved and the update appeared
   to fail every time. The updater now reloads via the **absolute path** of the
-  freshly-installed binary (`{install_dir}/tuiui reload`), removing the PATH
+  freshly-installed binary (`{install_dir}/tetron-wm reload`), removing the PATH
   dependency.
 
 ### Changed
-- **The updater now logs to `~/tuiui-debug.log`**: the in-app update runs in a
+- **The updater now logs to `~/tetron-wm-debug.log`**: the in-app update runs in a
   window whose output was otherwise lost. Update checks, the install request,
   and each install step (install.sh / cargo fallback / reload / failure) now
   leave breadcrumbs in the debug log, so a failed update is visible in the log
@@ -172,7 +192,7 @@ carry user-visible feature work and the occasional breaking config change.
   short terminals. Ported from the `dev` branch (#11, hardened in #20).
 
 ### Changed
-- **Activity-monitor / apphost follow-ups**: `tuiui ps` and `tuiui kill-app`
+- **Activity-monitor / apphost follow-ups**: `tetron-wm ps` and `tetron-wm kill-app`
   now drain the on-connect roster (and any queued events) before matching the
   `AppList` reply, via a shared `fetch_app_list()` helper; `kill-app all` is
   safe-by-default (only reaps already-dead apps — live apps need an explicit
@@ -216,7 +236,7 @@ on the `dev` branch but never reached `main`, so they were absent from the
   falls back to `main`.
 - **Control-socket lock resilience**: `apply_ctl` no longer holds the queue lock
   across `core.apply` (which could block the control thread), and both lock
-  sites recover a poisoned lock so one panic can't wedge `tuiui launch/tile/
+  sites recover a poisoned lock so one panic can't wedge `tetron-wm launch/tile/
   theme/msg`.
 - **Remote file-manager freeze bounded**: tightened SSH `ConnectTimeout` (4→3s)
   and the frequent navigation ops (list/home → 5s) so an unreachable saved
@@ -257,7 +277,7 @@ on the `dev` branch but never reached `main`, so they were absent from the
   that adding it performed). Exact full-line match only (never touches other
   keys), across all your local identities; it rewrites the file in place inside
   `~/.ssh` (preserving its `0600` perms and SELinux context) and keeps a
-  `.tuiui.bak`. Best-effort on a background thread — an offline host never blocks
+  `.tetron-wm.bak`. Best-effort on a background thread — an offline host never blocks
   the removal or the UI, the local forget always succeeds, and any remote-side
   failure is logged rather than silently assumed done.
 
@@ -279,7 +299,7 @@ on the `dev` branch but never reached `main`, so they were absent from the
 - **Activity Monitor** (Ctrl+Space → A, or `@activity` in the launcher): a
   live, auto-refreshing table of every app the apphost is hosting (id, pid,
   command, age, dimensions, state) with kill-app controls and an Enter/y vs
-  Esc/n confirm for live apps. Also `tuiui ps` and `tuiui kill-app <id|all>`
+  Esc/n confirm for live apps. Also `tetron-wm ps` and `tetron-wm kill-app <id|all>`
   CLI subcommands that work from any terminal or SSH session.
 
 ### Fixed
@@ -305,7 +325,7 @@ a lot of polish.
 
 ### Added
 - **Systems switcher** (power menu → Systems): saved machines with live ●/○
-  reachability dots; **Add Remote** transfers an SSH key, installs tuiui + gpm
+  reachability dots; **Add Remote** transfers an SSH key, installs tetron-wm + gpm
   + your terminal's terminfo on the remote, syncs your systems list, and
   connects; per-system themes; drop back to the local desktop when the remote
   session ends.
@@ -314,7 +334,7 @@ a lot of polish.
   (Claude Code, opencode, smallcode, Kilo, Hermes, OpenClaw). Instructions live
   in the repo `agent/` pack, stamped into the agent's forced working directory
   in every convention the CLIs read. The agent can drive the desktop
-  (`tuiui launch/tile/theme/msg`), read the logs, fix tuiui and open PRs, and
+  (`tetron-wm launch/tile/theme/msg`), read the logs, fix tetron-wm and open PRs, and
   operate across your saved machines over ssh/scp.
 - **Menubar clock + calendar**: date+time, click for a month calendar with
   month navigation and `khal` events.
@@ -323,12 +343,12 @@ a lot of polish.
   clipboard.
 - **Remote files**: browse saved systems over ssh in the file manager; copy
   between machines with Ctrl+C/Ctrl+V (background `scp`, `-3` for remote↔remote).
-- **Logs viewer** (launcher → tuiui → Logs): tails `~/tuiui-debug.log`; `c`
+- **Logs viewer** (launcher → tetron-wm → Logs): tails `~/tetron-wm-debug.log`; `c`
   copies it to the host clipboard via OSC 52.
 - **Scrollback in app windows**: the mouse wheel scrolls a PTY window's history;
   any keystroke snaps back to the live bottom.
 - **Battery** tray segment (Linux sysfs / macOS `pmset`).
-- **Control CLI**: `tuiui launch`, `tile`, `theme`, `msg` drive a running
+- **Control CLI**: `tetron-wm launch`, `tile`, `theme`, `msg` drive a running
   desktop from any shell (also the assistant's control surface).
 - **Updates channel switcher** (Settings → Updates): track `main` (fast
   prebuilt releases) or a `dev` branch (built from source).

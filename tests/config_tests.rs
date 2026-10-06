@@ -1,9 +1,12 @@
-use tuiui::config::Config;
+use tetron_wm::config::Config;
 
 #[test]
 fn defaults_are_sane() {
     let c = Config::default();
-    assert!(c.snapping_enabled);
+    // The fork defaults snapping OFF (docs/CONFIG.md: snapping + window shadows
+    // off, theme nord). Upstream defaulted it on; this assertion was a stale
+    // upstream holdover that the rename's green-suite pass surfaced.
+    assert!(!c.snapping_enabled);
     assert_eq!(c.snap_threshold, 3);
     // No apps auto-start by default; the desktop seeds Files + Store pins instead.
     assert!(c.apps.is_empty());
@@ -28,7 +31,7 @@ command = "bash"
 
 #[test]
 fn save_and_load_roundtrip() {
-    let dir = std::env::temp_dir().join(format!("tuiui-cfg-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetron-wm-cfg-{}", std::process::id()));
     std::env::set_var("XDG_CONFIG_HOME", &dir);
     let c = Config {
         snapping_enabled: false,

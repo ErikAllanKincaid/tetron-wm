@@ -1,4 +1,4 @@
-# tuiui (NRO fork) configuration — ~/.config/tuiui/config.toml
+# tetron-wm (NRO fork) configuration — ~/.config/tetron-wm/config.toml
 #
 # Every option is shown with its DEFAULT value and left commented out: with no
 # config file at all, these exact defaults apply, so you only need a config.toml

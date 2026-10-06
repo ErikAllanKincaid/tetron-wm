@@ -27,7 +27,7 @@ def main() -> int:
     lines = [
         f"The scheduled check found **{len(new_apps)} new TUI(s)** in "
         "[awesome-tuis](https://github.com/rothgar/awesome-tuis) "
-        "that are not yet in the tuiui catalog:\n",
+        "that are not yet in the tetron-wm catalog:\n",
     ]
     for a in new_apps:
         lines.append(f"- [{a['name']}]({a['homepage']}) — _{a['category']}_")

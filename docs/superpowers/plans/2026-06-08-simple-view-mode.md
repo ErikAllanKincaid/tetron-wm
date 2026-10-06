@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a top-bar toggle that flips tuiui between the windowed **desktop** view and a **simple** view that draws the focused app full-screen (no decorations, no desktop icons), reusing the existing menubar + dock; switch apps via the dock.
+**Goal:** Add a top-bar toggle that flips tetron-wm between the windowed **desktop** view and a **simple** view that draws the focused app full-screen (no decorations, no desktop icons), reusing the existing menubar + dock; switch apps via the dock.
 
 **Architecture:** Frontend-only. A `simple: bool` on `SessionCore`; a menubar glyph toggle (`⊞` desktop / `▦` simple) with a hit region; a `build_frame_simple` path; and mode-aware PTY sizing so the focused app fills the work area in simple mode and restores on toggle-back. No apphost/protocol/client changes.
 
@@ -70,7 +70,7 @@ In `tests/chrome_tests.rs`, both `render_menubar(...)` calls need the new `false
 ```rust
 #[test]
 fn menubar_shows_mode_toggle_glyph() {
-    use tuiui::chrome::menubar_mode_region;
+    use tetron_wm::chrome::menubar_mode_region;
     let desktop: String = (0..40).map(|x| render_menubar(40, "x", &[], false).buf.get(x, 0).unwrap().ch).collect();
     assert!(desktop.contains('\u{229E}'), "desktop mode shows ⊞, got {desktop:?}");
     let simple: String = (0..40).map(|x| render_menubar(40, "x", &[], true).buf.get(x, 0).unwrap().ch).collect();
@@ -346,10 +346,10 @@ Expected: clean. Fix any borrow/name issues against the real APIs.
 ```rust
 #[test]
 fn mode_toggle_switches_view() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
-    use tuiui::chrome::menubar_mode_region;
-    use tuiui::geometry::Point;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
+    use tetron_wm::chrome::menubar_mode_region;
+    use tetron_wm::geometry::Point;
     let mut core = SessionCore::new(120, 40, Config::default());
     assert!(!core.simple_mode());
     let r = menubar_mode_region();
@@ -362,10 +362,10 @@ fn mode_toggle_switches_view() {
 
 #[test]
 fn simple_mode_renders_focused_app_fullscreen_without_desktop() {
-    use tuiui::session::{SessionCore, ClientMsg};
-    use tuiui::config::Config;
-    use tuiui::chrome::menubar_mode_region;
-    use tuiui::geometry::Point;
+    use tetron_wm::session::{SessionCore, ClientMsg};
+    use tetron_wm::config::Config;
+    use tetron_wm::chrome::menubar_mode_region;
+    use tetron_wm::geometry::Point;
     // desktop disabled in default? ensure desktop layer present in desktop mode,
     // absent in simple mode. Launch an app so there is a focused window.
     let mut core = SessionCore::new(120, 40, Config::default());
@@ -403,16 +403,16 @@ git commit --no-verify -m "session: simple view mode — full-screen single-app 
 
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 1. Launch 2+ apps. Click the `⊞` glyph (right of Go) → it becomes `▦`, the focused app fills the screen, decorations + desktop icons gone, menubar + dock remain.
 2. Click dock pills → each app fills the screen at the right size.
-3. `Go` launches a new app full-screen; the `tuiui ▾` menu (Exit/Restart/Shutdown) still works.
+3. `Go` launches a new app full-screen; the `tetron-wm ▾` menu (Exit/Restart/Shutdown) still works.
 4. Click `▦` → back to desktop, windows restored in their previous positions/sizes.
 
 - [ ] **Step 5: Update memory**
 
-Add to `tuiui-roadmap-state`: simple view mode DONE (menubar ⊞/▦ toggle, full-screen focused app, dock = switcher; frontend-only).
+Add to `tetron-wm-roadmap-state`: simple view mode DONE (menubar ⊞/▦ toggle, full-screen focused app, dock = switcher; frontend-only).
 
 ---
 

@@ -3,7 +3,7 @@
 **Status:** Approved design (2026-06-05). First subsystem of the desktop-OS
 roadmap (`2026-06-05-desktop-os-roadmap.md`).
 
-**Goal:** Let tuiui's compositor display real raster images inside windows via the
+**Goal:** Let tetron-wm's compositor display real raster images inside windows via the
 Kitty graphics protocol, with a native **image-viewer** window as the first
 consumer (file-manager thumbnails and desktop icons reuse the layer later).
 
@@ -27,7 +27,7 @@ pipeline untouched and lets non-graphics terminals keep working via placeholders
 
 **Out of scope (the A2 spike):** images emitted by *hosted* apps (yazi previews,
 Carbonyl) are **not** handled here — our embedded `alacritty_terminal` swallows
-those escapes. A1 only renders tuiui's *own* images.
+those escapes. A1 only renders tetron-wm's *own* images.
 
 ## Module layout
 

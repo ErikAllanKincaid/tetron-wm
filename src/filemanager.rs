@@ -1234,7 +1234,7 @@ mod tests {
     use std::fs;
 
     fn tmp(tag: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("tuiui-fmu-{}-{}", tag, std::process::id()));
+        let d = std::env::temp_dir().join(format!("tetron-wm-fmu-{}-{}", tag, std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d

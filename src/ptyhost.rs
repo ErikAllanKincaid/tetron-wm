@@ -25,7 +25,7 @@ const DEFAULT_BG: Rgba = Rgba { r: 17, g: 20, b: 29, a: 255 };
 /// and sending `ESC[6n` to learn the screen size, or a primary device-attributes
 /// query — expect an answer on their stdin. The emulator generates those replies
 /// as [`Event::PtyWrite`]; without forwarding them the app sees silence (tetris
-/// concluded "terminal too small" and exited). Tuiui still polls the grid via
+/// concluded "terminal too small" and exited). Tetron-wm still polls the grid via
 /// [`AppInstance::snapshot`]; this only handles the write-back replies.
 #[derive(Clone)]
 struct PtyResponder {
@@ -62,7 +62,7 @@ impl EventListener for PtyResponder {
 /// The child's output is parsed by a full [`alacritty_terminal`] emulator on a
 /// dedicated reader thread (chosen over a minimal parser because the desktop must
 /// faithfully render demanding TUIs such as `btop`). [`snapshot`](Self::snapshot)
-/// converts the current emulator grid into a Tuiui [`CellBuffer`].
+/// converts the current emulator grid into a Tetron-wm [`CellBuffer`].
 pub struct AppInstance {
     term: Arc<Mutex<Term<PtyResponder>>>,
     master: Box<dyn portable_pty::MasterPty + Send>,
@@ -229,7 +229,7 @@ impl AppInstance {
         self.clip.lock().ok().and_then(|mut c| c.take())
     }
 
-    /// Convert the current emulator grid into a Tuiui [`CellBuffer`].
+    /// Convert the current emulator grid into a Tetron-wm [`CellBuffer`].
     pub fn snapshot(&self) -> CellBuffer {
         use alacritty_terminal::grid::Dimensions;
         // Recover a poisoned lock instead of unwrapping: if some other code path

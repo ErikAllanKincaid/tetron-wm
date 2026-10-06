@@ -1,11 +1,11 @@
 [package]
-name = "tuiui"
+name = "tetron-wm"
 version = "0.14.1"
 edition = "2021"
 rust-version = "1.95"
 license = "MIT"
 description = "A TUI desktop environment for the terminal"
-repository = "https://github.com/jaylfc/tuiui"
+repository = "https://github.com/ErikAllanKincaid/tetron-wm"
 
 [dependencies]
 crossterm = "0.29"
@@ -30,9 +30,11 @@ tetron-proto = { git = "https://github.com/ErikAllanKincaid/tetron" }
 rmp-serde = "1"
 
 [lib]
-name = "tuiui"
+# Underscore: a lib target name must be a valid Rust identifier (used in `use
+# tetron_wm::...`). The package and binary are the hyphenated `tetron-wm`.
+name = "tetron_wm"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tuiui"
+name = "tetron-wm"
 path = "src/main.rs"

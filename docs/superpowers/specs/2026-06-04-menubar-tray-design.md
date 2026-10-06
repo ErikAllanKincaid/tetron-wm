@@ -2,7 +2,7 @@
 
 **Status:** Approved design (2026-06-04)
 
-**Goal:** Add a macOS-style menubar status tray to tuiui — clock, WiFi, Bluetooth,
+**Goal:** Add a macOS-style menubar status tray to tetron-wm — clock, WiFi, Bluetooth,
 volume, battery, and CPU/memory indicators — with click-through popovers that
 control the **host's** volume, switch to a known WiFi network, and connect a
 paired Bluetooth device.
@@ -41,7 +41,7 @@ plumbing.
 
 ## Why daemon-side
 
-tuiui is daemon-on-host + thin-client. The tray therefore reflects the **host's**
+tetron-wm is daemon-on-host + thin-client. The tray therefore reflects the **host's**
 state (e.g. the headless Mac mini), which is exactly the useful thing: manage the
 mini's WiFi/volume/Bluetooth from the menubar over SSH. Rendering the tray
 daemon-side means it ships to the client as ordinary compositor cells — **no new
@@ -115,7 +115,7 @@ their popover shows a one-line hint instead of disabled controls.
 ## Menubar layout
 
 ```
-✦ Tuiui  btop            ⊙32% ▤61%  🔋82%  ◂▮▮▮▯ 🔊  ⏻ bt  ▮▮▮◦ wlan  09:41   ✕ Quit
+✦ Tetron-wm  btop            ⊙32% ▤61%  🔋82%  ◂▮▮▮▯ 🔊  ⏻ bt  ▮▮▮◦ wlan  09:41   ✕ Quit
 ```
 
 - Segments are fixed-order and right-aligned, drawn just left of the Quit button.
@@ -124,7 +124,7 @@ their popover shows a one-line hint instead of disabled controls.
   if the menubar is still too narrow, lowest-priority segments (CPU/mem, then
   battery) drop out, clock is kept last.
 - Colors come from `theme::current()`. Glyphs are chosen to render under the
-  truecolor terminals tuiui already targets; a plain-ASCII fallback set is used
+  truecolor terminals tetron-wm already targets; a plain-ASCII fallback set is used
   when the segment would otherwise overflow.
 
 ## Popovers
@@ -177,11 +177,11 @@ pub trait SystemControl {
 ## Optional dependencies & installer
 
 Some controls need a small external tool that may not be present — currently only
-**`blueutil`** (macOS Bluetooth control). The design keeps tuiui fully functional
+**`blueutil`** (macOS Bluetooth control). The design keeps tetron-wm fully functional
 without it (the BT popover degrades to read-only via `system_profiler`), but we
 make the happy path easy to reach two ways:
 
-1. **Installer (`install.sh`):** after placing the `tuiui` binary, an optional,
+1. **Installer (`install.sh`):** after placing the `tetron-wm` binary, an optional,
    **OS-aware** dependency step installs known helpers when a package manager is
    present:
    - macOS + Homebrew → `brew install blueutil`.
@@ -189,9 +189,9 @@ make the happy path easy to reach two ways:
      if a future dep is needed, use the detected manager (`apt`/`dnf`/`pacman`).
    The step is **transparent and skippable**: it prints exactly what it will run,
    skips silently when no package manager is found, and honours
-   `TUIUI_SKIP_DEPS=1` (and is auto-skipped in non-interactive `curl | sh` unless
-   `TUIUI_INSTALL_DEPS=1` is set, so piping the installer never surprises a user
-   with package installs). A `tuiui --install-deps` subcommand runs the same step
+   `TETRON_WM_SKIP_DEPS=1` (and is auto-skipped in non-interactive `curl | sh` unless
+   `TETRON_WM_INSTALL_DEPS=1` is set, so piping the installer never surprises a user
+   with package installs). A `tetron-wm --install-deps` subcommand runs the same step
    on demand.
 2. **Runtime offer:** when the user opens a control whose backing tool is missing
    (e.g. the Bluetooth popover with no `blueutil`), the popover shows a one-line

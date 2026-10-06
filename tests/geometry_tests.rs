@@ -1,4 +1,4 @@
-use tuiui::geometry::{Point, Rect, SnapZone, snap_zone, snapped_rect};
+use tetron_wm::geometry::{Point, Rect, SnapZone, snap_zone, snapped_rect};
 
 #[test]
 fn contains_point() {
@@ -34,7 +34,7 @@ fn snapped_rect_left_is_left_half_below_menubar_above_dock() {
     assert_eq!(right, Rect::new(40, 1, 40, 22));
 }
 
-use tuiui::geometry::Grid;
+use tetron_wm::geometry::Grid;
 
 #[test]
 fn grid_cell_rects_tile_the_work_area() {

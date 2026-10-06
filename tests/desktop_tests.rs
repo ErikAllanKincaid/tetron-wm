@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
-use tuiui::config::AppEntry;
-use tuiui::desktop::{DesktopAction, DesktopIcons, IconSource};
-use tuiui::geometry::Point;
+use tetron_wm::config::AppEntry;
+use tetron_wm::desktop::{DesktopAction, DesktopIcons, IconSource};
+use tetron_wm::geometry::Point;
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("tuiui-dt-{}-{}", tag, std::process::id()));
+    let d = std::env::temp_dir().join(format!("tetron-wm-dt-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -84,7 +84,7 @@ fn double_click_pin_runs_command() {
 
 #[test]
 fn right_click_opens_context_and_menu_targets() {
-    use tuiui::desktop::DesktopOverlay;
+    use tetron_wm::desktop::DesktopOverlay;
     let d = tmp("ctx");
     fs::write(d.join("a.txt"), b"x").unwrap();
     let mut dt = DesktopIcons::new(d.clone());

@@ -1,7 +1,7 @@
-use tuiui::compositor::{Compositor, Layer, CellChange};
-use tuiui::buffer::CellBuffer;
-use tuiui::cell::{Cell, Rgba};
-use tuiui::geometry::Point;
+use tetron_wm::compositor::{Compositor, Layer, CellChange};
+use tetron_wm::buffer::CellBuffer;
+use tetron_wm::cell::{Cell, Rgba};
+use tetron_wm::geometry::Point;
 
 fn glyph(ch: char, bg: Rgba) -> Cell { Cell { ch, fg: Rgba::rgb(255,255,255), bg, attrs: Default::default() } }
 

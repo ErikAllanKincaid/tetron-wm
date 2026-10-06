@@ -1,4 +1,4 @@
-use tuiui::ptyhost::AppInstance;
+use tetron_wm::ptyhost::AppInstance;
 use std::time::Duration;
 
 #[test]

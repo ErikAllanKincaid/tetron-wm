@@ -1,4 +1,4 @@
-use tuiui::cell::{Rgba, Cell, CellAttrs};
+use tetron_wm::cell::{Rgba, Cell, CellAttrs};
 
 #[test]
 fn opaque_over_keeps_src() {

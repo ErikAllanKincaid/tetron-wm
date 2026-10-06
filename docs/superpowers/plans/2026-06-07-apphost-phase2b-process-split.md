@@ -4,7 +4,7 @@
 
 **Goal:** Move the running apps into a separate long-lived `apphost` process and have the frontend (the current daemon) drive them over a Unix socket via a `RemoteAppHost`, so the apps survive a frontend restart.
 
-**Architecture:** A new `tuiui --apphost` process owns a `LocalAppHost` behind a socket, pushing per-app frames (grid + placements + image blobs) and accepting commands. The frontend daemon ensures the apphost is running, connects a `RemoteAppHost` (implements the `AppHost` trait from Phase 2a, caches the pushed frames), and injects it into `SessionCore::with_apphost`. `tuiui kill` stops both; a mere detach or frontend crash leaves the apphost (and its apps) alive.
+**Architecture:** A new `tetron-wm --apphost` process owns a `LocalAppHost` behind a socket, pushing per-app frames (grid + placements + image blobs) and accepting commands. The frontend daemon ensures the apphost is running, connects a `RemoteAppHost` (implements the `AppHost` trait from Phase 2a, caches the pushed frames), and injects it into `SessionCore::with_apphost`. `tetron-wm kill` stops both; a mere detach or frontend crash leaves the apphost (and its apps) alive.
 
 **Tech Stack:** Rust 2021, `std::os::unix::net::{UnixListener, UnixStream}`, `serde`/`serde_json` (newline-JSON, matching the existing client protocol), `base64` 0.22, the Phase 2a `AppHost` trait + `LocalAppHost`.
 
@@ -85,7 +85,7 @@ pub enum HostReq {
     Resize { app: u64, cols: i32, rows: i32 },
     SetMeta { app: u64, meta: Vec<u8> },
     Kill { app: u64 },
-    /// Stop the apphost process entirely (full shutdown / `tuiui kill`).
+    /// Stop the apphost process entirely (full shutdown / `tetron-wm kill`).
     Shutdown,
 }
 
@@ -211,7 +211,7 @@ git commit --no-verify -m "apphost: wire protocol (proto.rs) + serde on CellBuff
 
 ---
 
-## Task 2: The apphost server (`tuiui --apphost`)
+## Task 2: The apphost server (`tetron-wm --apphost`)
 
 **Files:**
 - Create: `src/apphost/server.rs`
@@ -223,7 +223,7 @@ The server owns a `LocalAppHost` that persists across frontend (re)connections. 
 
 ```rust
 //! The apphost process: owns the live apps behind a socket, pushing per-app
-//! frames and accepting commands from the frontend. Started as `tuiui --apphost`
+//! frames and accepting commands from the frontend. Started as `tetron-wm --apphost`
 //! (normally spawned automatically by the frontend daemon). The apps it owns
 //! survive a frontend restart because this process keeps running.
 
@@ -671,7 +671,7 @@ git commit --no-verify -m "apphost: RemoteAppHost (socket-backed AppHost) + loop
 
 ---
 
-## Task 4: Orchestration — `tuiui --apphost`, frontend uses RemoteAppHost, `tuiui kill` stops both
+## Task 4: Orchestration — `tetron-wm --apphost`, frontend uses RemoteAppHost, `tetron-wm kill` stops both
 
 **Files:**
 - Modify: `src/apphost/api.rs` (add `shutdown_host` to the trait)
@@ -714,7 +714,7 @@ In `src/daemon.rs::run()`, replace the line `let mut core = SessionCore::new(w, 
 Add this helper to `src/daemon.rs`:
 ```rust
 /// Ensure the apphost process is running and return a connected handle. Spawns
-/// `tuiui --apphost` (detached) if its socket is absent, then connects.
+/// `tetron-wm --apphost` (detached) if its socket is absent, then connects.
 fn ensure_apphost() -> std::io::Result<crate::apphost::RemoteAppHost> {
     use crate::protocol::apphost_socket_path;
     let path = apphost_socket_path();
@@ -743,13 +743,13 @@ Add the needed imports to `daemon.rs` if missing: `use std::os::unix::process::C
 
 In `src/main.rs`, add a match arm:
 ```rust
-        Some("--apphost") => tuiui::apphost::server::run(),
+        Some("--apphost") => tetron_wm::apphost::server::run(),
 ```
 And in `kill()`, after messaging the frontend daemon, also tell the apphost to exit (covers the case where the frontend already died but the apphost is orphaned):
 ```rust
     // Also stop the apphost (it outlives the frontend by design).
-    if let Ok(mut s) = UnixStream::connect(tuiui::protocol::apphost_socket_path()) {
-        let req = tuiui::apphost::proto::HostReq::Shutdown;
+    if let Ok(mut s) = UnixStream::connect(tetron_wm::protocol::apphost_socket_path()) {
+        let req = tetron_wm::apphost::proto::HostReq::Shutdown;
         if let Ok(mut buf) = serde_json::to_vec(&req) {
             buf.push(b'\n');
             let _ = s.write_all(&buf);
@@ -788,17 +788,17 @@ Expected: build OK; test-suite count ≥ Phase 2a; clippy `0`.
 
 ```bash
 cargo install --root ~/.local --path . --force
-tuiui kill; tuiui
+tetron-wm kill; tetron-wm
 ```
 Verify:
-1. `pgrep -fa 'tuiui --apphost'` shows the apphost process, and `pgrep -fa 'tuiui --daemon'` shows the frontend — two processes.
+1. `pgrep -fa 'tetron-wm --apphost'` shows the apphost process, and `pgrep -fa 'tetron-wm --daemon'` shows the frontend — two processes.
 2. Launch an app (a shell), type into it, resize/move its window, open a graphics app (chafa/yazi) — all identical to before.
-3. **Survival test (the Phase 2 payoff):** with an app running, kill ONLY the frontend daemon (`pkill -f 'tuiui --daemon'`), then run `tuiui` again. The apphost (and the child process) is still alive — confirm with `pgrep -fa 'tuiui --apphost'` and that the app's child PID is unchanged. (The window won't visually rebuild yet — that's Phase 3's Roster-driven restore — but the process survived, proving the split.)
-4. `tuiui kill` stops BOTH processes (`pgrep -fa tuiui` shows neither `--daemon` nor `--apphost`).
+3. **Survival test (the Phase 2 payoff):** with an app running, kill ONLY the frontend daemon (`pkill -f 'tetron-wm --daemon'`), then run `tetron-wm` again. The apphost (and the child process) is still alive — confirm with `pgrep -fa 'tetron-wm --apphost'` and that the app's child PID is unchanged. (The window won't visually rebuild yet — that's Phase 3's Roster-driven restore — but the process survived, proving the split.)
+4. `tetron-wm kill` stops BOTH processes (`pgrep -fa tetron-wm` shows neither `--daemon` nor `--apphost`).
 
 - [ ] **Step 3: Update memory**
 
-Update the `tuiui-roadmap-state` memory: apphost Phase 2 (separate process + IPC) DONE; note Phase 3 (reload UX + Roster-driven window restore + enabling the menubar Restart action) is next.
+Update the `tetron-wm-roadmap-state` memory: apphost Phase 2 (separate process + IPC) DONE; note Phase 3 (reload UX + Roster-driven window restore + enabling the menubar Restart action) is next.
 
 ---
 
@@ -807,5 +807,5 @@ Update the `tuiui-roadmap-state` memory: apphost Phase 2 (separate process + IPC
 - **Frame volume:** full grid as JSON per changed frame. Grids are ~84×30 and only sent on change; acceptable locally. Per-app cell-diff compression is a later optimization (spec "Out of scope").
 - **Input latency:** input → apphost → child → grid push → frontend cache → render is one extra hop (~16ms). Acceptable locally; the manual smoke confirms typing feels fine.
 - **Startup race:** `ensure_apphost` waits up to 5s for the apphost socket; `spawn`'s reply also has a 5s timeout. If the apphost binary is missing/old, spawn fails cleanly (window is dropped) rather than hanging forever.
-- **Two debug logs:** the apphost calls `dbg_log` (NOT `dbg_init`, to avoid truncating the frontend's log). Both append to `~/tuiui-debug.log`; lines are timestamped. Acceptable.
-- **Phase 3 (not here):** `tuiui reload` (restart frontend only, keep apphost), Roster-driven window rebuild from `meta`, the in-app "Update & Reload" button, and enabling the menubar **Restart** action.
+- **Two debug logs:** the apphost calls `dbg_log` (NOT `dbg_init`, to avoid truncating the frontend's log). Both append to `~/tetron-wm-debug.log`; lines are timestamped. Acceptable.
+- **Phase 3 (not here):** `tetron-wm reload` (restart frontend only, keep apphost), Roster-driven window rebuild from `meta`, the in-app "Update & Reload" button, and enabling the menubar **Restart** action.

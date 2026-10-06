@@ -120,7 +120,7 @@ Rebuild on menu open — in `toggle_menu`, when opening, call `self.rebuild_menu
         }
     }
 
-    /// Build the cascade root: one Submenu per category (sorted, "tuiui" first),
+    /// Build the cascade root: one Submenu per category (sorted, "tetron-wm" first),
     /// apps inside (sorted by name).
     fn rebuild_menu(&mut self) {
         use std::collections::BTreeMap;
@@ -128,7 +128,7 @@ Rebuild on menu open — in `toggle_menu`, when opening, call `self.rebuild_menu
         for a in &self.items {
             by_cat.entry(cat_of(a)).or_default().push(a.clone());
         }
-        let rank = |c: &str| if c == "tuiui" { 0 } else { 1 };
+        let rank = |c: &str| if c == "tetron-wm" { 0 } else { 1 };
         let mut cats: Vec<(String, Vec<AppEntry>)> = by_cat.into_iter().collect();
         cats.sort_by(|(a, _), (b, _)| rank(a).cmp(&rank(b)).then_with(|| a.cmp(b)));
         self.menu_root = cats
@@ -435,7 +435,7 @@ git commit -m "launcher: cascade render (offset panels) + hover/click hit-testin
 ```rust
 #[test]
 fn launcher_left_right_roundtrip() {
-    use tuiui::session::ClientMsg;
+    use tetron_wm::session::ClientMsg;
     for msg in [ClientMsg::LauncherLeft, ClientMsg::LauncherRight] {
         let s = serde_json::to_string(&msg).unwrap();
         let back: ClientMsg = serde_json::from_str(&s).unwrap();
@@ -510,7 +510,7 @@ fn cascade_keyboard_launches_app_from_submenu() {
 }
 ```
 
-> Add `#[doc(hidden)] pub fn launcher_open_for_test(&self) -> bool { self.launcher.is_open() }`. (The default `Config` launcher has the tuiui pins — Files/Store/Settings — so descending the first category and Entering launches one, e.g. opens the Store/Settings/Files window → window_count +1. If the first category's first entry is an `@`-builtin that doesn't create a counted window, pick a category/depth that does, or assert on `launcher_open` flipping to closed instead of window_count. Prefer: assert the menu closed AND that `take_action`/window opened; if `@settings` opens a window (it does — Settings is a WinContent window), count holds.)
+> Add `#[doc(hidden)] pub fn launcher_open_for_test(&self) -> bool { self.launcher.is_open() }`. (The default `Config` launcher has the tetron-wm pins — Files/Store/Settings — so descending the first category and Entering launches one, e.g. opens the Store/Settings/Files window → window_count +1. If the first category's first entry is an `@`-builtin that doesn't create a counted window, pick a category/depth that does, or assert on `launcher_open` flipping to closed instead of window_count. Prefer: assert the menu closed AND that `take_action`/window opened; if `@settings` opens a window (it does — Settings is a WinContent window), count holds.)
 
 - [ ] **Step 2: Run → FAIL.**
 
@@ -588,7 +588,7 @@ git commit -m "launcher: session wiring — Menu-mode hover/click/keyboard casca
 ### Task 5: Manual verification + docs
 
 - [ ] **Step 1:** Full gate green.
-- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tuiui kill ; tuiui`. Click `✦ tuiui` (or leader `a`): a vertical category menu appears; **hovering** a category flies out its apps; clicking an app launches it; **keyboard** `↑/↓`, `→` (into submenu), `←` (back), `Enter` (launch), `Esc` (close) all work; Spotlight (`Ctrl+Space` then `Space`) still works unchanged.
+- [ ] **Step 2:** `cargo install --path . --root ~/.local --force`; on the host `tetron-wm kill ; tetron-wm`. Click `✦ tetron-wm` (or leader `a`): a vertical category menu appears; **hovering** a category flies out its apps; clicking an app launches it; **keyboard** `↑/↓`, `→` (into submenu), `←` (back), `Enter` (launch), `Esc` (close) all work; Spotlight (`Ctrl+Space` then `Space`) still works unchanged.
 - [ ] **Step 3:** Update `README.md` — note the cascading menu in the launcher feature bullet + a controls line (hover/arrows to cascade, Enter to launch). Commit:
 
 ```bash

@@ -1,4 +1,4 @@
-use tuiui::kitty::{b64, delete, place, transmit, transmit_b64};
+use tetron_wm::kitty::{b64, delete, place, transmit, transmit_b64};
 
 #[test]
 fn base64_matches_known_vectors() {

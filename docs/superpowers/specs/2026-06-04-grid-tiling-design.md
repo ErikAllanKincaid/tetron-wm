@@ -2,7 +2,7 @@
 
 **Status:** Approved direction (2026-06-04) — "all of the above" interaction set.
 
-**Goal:** Generalise tuiui's window tiling from left/right half-snap to a
+**Goal:** Generalise tetron-wm's window tiling from left/right half-snap to a
 **user-configurable R×C grid**, with four interaction styles sharing one grid
 core: drag-to-cell snapping, an auto-tile mode, keyboard send-to-cell, and a
 one-shot tile-all command. Motivating case: an ultra-wide monitor laid out as

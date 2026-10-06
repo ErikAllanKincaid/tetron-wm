@@ -180,7 +180,7 @@ fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, infligh
             }
         }
         HostEvt::AppList { .. } => {
-            // Reply to HostReq::ListApps (used by `tuiui ps` / `tuiui kill-app`).
+            // Reply to HostReq::ListApps (used by `tetron-wm ps` / `tetron-wm kill-app`).
             // The remote handle isn't the consumer — those CLI commands open a
             // short-lived connection and read the reply themselves, so we drop it.
         }
@@ -374,7 +374,7 @@ mod tests {
         let _ = server.join();
     }
 
-    /// `tuiui ps` / `tuiui kill-app` depend on `ListApps` round-tripping
+    /// `tetron-wm ps` / `tetron-wm kill-app` depend on `ListApps` round-tripping
     /// correctly through a real server connection. Spawn 3 apps, list, assert
     /// the apphost reports 3 rows with the expected fields.
     #[test]
