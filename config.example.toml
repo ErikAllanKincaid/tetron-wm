@@ -40,13 +40,19 @@
 # takes effect on the next start (`tetron-wm kill` then relaunch), not a reload.
 #terminal_bg = "#ffffff"
 #terminal_fg = "#1a1a1a"
+# File-type icon glyphs where the graphical (Kitty) icons can't render -- kmscon,
+# a bare VT, plain SSH: "ascii" (default; BMP geometric shapes, render in every
+# font and take the theme color), "nerd" (Nerd Font file-type glyphs -- needs a
+# Nerd Font installed, which tetron-os ships), or "emoji" (GUI terminals only).
+#icon_style = "ascii"
 
 ## ── Files / working directories ───────────────────────────────────────────
 # Directory the working-directory picker opens at (default: your home).
 #default_project_dir = "/home/you"
 # Show hidden (dot) directories in the picker by default.
 #show_hidden_dirs = false
-# File-manager view: "icon" or "list".
+# File-manager view: "icon" or "list". Default is list. (This override key
+# round-trips but is not yet applied at startup -- list is always the default.)
 #filemanager_view = "list"
 # recent_dirs is maintained by the app (most-recent working dirs); not hand-set.
 #recent_dirs = []

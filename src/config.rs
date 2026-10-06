@@ -79,6 +79,12 @@ pub struct Config {
     pub terminal_bg: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_fg: Option<String>,
+    /// Glyph set for file-type icons where the Kitty graphics image icons can't
+    /// render (kmscon, a bare VT, plain SSH): "ascii" (default, renders in every
+    /// font), "nerd" (Nerd Font glyphs -- needs one installed, tetron-os ships
+    /// it), or "emoji". See `iconset::IconStyle`.
+    #[serde(default)]
+    pub icon_style: crate::iconset::IconStyle,
     /// Root directory the working-directory picker opens at (default `~`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_project_dir: Option<String>,
@@ -162,6 +168,7 @@ impl Default for Config {
             theme: "nord".into(),
             terminal_bg: None,
             terminal_fg: None,
+            icon_style: crate::iconset::IconStyle::default(),
             default_project_dir: None,
             recent_dirs: Vec::new(),
             show_hidden_dirs: false,

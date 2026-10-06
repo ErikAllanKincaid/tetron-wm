@@ -28,6 +28,7 @@ pub mod help;
 pub mod imagestore;
 pub mod thumbnail;
 pub mod icons;
+pub mod iconset;
 pub mod kitty;
 pub mod kittygfx;
 pub mod imageview;

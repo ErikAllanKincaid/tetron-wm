@@ -68,7 +68,7 @@ impl Tab {
             entries: Vec::new(),
             cursor: 0,
             selection: BTreeSet::new(),
-            view: ViewMode::Icon,
+            view: ViewMode::List,
             show_hidden: false,
             history: vec![cwd],
             hpos: 0,
@@ -778,18 +778,10 @@ impl<F: FsOps> FileManager<F> {
         .collect()
     }
 
+    /// The file-type glyph for the list view and the no-graphics fallback, in
+    /// the configured icon style (ascii / nerd / emoji -- see `iconset`).
     fn glyph(entry: &Entry) -> char {
-        use crate::openwith::Role::*;
-        match entry.role {
-            Directory => '\u{1F4C1}', // 📁
-            Image => '\u{1F5BC}',     // 🖼
-            Audio => '\u{1F3B5}',     // 🎵
-            Video => '\u{1F3AC}',     // 🎬
-            Archive => '\u{1F4E6}',   // 📦
-            Pdf => '\u{1F4D5}',       // 📕
-            Code => '\u{1F4C4}',      // 📄
-            _ => '\u{1F4C4}',         // 📄
-        }
+        crate::iconset::glyph(entry.role)
     }
 
     /// First content row, shifted down by one when the tab strip is shown.
@@ -862,7 +854,7 @@ impl<F: FsOps> FileManager<F> {
                     let focused = i == t.cursor;
                     let bg = if selected || focused { pal_sel() } else { pal_bg() };
                     for x in area_x..area_right { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
-                    let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
+                    let mark = if e.is_dir { crate::iconset::glyph(crate::openwith::Role::Directory) } else { Self::glyph(e) };
                     buf.write_str(area_x, y, &format!("{mark} {}", e.name), if focused { pal_accent() } else { pal_fg() }, bg);
                 }
             }
@@ -890,9 +882,13 @@ impl<F: FsOps> FileManager<F> {
                     // non-graphics terminals; a loaded thumbnail/role-icon
                     // image covers the same rect on Kitty-graphics terminals
                     // (see `thumbnail_placements`).
+                    // Sit the glyph at the bottom of the icon rect, just above the
+                    // label, so the single-char fallback isn't stranded high in a
+                    // tile sized for a large image. Still inside the rect, so a
+                    // loaded thumbnail/role-icon image covers it on graphics terminals.
                     buf.set(
                         ir.x + ir.w / 2,
-                        ir.y + ir.h / 2,
+                        ir.y + ir.h - 1,
                         Cell { ch: Self::glyph(e), fg: pal_fg(), bg: pal_bg(), attrs: Default::default() },
                     );
                     // Label: centered on the tile's last row. Selection/focus
@@ -974,7 +970,7 @@ impl<F: FsOps> FileManager<F> {
             let focused = i == t.cursor;
             let bg = if selected || focused { pal_sel() } else { pal_bg() };
             for x in mid_x..right_x { buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() }); }
-            let mark = if e.is_dir { '\u{1F4C1}' } else { Self::glyph(e) };
+            let mark = if e.is_dir { crate::iconset::glyph(crate::openwith::Role::Directory) } else { Self::glyph(e) };
             let label = format!("{mark} {}", e.name);
             let label: String = label.chars().take((col_w - 1).max(1) as usize).collect();
             buf.write_str(mid_x, y, &label, if focused { pal_accent() } else { pal_fg() }, bg);
@@ -1258,15 +1254,15 @@ mod tests {
     fn view_toggle_switches_modes() {
         let d = tmp("toggle");
         let mut fm = FileManager::new(d.clone(), BTreeMap::new());
-        assert_eq!(fm.view(), ViewMode::Icon);
-        fm.cycle_view();
-        assert_eq!(fm.view(), ViewMode::List);
+        assert_eq!(fm.view(), ViewMode::List); // List is the default
         fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::Columns);
         fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::Icon);
-        fm.set_view(ViewMode::List);
+        fm.cycle_view();
         assert_eq!(fm.view(), ViewMode::List);
+        fm.set_view(ViewMode::Icon);
+        assert_eq!(fm.view(), ViewMode::Icon);
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -1333,6 +1329,7 @@ mod tests {
         let d = tmp("thumbrows");
         fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
         let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+        fm.set_view(ViewMode::Icon); // thumbnails only place in Icon view (default is List)
         let idx = fm.thumbnail_requests()[0].0;
         fm.set_thumb(idx, 999);
         let content = crate::geometry::Rect::new(0, 0, 80, 24);

@@ -702,15 +702,8 @@ impl DesktopMenuItem {
 }
 
 fn glyph_for(role: Role) -> char {
-    match role {
-        Role::Directory => '\u{1F4C1}',
-        Role::Image => '\u{1F5BC}',
-        Role::Audio => '\u{1F3B5}',
-        Role::Video => '\u{1F3AC}',
-        Role::Archive => '\u{1F4E6}',
-        Role::Pdf => '\u{1F4D5}',
-        _ => '\u{1F4C4}',
-    }
+    // The no-graphics fallback glyph, in the configured icon style (see `iconset`).
+    crate::iconset::glyph(role)
 }
 
 #[cfg(test)]

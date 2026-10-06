@@ -21,7 +21,7 @@ fn new_lists_root_dirs_first() {
     let names: Vec<&str> = fm.entries().iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, vec!["sub", "a.txt"]);
     assert_eq!(fm.cursor(), 0);
-    assert_eq!(fm.view(), ViewMode::Icon);
+    assert_eq!(fm.view(), ViewMode::List);
 
     let _ = fs::remove_dir_all(&d);
 }
@@ -244,6 +244,7 @@ fn set_thumb_then_placement_is_reported() {
     let d = tmp("thumbplace");
     fs::write(d.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+    fm.set_view(ViewMode::Icon); // thumbnails only place in Icon view (default is List)
     let idx = fm.thumbnail_requests()[0].0;
     fm.set_thumb(idx, 12345);
     // content rect at origin (0,0) sized 80x24
@@ -278,14 +279,15 @@ fn columns_view_cycles_and_renders() {
     assert_eq!(fm.view(), ViewMode::Columns);
     let buf = fm.render(100, 24);
     assert_eq!(buf.width(), 100);
-    // cycle_view goes Icon -> List -> Columns -> Icon
+    // Default view is List; cycle_view goes List -> Columns -> Icon -> List.
     let mut f2 = FileManager::new(d.clone(), BTreeMap::new());
-    f2.cycle_view();
     assert_eq!(f2.view(), ViewMode::List);
     f2.cycle_view();
     assert_eq!(f2.view(), ViewMode::Columns);
     f2.cycle_view();
     assert_eq!(f2.view(), ViewMode::Icon);
+    f2.cycle_view();
+    assert_eq!(f2.view(), ViewMode::List);
     let _ = fs::remove_dir_all(&d);
 }
 
