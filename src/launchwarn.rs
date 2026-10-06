@@ -174,7 +174,7 @@ impl LaunchWarn {
         let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
         buf.write_str(cancel.x - d.x, cancel.y - d.y, &cancel_s, t.text, t.active_bg);
         let launch_s = format!("{:^width$}", "Launch", width = launch.w as usize);
-        buf.write_str(launch.x - d.x, launch.y - d.y, &launch_s, t.close_fg, t.accent);
+        buf.write_str(launch.x - d.x, launch.y - d.y, &launch_s, t.window_bg, t.close_fg);
         vec![Layer { z: 6600, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None }]
     }
 }

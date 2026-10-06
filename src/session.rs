@@ -1018,7 +1018,7 @@ impl SessionCore {
         let keep_s = format!("{:^width$}", "Keep apps", width = keep.w as usize);
         buf.write_str(keep.x - d.x, keep.y - d.y, &keep_s, t.text, t.active_bg);
         let restart_s = format!("{:^width$}", "Restart app server", width = restart.w as usize);
-        buf.write_str(restart.x - d.x, restart.y - d.y, &restart_s, t.close_fg, t.accent);
+        buf.write_str(restart.x - d.x, restart.y - d.y, &restart_s, t.window_bg, t.close_fg);
         vec![crate::compositor::Layer { z: 6500, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None }]
     }
 

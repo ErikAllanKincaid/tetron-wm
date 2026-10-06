@@ -142,7 +142,7 @@ impl ConfirmClose {
         let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
         buf.write_str(cancel.x - d.x, cancel.y - d.y, &cancel_s, t.text, t.active_bg);
         let close_s = format!("{:^width$}", "Close", width = close.w as usize);
-        buf.write_str(close.x - d.x, close.y - d.y, &close_s, t.close_fg, t.accent);
+        buf.write_str(close.x - d.x, close.y - d.y, &close_s, t.window_bg, t.close_fg);
         vec![Layer { z: 6000, origin: Point::new(d.x, d.y), buf, opacity: 1.0, scissor: None }]
     }
 }
