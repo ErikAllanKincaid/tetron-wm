@@ -566,6 +566,9 @@ pub struct SessionCore {
     images: crate::imagestore::ImageStore,
     /// The wallpaper-level desktop icons (merged `~/Desktop` + pins).
     desktop: crate::desktop::DesktopIcons,
+    /// PROTOTYPE image wallpaper (cells via chafa), built from the
+    /// `TETRON_WM_WALLPAPER=<image>` env var. `None` = normal solid/icon desktop.
+    wallpaper: Option<crate::buffer::CellBuffer>,
     /// When [`poll_desktop_dir`](Self::poll_desktop_dir) last actually stat'd
     /// the desktop folder (throttle so every tick doesn't hit the filesystem).
     desktop_last_poll: std::time::Instant,
@@ -655,6 +658,7 @@ impl SessionCore {
             simple: false,
             images: crate::imagestore::ImageStore::new(),
             desktop: crate::desktop::DesktopIcons::new(desktop_dir),
+            wallpaper: Self::build_wallpaper(w, h),
             desktop_last_poll: std::time::Instant::now(),
             desktop_last_mtime: None,
             app_image_ids: HashMap::new(),
@@ -1905,6 +1909,9 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.w = w;
                 self.h = h;
                 self.wm.set_work_area(Rect::new(0, 1, w, h - 1));
+                // PROTOTYPE wallpaper: rebuild at the new size (a tty never
+                // resizes, so this only fires on a GUI terminal / SSH).
+                self.wallpaper = Self::build_wallpaper(w, h);
                 // Re-fit the desktop grid so icons stay anchored top-right.
                 self.desktop.layout(w, h);
                 // Re-fit any maximized window and its app to the new work area.
@@ -4001,6 +4008,16 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// 2. The menubar layer (z = 1000).
     /// 3. The dock layer (z = 1000).
     ///
+    /// PROTOTYPE: build the chafa wallpaper from `TETRON_WM_WALLPAPER` (if set
+    /// and the file exists), sized to the `w`×`h` cell grid. `None` otherwise.
+    fn build_wallpaper(w: i32, h: i32) -> Option<crate::buffer::CellBuffer> {
+        let path = std::env::var("TETRON_WM_WALLPAPER").ok()?;
+        if path.is_empty() || !std::path::Path::new(&path).exists() {
+            return None;
+        }
+        crate::wallpaper::from_image(&path, w, h)
+    }
+
     /// The cursor is set to the last known mouse position.
     pub fn build_frame(&self) -> Frame {
         if self.simple {
@@ -4009,9 +4026,16 @@ or a remote-side error — its authorized_keys was left untouched)",
         let mut layers: Vec<Layer> = Vec::new();
         let focused = self.wm.focused();
 
-        // The desktop icon layer sits at z=0, beneath every window (z≥1).
+        // PROTOTYPE: the chafa wallpaper is the opaque base at z=0 (pushed first).
+        if let Some(wp) = &self.wallpaper {
+            layers.push(Layer { z: 0, origin: Point::new(0, 0), buf: wp.clone(), opacity: 1.0, scissor: None });
+        }
+        // The desktop icon layer sits at z=0, beneath every window (z≥1). Its
+        // fill is TRANSPARENT (desktop.rs), so with a wallpaper pushed first the
+        // icons/labels blend on top of it; without one, the compositor's
+        // desktop_bg base shows through as before.
         if self.cfg.desktop_enabled {
-            let buf = self.desktop.render(self.w, self.h);
+            let buf = self.desktop.render(self.w, self.h, self.wallpaper.is_some());
             layers.push(Layer { z: 0, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None });
         }
 

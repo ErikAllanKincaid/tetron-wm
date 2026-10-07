@@ -276,7 +276,7 @@ impl<F: FsOps> DesktopIcons<F> {
 
     /// Render the icon layer into a `w×h` buffer (transparent background so the
     /// wallpaper shows through; only icon tiles draw).
-    pub fn render(&self, w: i32, h: i32) -> crate::buffer::CellBuffer {
+    pub fn render(&self, w: i32, h: i32, over_wallpaper: bool) -> crate::buffer::CellBuffer {
         use crate::cell::{Cell, Rgba};
         // Label/glyph color follows the theme's `text`, which always contrasts
         // with the wallpaper (`desktop_bg`) in every theme — the old hardcoded
@@ -290,13 +290,23 @@ impl<F: FsOps> DesktopIcons<F> {
         #[allow(non_snake_case)]
         let SEL_BG = sel_bg;
         let transparent = Rgba::TRANSPARENT;
+        // Over an image wallpaper the theme text has no guaranteed contrast, so
+        // give each glyph + label a dark scrim and white ink (the easiest, most
+        // reliable readability win). On the plain desktop keep the transparent
+        // label so nothing changes there.
+        let (ink, empty_bg, glyph_bg) = if over_wallpaper {
+            let scrim = Rgba { r: 0, g: 0, b: 0, a: 200 };
+            (Rgba::rgb(255, 255, 255), scrim, scrim)
+        } else {
+            (FG, transparent, transparent)
+        };
         let mut buf = crate::buffer::CellBuffer::new(w, h);
         buf.fill(Cell { ch: ' ', fg: FG, bg: transparent, attrs: Default::default() });
         for (i, icon) in self.icons.iter().enumerate() {
             let tile = self.tile_rect(icon.cell);
             let ir = self.icon_image_rect(icon.cell);
             let selected = self.selection.contains(&i);
-            let bg = if selected { SEL_BG } else { transparent };
+            let bg = if selected { SEL_BG } else { empty_bg };
             // Glyph fallback. Sit it at the bottom of the icon rect, just above the
             // label, so the single-char fallback isn't stranded high in a tile
             // sized for a large image (matches the file manager's grid view). Still
@@ -306,7 +316,7 @@ impl<F: FsOps> DesktopIcons<F> {
             buf.set(
                 ir.x + ir.w / 2,
                 ir.y + ir.h - 1,
-                Cell { ch: glyph, fg: FG, bg: transparent, attrs: Default::default() },
+                Cell { ch: glyph, fg: ink, bg: glyph_bg, attrs: Default::default() },
             );
             // Label: centered on the tile's last row, truncated to the tile width.
             let label_y = tile.y + ICON_H - 1;
@@ -314,9 +324,9 @@ impl<F: FsOps> DesktopIcons<F> {
             let len = name.chars().count() as i32;
             let lx = tile.x + (ICON_W - len).max(0) / 2;
             for x in tile.x..tile.x + ICON_W {
-                buf.set(x, label_y, Cell { ch: ' ', fg: FG, bg, attrs: Default::default() });
+                buf.set(x, label_y, Cell { ch: ' ', fg: ink, bg, attrs: Default::default() });
             }
-            buf.write_str(lx, label_y, &name, FG, bg);
+            buf.write_str(lx, label_y, &name, ink, bg);
         }
         buf
     }
