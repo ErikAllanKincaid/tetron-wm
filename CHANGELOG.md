@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-10-06
+
 ### Changed
 - **Open windows now live in a top-panel taskbar; the bottom dock is gone.** The
   menubar row carries the taskbar of open windows (same-app grouping, a
