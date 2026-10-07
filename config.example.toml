@@ -1,4 +1,4 @@
-# tetron-wm (NRO fork) configuration — ~/.config/tetron-wm/config.toml
+# tetron-wm configuration — ~/.config/tetron-wm/config.toml
 #
 # Every option is shown with its DEFAULT value and left commented out: with no
 # config file at all, these exact defaults apply, so you only need a config.toml
@@ -7,15 +7,15 @@
 # Full explanations: docs/CONFIG.md.
 
 ## ── Window behavior ───────────────────────────────────────────────────────
-# Drag a window to a screen edge to snap it there. (NRO default: off.)
+# Drag a window to a screen edge to snap it there. (default: off.)
 #snapping_enabled = false
 # Distance in cells from the edge that triggers a snap (1–10). Only matters when
 # snapping_enabled = true.
 #snap_threshold = 3
-# Draw drop shadows behind windows. (NRO default: off.)
+# Draw drop shadows behind windows. (default: off.)
 #window_shadows = false
 # Scroll direction ("natural"): scrolling down goes back into history.
-# Wheel/touchpad only; does not affect Shift+PageUp/PageDown. (NRO default: on.)
+# Wheel/touchpad only; does not affect Shift+PageUp/PageDown. (default: on.)
 # Set false for traditional scrolling (wheel up = back into history).
 #natural_scroll = true
 # Open new app windows maximized (filling the work area).
@@ -32,7 +32,7 @@
 
 ## ── Appearance ────────────────────────────────────────────────────────────
 # Color theme: a built-in ("midnight", "nord", "gruvbox", "dracula", "pastoral";
-# NRO default: nord) or the stem of a theme file in the themes dir (below). A
+# default: nord) or the stem of a theme file in the themes dir (below). A
 # file with a built-in's name overrides that built-in.
 #theme = "nord"
 # Directory of *.toml theme files. Unset = <config>/themes/ (i.e.
@@ -88,9 +88,9 @@
 # Branch the in-app updater tracks: "main" (stable prebuilt) or "dev".
 #update_branch = "main"
 
-## ── Apps, launcher, dock ──────────────────────────────────────────────────
-# Apps auto-started at launch and shown in the dock. Each entry is a table.
-# Fields: name (titlebar/dock label), command (executable), args (list),
+## ── Apps, launcher, taskbar ───────────────────────────────────────────────
+# Apps auto-started at launch and shown in the taskbar. Each entry is a table.
+# Fields: name (titlebar/taskbar label), command (executable), args (list),
 # category (launcher grouping), requires_cwd (bool), cwd (start dir),
 # cli (bool: wrap a CLI tool so it doesn't exit instantly), warn (confirm text).
 #[[apps]]
@@ -115,8 +115,9 @@
 #text = "hx"
 #image = "chafa"
 
-# Per-app dock badge colors: keyword (case-insensitive substring of the app
-# name/command) → color (a named color or #rrggbb). Default: claude=orange, kilo=yellow.
+# Per-app badge colors (shown on the taskbar pill): keyword (case-insensitive
+# substring of the app name/command) → color (a named color or #rrggbb).
+# Default: claude=orange, kilo=yellow.
 #[dock_badges]
 #claude = "orange"
 #kilo = "yellow"

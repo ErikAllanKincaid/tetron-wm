@@ -11,7 +11,7 @@
 //! expose on a socket.
 
 use crate::chrome::{
-    render_menubar, render_dock, dock_hit_regions, menubar_assistant_region, menubar_brand_region, menubar_mode_region, DockItem, DockKind,
+    render_menubar, menubar_new_shell_region, menubar_taskbar_regions, menubar_assistant_region, menubar_brand_region, menubar_mode_region, DockItem, DockKind,
 };
 use crate::powermenu::{PowerClick, PowerMenu, PowerOutcome};
 use crate::confirmclose::ConfirmClose;
@@ -595,8 +595,8 @@ pub struct SessionCore {
 impl SessionCore {
     /// Create a new session for a terminal of size `w` × `h` cells.
     ///
-    /// The work area is set to exclude the single-row menubar at the top and
-    /// the single-row dock at the bottom, i.e. `Rect::new(0, 1, w, h - 2)`.
+    /// The work area is set to exclude the single-row menubar at the top (which
+    /// also carries the taskbar), i.e. `Rect::new(0, 1, w, h - 1)`.
     pub fn new(w: i32, h: i32, cfg: Config) -> Self {
         Self::with_apphost(w, h, cfg, Box::new(LocalAppHost::new()))
     }
@@ -605,7 +605,7 @@ impl SessionCore {
     /// a `RemoteAppHost` here (Phase 2b); tests and in-process use get the
     /// default `LocalAppHost` via [`new`](Self::new).
     pub fn with_apphost(w: i32, h: i32, cfg: Config, apphost: Box<dyn AppHost>) -> Self {
-        let work = Rect::new(0, 1, w, h - 2);
+        let work = Rect::new(0, 1, w, h - 1);
         let systems = crate::systems::load();
         let launcher = Launcher::new(Self::build_launcher_apps(&cfg, &systems));
         let desktop_dir = dirs::home_dir().map(|h| h.join("Desktop")).unwrap_or_default();
@@ -1268,10 +1268,10 @@ impl SessionCore {
     /// Whether the full-screen "simple" view mode is active.
     pub fn simple_mode(&self) -> bool { self.simple }
 
-    /// The work-area rect a full-screen app fills in simple mode (between the
-    /// top menubar row and the bottom dock row).
+    /// The work-area rect a full-screen app fills in simple mode (everything
+    /// below the top menubar/taskbar row).
     fn simple_content_rect(&self) -> crate::geometry::Rect {
-        crate::geometry::Rect::new(0, 1, self.w.max(1), (self.h - 2).max(1))
+        crate::geometry::Rect::new(0, 1, self.w.max(1), (self.h - 1).max(1))
     }
 
     /// Toggle between desktop and simple view. Resizes the focused app so it
@@ -1623,14 +1623,15 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.wm.focused().and_then(|id| self.wm.get(id)).map(|w| w.rect)
     }
 
-    /// Return the screen-space hit regions for every dock pill.
+    /// Return the screen-space hit regions for every taskbar pill.
     ///
     /// Each tuple is `(pill_index, Rect)` where the rect is a 1-row slice on the
-    /// bottom screen row.  Used by callers that need to detect dock clicks
+    /// top menubar row.  Used by callers that need to detect taskbar clicks
     /// without going through the full mouse-routing path.
     pub fn dock_regions(&self) -> Vec<(usize, Rect)> {
         let items = self.dock_items();
-        dock_hit_regions(self.w, self.h, &items)
+        let segs = self.tray_segments_now();
+        menubar_taskbar_regions(self.w, &items, &segs)
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -1723,7 +1724,8 @@ or a remote-side error — its authorized_keys was left untouched)",
         };
         // Find the pill's x position so the popup anchors to it
         let items = self.dock_items();
-        let regions = dock_hit_regions(self.w, self.h, &items);
+        let segs = self.tray_segments_now();
+        let regions = menubar_taskbar_regions(self.w, &items, &segs);
         let pill_x = items
             .iter()
             .enumerate()
@@ -1902,7 +1904,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Resize { w, h } => {
                 self.w = w;
                 self.h = h;
-                self.wm.set_work_area(Rect::new(0, 1, w, h - 2));
+                self.wm.set_work_area(Rect::new(0, 1, w, h - 1));
                 // Re-fit the desktop grid so icons stay anchored top-right.
                 self.desktop.layout(w, h);
                 // Re-fit any maximized window and its app to the new work area.
@@ -2194,9 +2196,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                     || self.rename.is_some()
                     || self.tray.open().is_some()
                     || self.desktop.overlay_rect().is_some();
-                if !overlay_open && p.y == self.h - 1 {
+                if !overlay_open && p.y == 0 {
                     let items = self.dock_items();
-                    let hit = crate::chrome::dock_hit_regions(self.w, self.h, &items)
+                    let segs = self.tray_segments_now();
+                    let hit = menubar_taskbar_regions(self.w, &items, &segs)
                         .into_iter()
                         .find(|(_, r)| r.contains(p));
                     if let Some((idx, r)) = hit {
@@ -3232,7 +3235,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         let win_w = 84.min((self.w - 4).max(20));
         let win_h = 30.min((self.h - 4).max(6));
         let max_x = (self.w - win_w - 1).max(0);
-        let max_y = (self.h - 1 - win_h).max(1); // keep above the dock row
+        let max_y = (self.h - win_h).max(1); // keep on-screen (no bottom dock in v2)
         let x = (2 + n * 6).min(max_x);
         let y = (2 + n * 3).min(max_y);
         let rect = Rect::new(x, y, win_w, win_h);
@@ -3563,8 +3566,8 @@ or a remote-side error — its authorized_keys was left untouched)",
                 return;
             }
 
-            // The bottom-left "+" button opens a new shell window.
-            if crate::chrome::dock_new_shell_region(self.h).contains(p) {
+            // The menubar "+" button opens a new shell window.
+            if menubar_new_shell_region().contains(p) {
                 self.dock_popup = None;
                 self.open_shell();
                 return;
@@ -3725,7 +3728,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
                 self.wm.move_to(id, x, y);
                 // Show a target-cell highlight when the pointer nears an edge.
-                let work = Rect::new(0, 1, self.w, self.h - 2);
+                let work = Rect::new(0, 1, self.w, self.h - 1);
                 self.drag_preview = if self.cfg.snapping_enabled && near_edge(p, work, self.cfg.snap_threshold) {
                     let grid = self.grid();
                     let (row, col) = grid.cell_at(work, p);
@@ -3809,7 +3812,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // Only consider drop-to-snap if the drag actually moved (armed);
                 // a plain titlebar click leaves a tiled window exactly as it was.
                 if let (Some(Hit::Moving { id, .. }), true) = (self.drag, self.drag_armed) {
-                    let work = Rect::new(0, 1, self.w, self.h - 2);
+                    let work = Rect::new(0, 1, self.w, self.h - 1);
                     if self.cfg.snapping_enabled && near_edge(p, work, self.cfg.snap_threshold) {
                         let grid = self.grid();
                         let (row, col) = grid.cell_at(work, p);
@@ -4057,17 +4060,11 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
 
-        let app_name = focused
-            .and_then(|id| self.titles.iter().find(|(i, _)| *i == id))
-            .map(|(_, t)| t.clone())
-            .unwrap_or_default();
-
         let segs = {
             let st = self.tray_state.read().unwrap();
             crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
         };
-        layers.push(render_menubar(self.w, &app_name, &segs, false));
-        layers.push(render_dock(self.w, self.h, &self.dock_items()));
+        layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
         layers.extend(self.render_dock_ctx());
 
         // The desktop context / rename menu floats above the windows (but below
@@ -4267,21 +4264,24 @@ or a remote-side error — its authorized_keys was left untouched)",
             layers.push(Layer { z: 1, origin: Point::new(wa.x, wa.y), buf, opacity: 1.0, scissor: None });
         }
 
-        // Chrome: menubar (simple glyph) + dock.
-        let app_name = focused
-            .and_then(|id| self.titles.iter().find(|(i, _)| *i == id))
-            .map(|(_, t)| t.clone())
-            .unwrap_or_default();
+        // Chrome: menubar (simple glyph) with the taskbar pills.
         let segs = {
             let st = self.tray_state.read().unwrap();
             crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
         };
-        layers.push(render_menubar(self.w, &app_name, &segs, true));
-        layers.push(render_dock(self.w, self.h, &self.dock_items()));
+        layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
         layers.extend(self.render_dock_ctx());
 
         // Overlays that must still work in simple mode.
         let overlay_start = layers.len();
+        // Taskbar group chooser popup (drops down from its pill).
+        if self.dock_popup.is_some() {
+            let rows = self.dock_popup_rows();
+            if !rows.is_empty() {
+                let (popup_layers, _) = self.render_popup_for_hit_test(&rows);
+                layers.extend(popup_layers);
+            }
+        }
         layers.extend(self.launcher.render(self.w, self.h).layers);
         {
             let st = self.tray_state.read().unwrap();
@@ -4664,18 +4664,16 @@ fn desktop_mtime_changed(last: Option<std::time::SystemTime>, current: Option<st
 /// close colour and routes through the confirm-close dialog for apps).
 const DOCK_CTX_ROWS: [&str; 4] = ["Minimise", "Maximise", "Close", "Reset size"];
 
-/// The dock context-menu box, just above the dock row, anchored to the clicked
-/// pill's x (shared by render + hit-testing so they can never drift).
+/// The taskbar pill context-menu box, dropping down from the menubar row,
+/// anchored to the clicked pill's x (shared by render + hit-testing so they can
+/// never drift).
 #[doc(hidden)]
-pub fn dock_ctx_rect(anchor_x: i32, w: i32, h: i32) -> Rect {
+pub fn dock_ctx_rect(anchor_x: i32, w: i32, _h: i32) -> Rect {
     let box_w = 14;
     let box_h = DOCK_CTX_ROWS.len() as i32 + 2; // border rows
     let x = anchor_x.clamp(0, (w - box_w).max(0));
-    // Sits just above the dock row, but never off the top: on a very short
-    // terminal a negative y would push the rows off-screen (unclickable) — and
-    // since render and hit-test share this fn, the clamp keeps them aligned.
-    let y = (h - 1 - box_h).max(0);
-    Rect::new(x, y, box_w, box_h)
+    // Drops down just below the menubar/taskbar row (row 0).
+    Rect::new(x, 1, box_w, box_h)
 }
 
 /// Screen rect of dock context-menu row `i` (the clickable row).

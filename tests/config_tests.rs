@@ -3,9 +3,8 @@ use tetron_wm::config::Config;
 #[test]
 fn defaults_are_sane() {
     let c = Config::default();
-    // The fork defaults snapping OFF (docs/CONFIG.md: snapping + window shadows
-    // off, theme nord). Upstream defaulted it on; this assertion was a stale
-    // upstream holdover that the rename's green-suite pass surfaced.
+    // tetron-wm defaults snapping OFF (docs/CONFIG.md: snapping + window shadows
+    // off, theme nord).
     assert!(!c.snapping_enabled);
     assert_eq!(c.snap_threshold, 3);
     // Nothing auto-starts and nothing is pinned by default; the desktop shows

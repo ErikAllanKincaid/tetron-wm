@@ -167,9 +167,8 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            // NRO fork defaults: no drag-to-edge snapping and no window drop
-            // shadows, so a box with no config.toml behaves the way we want out
-            // of the box. (Upstream tuiui defaults both of these to true.)
+            // Defaults: no drag-to-edge snapping and no window drop shadows, so
+            // a box with no config.toml behaves the way we want out of the box.
             snapping_enabled: false,
             snap_threshold: 3,
             window_shadows: false,

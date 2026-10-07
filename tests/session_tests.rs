@@ -533,11 +533,12 @@ fn bare_move_during_drag_ends_it() {
 }
 
 #[test]
-fn dock_plus_button_opens_a_shell_window() {
-    use tetron_wm::chrome::dock_new_shell_region;
+fn taskbar_plus_button_opens_a_shell_window() {
+    use tetron_wm::chrome::menubar_new_shell_region;
     let mut core = SessionCore::new(120, 40, Config::default());
     let before = core.window_count();
-    let r = dock_new_shell_region(40); // bottom-left of a height-40 screen
+    let r = menubar_new_shell_region(); // the "+" in the top menubar row
+    assert_eq!(r.y, 0);
     core.apply(ClientMsg::MouseDown(Point::new(r.x, r.y)));
     assert_eq!(core.window_count(), before + 1, "clicking + should open a new shell window");
     core.shutdown();
@@ -624,10 +625,10 @@ fn dock_right_click_ignored_while_another_overlay_is_open() {
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let before = core.focused_window_rect_for_test().unwrap();
     let items = core.dock_items_for_test();
-    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
+    let (_, pill) = tetron_wm::chrome::menubar_taskbar_regions(120, &items, &[])[0];
     core.apply(ClientMsg::ToggleMenu); // open the launcher (a blocking overlay)
     assert!(core.launcher_open());
-    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
+    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 0)));
     // The menu never opened, so clicking its Reset row does nothing — the click
     // routes to the launcher instead, and the window is untouched.
     let row = dock_ctx_row_rect(pill.x, 120, 40, 3);
@@ -637,13 +638,13 @@ fn dock_right_click_ignored_while_another_overlay_is_open() {
 }
 
 #[test]
-fn dock_ctx_menu_stays_on_screen_on_tiny_terminal() {
+fn dock_ctx_menu_drops_down_from_taskbar() {
     use tetron_wm::session::dock_ctx_rect;
-    // On a terminal shorter than the menu box, y must clamp to 0 (never
-    // negative) so the rows stay rendered and clickable — render and hit-test
-    // share this fn, so the clamp keeps them aligned.
-    let d = dock_ctx_rect(0, 80, 4);
-    assert_eq!(d.y, 0, "menu pinned to the top, not pushed off-screen: {d:?}");
+    // The pill context menu drops down from the menubar/taskbar row, so its top
+    // sits at row 1 (just below the bar) regardless of terminal height — render
+    // and hit-test share this fn, so they can never drift.
+    let d = dock_ctx_rect(0, 80, 40);
+    assert_eq!(d.y, 1, "menu drops down from the taskbar row: {d:?}");
     assert!(d.x >= 0 && d.x + d.w <= 80, "fits horizontally: {d:?}");
 }
 
@@ -653,14 +654,14 @@ fn dock_right_click_reset_centres_at_half_size() {
     let mut core = SessionCore::new(120, 40, Config::default());
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let items = core.dock_items_for_test();
-    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
-    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
+    let (_, pill) = tetron_wm::chrome::menubar_taskbar_regions(120, &items, &[])[0];
+    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 0)));
     // Click row 3 (Reset size) using the same geometry the session renders with.
     let row = dock_ctx_row_rect(pill.x, 120, 40, 3);
     core.apply(ClientMsg::MouseDown(Point::new(row.x + 1, row.y)));
     let r = core.focused_window_rect_for_test().unwrap();
-    assert_eq!((r.w, r.h), (60, 19), "half of the 120x38 work area");
-    assert_eq!((r.x, r.y), ((120 - 60) / 2, 1 + (38 - 19) / 2), "centred: {r:?}");
+    assert_eq!((r.w, r.h), (60, 19), "half of the 120x39 work area");
+    assert_eq!((r.x, r.y), ((120 - 60) / 2, 1 + (39 - 19) / 2), "centred: {r:?}");
     core.shutdown();
 }
 
@@ -671,8 +672,8 @@ fn dock_right_click_elsewhere_dismisses_without_acting() {
     core.apply(ClientMsg::Launch { name: "shell".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 5".into()] });
     let before = core.focused_window_rect_for_test().unwrap();
     let items = core.dock_items_for_test();
-    let (_, pill) = tetron_wm::chrome::dock_hit_regions(120, 40, &items)[0];
-    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 39)));
+    let (_, pill) = tetron_wm::chrome::menubar_taskbar_regions(120, &items, &[])[0];
+    core.apply(ClientMsg::MouseRightDown(Point::new(pill.x, 0)));
     // A click far from the menu dismisses it and must not move/close anything.
     core.apply(ClientMsg::MouseDown(Point::new(2, 5)));
     assert_eq!(core.focused_window_rect_for_test().unwrap(), before);

@@ -20,8 +20,12 @@ const ASSIST_X: i32 = 13;
 /// Label for the assistant button (opens the AI chat panel).
 const ASSIST_LABEL: &str = " \u{2726} "; // ✦
 
-/// Column where the focused-app name starts (after brand + mode + assistant).
-const APP_X: i32 = 17;
+/// Column of the "+" new-shell button (reuses the old focused-app slot).
+const NEW_SHELL_X: i32 = 17;
+
+/// Column where the taskbar pills begin (after the "+" button + a 1-cell gap).
+/// `NEW_SHELL_LABEL` (" + ") is 3 cells wide, + a 1-cell gap.
+const TASKBAR_X: i32 = 21;
 
 /// Menubar view-mode toggle glyphs (shows the CURRENT mode; click to switch).
 const MODE_DESKTOP: &str = " \u{229E} "; // ⊞  windowed desktop
@@ -57,11 +61,14 @@ pub struct DockItem {
 
 // ── Public render functions ────────────────────────────────────────────────────
 
-/// Build a compositor [`Layer`] for the top menubar row.
+/// Build a compositor [`Layer`] for the top menubar row (the v2 taskbar).
 ///
 /// The layer is 1 row tall, `width` columns wide, positioned at `(0, 0)`.
-/// It displays the brand name on the left and `focused_app` at a fixed offset.
-pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Segment], simple: bool) -> Layer {
+/// Left to right: the brand button, the view-mode toggle, the assistant button,
+/// a "+" new-shell button, then the open-window taskbar pills; the status tray
+/// occupies the right edge. Pills shrink to badge-only and finally collapse into
+/// a "…+N" overflow marker when they would collide with the tray.
+pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::Segment], simple: bool) -> Layer {
     let t = crate::theme::current();
     let mut buf = CellBuffer::new(width, 1);
     buf.fill(crate::cell::Cell { ch: ' ', fg: t.text, bg: t.menubar_bg, attrs: Default::default() });
@@ -69,17 +76,35 @@ pub fn render_menubar(width: i32, focused_app: &str, segments: &[crate::tray::Se
     let mode = if simple { MODE_SIMPLE } else { MODE_DESKTOP };
     buf.write_str(MODE_X, 0, mode, t.accent, t.active_bg);
     buf.write_str(ASSIST_X, 0, ASSIST_LABEL, t.accent, t.active_bg);
+    // The "+" new-shell button, just right of the assistant.
+    buf.write_str(NEW_SHELL_X, 0, NEW_SHELL_LABEL, crate::cell::Rgba::rgb(255, 255, 255), t.accent);
     // Status-tray segments occupy the right side, out to the screen edge (the
     // power button moved into the launcher's system section).
-    let tray_left = segments.iter().map(|s| s.rect.x).min().unwrap_or(width);
+    let tray_left = menubar_tray_left(width, segments);
     for s in segments {
         buf.write_str(s.rect.x, 0, &s.text, t.text, t.menubar_bg);
     }
-    // Focused-app name sits between the brand and the tray, truncated so it can
-    // never overwrite a tray segment.
-    let avail = (tray_left - 1 - APP_X).max(0) as usize;
-    let app: String = focused_app.chars().take(avail).collect();
-    buf.write_str(APP_X, 0, &app, t.dim, t.menubar_bg);
+    // Taskbar pills fill the gap between the "+" button and the tray.
+    let (pills, marker) = taskbar_layout(TASKBAR_X, tray_left - 1, items);
+    for (idx, r, badge_x, label_text) in &pills {
+        let item = &items[*idx];
+        let bg = if item.focused { t.active_bg } else { t.menubar_bg };
+        buf.write_str(r.x, 0, label_text, t.text, bg);
+        // Bell-notification dot at the pill's right edge.
+        if item.attention {
+            buf.set(r.x + r.w - 1, 0, crate::cell::Cell { ch: '•', fg: t.accent, bg, attrs: Default::default() });
+        }
+        // Overwrite the badge cell with the badge color.
+        buf.set(*badge_x, 0, crate::cell::Cell {
+            ch: item.badge_letter,
+            fg: crate::cell::Rgba::rgb(255, 255, 255),
+            bg: item.badge_color,
+            attrs: Default::default(),
+        });
+    }
+    if let Some((r, m)) = marker {
+        buf.write_str(r.x, 0, &m, t.dim, t.menubar_bg);
+    }
     Layer { z: 1000, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None }
 }
 
@@ -99,59 +124,32 @@ pub fn menubar_assistant_region() -> Rect {
     Rect::new(ASSIST_X, 0, ASSIST_LABEL.chars().count() as i32, 1)
 }
 
-/// The "new shell" quick-launch button at the dock's bottom-left corner.
+/// The "new shell" quick-launch button in the menubar (" + ").
 const NEW_SHELL_LABEL: &str = " + ";
 
-/// Screen-space hit region for the dock's "+" (new shell) button (bottom-left).
-pub fn dock_new_shell_region(height: i32) -> Rect {
-    Rect::new(0, height - 1, NEW_SHELL_LABEL.chars().count() as i32, 1)
+/// Screen-space hit region for the menubar's "+" (new shell) button.
+pub fn menubar_new_shell_region() -> Rect {
+    Rect::new(NEW_SHELL_X, 0, NEW_SHELL_LABEL.chars().count() as i32, 1)
 }
 
-/// Build a compositor [`Layer`] for the bottom dock row.
+/// Leftmost column of the status tray (or `width` when the tray is empty). The
+/// taskbar pills fill the space up to one cell before this.
+pub fn menubar_tray_left(width: i32, segments: &[crate::tray::Segment]) -> i32 {
+    segments.iter().map(|s| s.rect.x).min().unwrap_or(width)
+}
+
+/// Return `(pill_index, Rect)` hit regions in *screen* coordinates (row 0).
 ///
-/// The layer is 1 row tall, positioned at `(0, height - 1)`.
-pub fn render_dock(width: i32, height: i32, items: &[DockItem]) -> Layer {
-    let t = crate::theme::current();
-    let mut buf = CellBuffer::new(width, 1);
-    buf.fill(crate::cell::Cell { ch: ' ', fg: t.text, bg: t.dock_bg, attrs: Default::default() });
-    // The "+" new-shell button, bottom-left.
-    buf.write_str(0, 0, NEW_SHELL_LABEL, crate::cell::Rgba::rgb(255, 255, 255), t.accent);
-    for (i, (_idx, r, badge_x, label_text)) in dock_layout(items).into_iter().enumerate() {
-        let item = &items[i];
-        let bg = if item.focused { t.active_bg } else { t.dock_bg };
-        // Write the full pill background first
-        buf.write_str(r.x, 0, &label_text, t.text, bg);
-        // Bell-notification dot at the pill's right edge.
-        if item.attention {
-            buf.set(r.x + r.w - 1, 0, crate::cell::Cell {
-                ch: '•',
-                fg: t.accent,
-                bg,
-                attrs: Default::default(),
-            });
-        }
-        // Overwrite the badge cell (first char of label_text) with badge color
-        buf.set(badge_x, 0, crate::cell::Cell {
-            ch: item.badge_letter,
-            fg: crate::cell::Rgba::rgb(255, 255, 255),
-            bg: item.badge_color,
-            attrs: Default::default(),
-        });
-    }
-    Layer { z: 1000, origin: Point::new(0, height - 1), buf, opacity: 1.0, scissor: None }
+/// The caller uses these to translate a taskbar click into a pill index, then
+/// looks up `items[pill_index].kind` to decide what to do. The "…+N" overflow
+/// marker is not clickable (taskbar scroll is a future addition).
+pub fn menubar_taskbar_regions(width: i32, items: &[DockItem], segments: &[crate::tray::Segment]) -> Vec<(usize, Rect)> {
+    let tray_left = menubar_tray_left(width, segments);
+    let (pills, _marker) = taskbar_layout(TASKBAR_X, tray_left - 1, items);
+    pills.into_iter().map(|(idx, r, _, _)| (idx, r)).collect()
 }
 
-/// Return `(pill_index, Rect)` hit regions in *screen* coordinates (bottom row).
-///
-/// The caller uses these to translate a dock click into a pill index, then
-/// looks up `items[pill_index].kind` to decide what to do.
-pub fn dock_hit_regions(_width: i32, height: i32, items: &[DockItem]) -> Vec<(usize, Rect)> {
-    dock_layout(items).into_iter()
-        .map(|(idx, r, _, _)| (idx, Rect::new(r.x, height - 1, r.w, 1)))
-        .collect()
-}
-
-/// Render a small bordered popup ABOVE the dock for a window-group chooser.
+/// Render a small bordered popup BELOW the taskbar for a window-group chooser.
 ///
 /// Returns `(layers, row_rects)` where each entry in `row_rects` is the
 /// screen-space rect of one window row (for hit-testing).
@@ -165,13 +163,13 @@ pub fn render_dock_popup(
 ) -> (Vec<Layer>, Vec<(WindowId, Rect)>) {
     let t = crate::theme::current();
     let n = rows.len() as i32;
-    let box_h = n + 2; // border rows
+    let box_h = (n + 2).min((height - 1).max(2)); // border rows, clamped to screen
     let max_label_w = rows.iter().map(|(_, _, _, l)| l.chars().count()).max().unwrap_or(4) as i32;
     let box_w = (max_label_w + 5).max(12).min(width); // badge + space + label + borders + padding
     // Anchor left edge at pill_x but clamp to screen
     let bx = pill_x.min(width - box_w).max(0);
-    // Place above the dock row
-    let by = (height - 1 - box_h).max(0);
+    // Drop down from the menubar/taskbar row (row 0).
+    let by = 1;
     let rect = Rect::new(bx, by, box_w, box_h);
 
     let mut buf = CellBuffer::new(rect.w, rect.h);
@@ -224,33 +222,99 @@ pub fn render_dock_popup(
 
 // ── Private helpers ────────────────────────────────────────────────────────────
 
-/// Superscript digit suffix for group counts.
+/// A laid-out taskbar pill: `(item_index, local_rect, badge_x, pill_string)`.
+type PillLayout = (usize, Rect, i32, String);
+
+/// Superscript digit suffix for group counts, with a leading space (used in the
+/// full-label pill, e.g. `" ²"`).
 fn count_suffix(n: usize) -> String {
-    const SUP: [char; 10] = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹'];
-    if n <= 1 { String::new() }
-    else if n <= 9 { format!(" {}", SUP[n]) }
-    else { format!(" \u{00B7}{n}") }
+    let s = count_badge_suffix(n);
+    if s.is_empty() { String::new() } else { format!(" {s}") }
 }
 
-/// Compute the local (y = 0) layout for dock items.
-///
-/// Each item is rendered as `"B label"` (badge cell + space + label + count suffix),
-/// padded with spaces. Returns `(pill_index, local_rect, badge_x, full_label_string)`.
-fn dock_layout(items: &[DockItem]) -> Vec<(usize, Rect, i32, String)> {
+/// Compact group-count suffix with no leading space (used in the badge-only
+/// pill, e.g. `"²"` or `"·12"`).
+fn count_badge_suffix(n: usize) -> String {
+    const SUP: [char; 10] = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹'];
+    if n <= 1 { String::new() }
+    else if n <= 9 { SUP[n].to_string() }
+    else { format!("\u{00B7}{n}") }
+}
+
+/// The "…+N" overflow marker shown when even badge-only pills do not all fit.
+fn marker_text(hidden: usize) -> String {
+    format!(" \u{2026}+{hidden} ")
+}
+
+/// Lay out `texts` (as `(item_index, pill_string)`) left to right from `start_x`
+/// with a 1-cell gap between pills. Returns `Some(layout)` only if everything
+/// fits within `avail` columns, where each entry is
+/// `(item_index, local_rect, badge_x, pill_string)` and `badge_x` is the pill's
+/// badge cell (second char, after the leading space).
+fn lay_pills(start_x: i32, avail: i32, texts: &[(usize, String)]) -> Option<Vec<PillLayout>> {
+    if texts.is_empty() { return Some(Vec::new()); }
+    let total: i32 = texts.iter().map(|(_, s)| s.chars().count() as i32).sum::<i32>()
+        + texts.len() as i32 - 1; // 1-cell gaps between pills
+    if total > avail { return None; }
     let mut out = Vec::new();
-    // Pills start after the bottom-left "+" new-shell button.
-    let mut x = NEW_SHELL_LABEL.chars().count() as i32 + 1;
-    for (i, it) in items.iter().enumerate() {
-        let suffix = count_suffix(it.count);
-        // Pill format: " B label[suffix] "
-        // We store the rendered string (badge placeholder + label), badge_x tracks
-        // where the badge cell is in the pill.
-        let label_part = format!(" {} {}{} ", it.badge_letter, it.label, suffix);
-        let w = label_part.chars().count() as i32;
-        // badge is at position x (the ' B' — second char, x+1 after leading space)
-        let badge_x = x + 1;
-        out.push((i, Rect::new(x, 0, w, 1), badge_x, label_part));
+    let mut x = start_x;
+    for (idx, s) in texts {
+        let w = s.chars().count() as i32;
+        out.push((*idx, Rect::new(x, 0, w, 1), x + 1, s.clone()));
         x += w + 1;
     }
-    out
+    Some(out)
+}
+
+/// Compute the taskbar-pill layout for the span `[start_x, end_x)`.
+///
+/// Three progressively tighter modes, first that fits wins:
+/// 1. full `" B label[²] "` pills,
+/// 2. badge-only `" B[²] "` pills,
+/// 3. as many badge-only pills as fit plus a trailing `" …+N "` overflow marker.
+///
+/// Returns `(pills, overflow_marker)` where `pills` is the `lay_pills` layout and
+/// the marker (when present) is its `(local_rect, text)` — it is drawn but not
+/// clickable.
+///
+// TODO(taskbar-scroll): make the "…+N" marker a scroll affordance (wheel over
+// the taskbar, or click to cycle) so a very long window list stays reachable
+// rather than silently hidden behind the badge-only overflow.
+fn taskbar_layout(start_x: i32, end_x: i32, items: &[DockItem]) -> (Vec<PillLayout>, Option<(Rect, String)>) {
+    let avail = (end_x - start_x).max(0);
+    if avail <= 0 || items.is_empty() { return (Vec::new(), None); }
+
+    // 1) Full labels.
+    let full: Vec<(usize, String)> = items.iter().enumerate()
+        .map(|(i, it)| (i, format!(" {} {}{} ", it.badge_letter, it.label, count_suffix(it.count))))
+        .collect();
+    if let Some(l) = lay_pills(start_x, avail, &full) { return (l, None); }
+
+    // 2) Badge-only.
+    let badges: Vec<(usize, String)> = items.iter().enumerate()
+        .map(|(i, it)| (i, format!(" {}{} ", it.badge_letter, count_badge_suffix(it.count))))
+        .collect();
+    if let Some(l) = lay_pills(start_x, avail, &badges) { return (l, None); }
+
+    // 3) Badge-only + "…+N" marker: place the most badges that leave room for a
+    //    marker covering the rest.
+    for k in (1..badges.len()).rev() {
+        let placed = &badges[..k];
+        let hidden = badges.len() - k;
+        let marker = marker_text(hidden);
+        let placed_w: i32 = placed.iter().map(|(_, s)| s.chars().count() as i32).sum::<i32>()
+            + placed.len() as i32 - 1; // gaps between the placed badges
+        let total = placed_w + 1 + marker.chars().count() as i32; // gap + marker
+        if total <= avail {
+            let l = lay_pills(start_x, avail, placed).unwrap();
+            let mx = l.last().map(|(_, r, _, _)| r.x + r.w + 1).unwrap_or(start_x);
+            let mw = marker.chars().count() as i32;
+            return (l, Some((Rect::new(mx, 0, mw, 1), marker)));
+        }
+    }
+
+    // Not even one badge + marker fits: show the marker for all items.
+    let marker = marker_text(badges.len());
+    let mw = (marker.chars().count() as i32).min(avail);
+    (Vec::new(), Some((Rect::new(start_x, 0, mw, 1), marker)))
 }

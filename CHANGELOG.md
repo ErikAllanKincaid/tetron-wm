@@ -7,6 +7,15 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Changed
+- **Open windows now live in a top-panel taskbar; the bottom dock is gone.** The
+  menubar row carries the taskbar of open windows (same-app grouping, a
+  drop-down group chooser, and a colored letter badge per app), with a `+`
+  new-shell button just right of the ✦ assistant. Pills show full labels, then
+  shrink to badge-only, then collapse to a trailing `…+N` overflow marker under
+  width pressure so they never collide with the tray (taskbar scroll is a
+  planned follow-up). Retiring the bottom row gives every window one more line
+  of screen. Right-click a pill for its context menu (minimise / maximise /
+  close / reset size), which now drops down from the bar.
 - **Power actions moved into the launcher.** The top-right host-name button is
   gone; the launcher's bottom section now holds **Systems**, **Exit**, **Restart**,
   **Shutdown** (Systems opens a top-left popover; the others open their confirm

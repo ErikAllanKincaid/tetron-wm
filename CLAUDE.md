@@ -1,9 +1,9 @@
 # tetron-wm — project memory for coding agents
 
 tetron-wm is a window manager & desktop for the terminal, in Rust. Floating
-windows, dock, cascading launcher, app store (600+ curated TUIs), file
-manager, desktop icons, menubar tray, mouse — rendered as cells over a
-daemon/client socket, like a graphical tmux.
+windows, a top-panel taskbar, cascading launcher, app store (600+ curated
+TUIs), file manager, desktop icons, menubar tray, mouse — rendered as cells
+over a daemon/client socket, like a graphical tmux.
 
 ## Build, test, lint
 
@@ -125,7 +125,7 @@ rather than by adding frameworks here.
 Integration tests live in `tests/*_tests.rs`, unit tests inline. UI tests
 drive widgets through their public state machines (clicks at computed rects,
 messages applied to `SessionCore`) — no terminal needed. When you change a
-menubar/dock layout, check `tests/chrome_tests.rs` for byte-vs-char column
+menubar/taskbar layout, check `tests/chrome_tests.rs` for byte-vs-char column
 assumptions (the bar contains multi-byte glyphs).
 
 ## Docs

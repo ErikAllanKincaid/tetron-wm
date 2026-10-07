@@ -50,9 +50,8 @@ pub mod assistant;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The git commit this binary was built from (stamped by `build.rs`).
 pub const GIT_SHA: &str = env!("TETRON_WM_GIT_SHA");
-/// Repository the in-app updater checks/installs from. This is the tetron-wm
-/// fork (adds the tetron mesh-VPN integration), not upstream jaylfc/tuiui --
-/// pointing it upstream would self-update over the tetron patches.
+/// Repository the in-app updater checks/installs from (the tetron-wm release
+/// repo). The updater must only ever point here.
 pub const REPO_URL: &str = "https://github.com/ErikAllanKincaid/tetron-wm";
 
 /// Max size of `~/tetron-wm-debug.log` before it's reset, so a long-running session

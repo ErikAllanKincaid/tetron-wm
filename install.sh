@@ -6,9 +6,8 @@
 # Override the install directory with TETRON_WM_BIN_DIR (default: ~/.local/bin).
 set -eu
 
-# This is the tetron-wm fork of tuiui (adds the tetron mesh-VPN integration).
-# Pull prebuilt binaries from it, NOT upstream jaylfc/tuiui, or the tetron
-# features are missing. The binary is still named `tetron-wm`.
+# Prebuilt binaries come from the tetron-wm release repo. The binary is named
+# `tetron-wm` and installs to its own paths, so it collides with nothing else.
 REPO="ErikAllanKincaid/tetron-wm"
 BIN_DIR="${TETRON_WM_BIN_DIR:-$HOME/.local/bin}"
 
