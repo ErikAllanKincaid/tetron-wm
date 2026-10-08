@@ -385,8 +385,20 @@ impl Settings {
 
     /// Handle a content-local click; returns `true` if a setting changed.
     pub fn handle_click(&mut self, p: Point, _w: i32, _h: i32) -> bool {
-        if self.edit.is_some() || self.wp_edit.is_some() {
-            return false; // text-entry boxes are keyboard-driven
+        // A click while a text box is open dismisses it. Mouse-driven users
+        // otherwise had no way out — the click was swallowed and every row went
+        // dead, so the panel looked frozen (most visibly the Wallpaper filename
+        // box). A click commits the wallpaper name (like clicking away to
+        // confirm) and cancels the multi-field Apps form (a half-typed command
+        // should not be saved). Either way this click only dismisses; it does
+        // not also action the row under it, so nothing changes by surprise.
+        if self.wp_edit.is_some() {
+            self.commit_wallpaper();
+            return true;
+        }
+        if self.edit.is_some() {
+            self.edit = None;
+            return false;
         }
         if p.x < SIDEBAR_W {
             let i = (p.y - 1) as usize;
@@ -691,6 +703,23 @@ mod tests {
         s.toggle(); // commit
         assert!(!s.is_editing());
         assert_eq!(s.config().wallpaper.as_deref(), Some("gentle-dawn.png"));
+    }
+
+    #[test]
+    fn click_while_wallpaper_box_open_commits_and_closes() {
+        // Regression: a mouse click used to be swallowed while the filename box
+        // was open, leaving a mouse-driven user with no way out (the panel
+        // looked frozen). A click now commits the typed name and closes the box.
+        let cfg = Config { wallpaper: None, ..Config::default() };
+        let mut s = Settings::new(cfg);
+        to_wallpaper_file(&mut s);
+        s.toggle(); // open the box
+        for c in "ty.jpg".chars() { s.type_char(c); }
+        assert!(s.is_editing());
+        let changed = s.handle_click(Point::new(SIDEBAR_W + 5, 3), 80, 24);
+        assert!(changed, "click should report a change so the session re-syncs");
+        assert!(!s.is_editing(), "the box must close on a click");
+        assert_eq!(s.config().wallpaper.as_deref(), Some("ty.jpg"));
     }
 
     #[test]

@@ -6,6 +6,19 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.4] — 2026-10-08
+
+### Fixed
+- **Settings → Appearance no longer freezes when editing the wallpaper
+  filename.** With the Wallpaper-file text box open, mouse clicks were swallowed
+  and every row went dead, so a mouse-driven user had no way to close it and the
+  panel looked frozen. A click now dismisses the box (committing the typed
+  filename, or cancelling the Apps add-form), just like clicking away.
+- **A wedged `chafa` can no longer hang the whole UI.** The image-wallpaper
+  render shelled out to `chafa` with inherited stdin and no timeout, on the
+  daemon's input/render loop; now it runs with stdin closed, its output drained
+  on a thread, and an 8-second hard timeout (then killed, with a log line).
+
 ### Added
 - **Desktop icon-label scrim is configurable.** The dark backing drawn behind
   desktop icon glyphs and labels over a wallpaper is now set by `desktop_scrim`

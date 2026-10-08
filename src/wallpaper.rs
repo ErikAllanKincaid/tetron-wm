@@ -48,30 +48,78 @@ pub fn resolve_path(path: &str) -> PathBuf {
 
 /// Build a `w`×`h` cell wallpaper from `path` using chafa's symbol output,
 /// stretched to fill exactly. Returns `None` if chafa is missing/fails.
+///
+/// The chafa call is **bounded** (stdin closed, hard timeout). This runs on the
+/// daemon's input/render loop (via `SessionCore::build_wallpaper`), so a chafa
+/// that ever blocked — an inherited stdin, a slow or malformed file, a wedged
+/// process — would otherwise freeze the whole UI until restart.
 pub fn from_image(path: &str, w: i32, h: i32) -> Option<CellBuffer> {
     if w <= 0 || h <= 0 {
         return None;
     }
-    let out = std::process::Command::new("chafa")
-        .args([
-            "-f", "symbols",
-            "-c", "full",
-            // `all-wide`: every symbol EXCEPT the 2-column-wide ones. A wide glyph
-            // (e.g. a CJK char chafa picks) would occupy two cells but our grid is
-            // strictly one glyph per column, so it shifts the row and leaves black
-            // gaps. Excluding wide keeps exactly w×h single-column cells.
-            "--symbols", "all-wide",
-            "--dither", "ordered", // break up color banding in smooth gradients
-            "--stretch",
-            "-s", &format!("{w}x{h}"),
-            path,
-        ])
-        .output()
+    let size = format!("{w}x{h}");
+    let args = [
+        "-f", "symbols",
+        "-c", "full",
+        // `all-wide`: every symbol EXCEPT the 2-column-wide ones. A wide glyph
+        // (e.g. a CJK char chafa picks) would occupy two cells but our grid is
+        // strictly one glyph per column, so it shifts the row and leaves black
+        // gaps. Excluding wide keeps exactly w×h single-column cells.
+        "--symbols", "all-wide",
+        "--dither", "ordered", // break up color banding in smooth gradients
+        "--stretch",
+        "-s", &size,
+        path,
+    ];
+    let out = run_chafa_capped(&args, std::time::Duration::from_secs(8))?;
+    Some(parse_ansi(&String::from_utf8_lossy(&out), w, h))
+}
+
+/// Run chafa with stdin closed and a hard timeout, draining stdout on a thread
+/// so a full pipe can never deadlock the child. Returns its stdout on success,
+/// or `None` if chafa is missing, fails, or outruns `timeout` (then killed).
+fn run_chafa_capped(args: &[&str], timeout: std::time::Duration) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+    let mut child = Command::new("chafa")
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .ok()?;
-    if !out.status.success() {
-        return None;
+    // Drain stdout concurrently: chafa's full-screen output is far larger than
+    // the OS pipe buffer, so reading only after exit could deadlock.
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let buf = reader.join().unwrap_or_default();
+                return if status.success() { Some(buf) } else { None };
+            }
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = reader.join();
+                    crate::dbg_log("wallpaper: chafa timed out — killed (solid fallback)");
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+            Err(_) => {
+                let _ = reader.join();
+                return None;
+            }
+        }
     }
-    Some(parse_ansi(&String::from_utf8_lossy(&out.stdout), w, h))
 }
 
 /// Parse chafa's truecolor-SGR symbol output into a `w`×`h` [`CellBuffer`].
