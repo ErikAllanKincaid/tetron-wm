@@ -253,6 +253,16 @@ theme = "nord"            # midnight | nord | gruvbox | dracula | pastoral | <th
 # a bare VT, plain SSH): ascii (default, renders everywhere) | nerd | emoji.
 # icon_style = "ascii"
 
+# Wallpaper (also editable in Settings → Appearance). Rendered to cells via chafa,
+# so it works on any terminal incl. a kmscon console. A path relative to the config
+# dir resolves under ~/.config/tetron-wm/wallpapers/ (a bare filename lives there);
+# absolute and ~ paths also work. Env TETRON_WM_WALLPAPER=<path> overrides.
+wallpaper = "wallpaper.jpg"   # drop an image in ~/.config/tetron-wm/wallpapers/
+wallpaper_enabled = true      # master on/off for the wallpaper
+# desktop_scrim = "none"      # backing behind icon labels over a wallpaper:
+#                             # a color (#rrggbb[aa] / named), or "none"/"off".
+#                             # Unset = a semi-transparent black (#000000c8).
+
 # AI assistant (the ✦ menubar button; also editable in Settings → Assistant)
 # assistant_command = "opencode"   # the agent CLI: "opencode" or "hermes"
 #                                  # (switch in Settings → Assistant), or any binary
