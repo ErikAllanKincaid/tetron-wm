@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.3] — 2026-10-07
+
 ### Added
 - **Image wallpaper, configurable (v1).** Set `wallpaper = "<path>"` in
   `config.toml` to put an image behind your windows. The path may be absolute,
