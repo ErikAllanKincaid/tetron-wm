@@ -45,7 +45,7 @@ in) and logs each step (`update: …`) to `~/tetron-wm-debug.log`. The debug log
 **appends across reloads** — `dbg_init` used to truncate on every daemon start,
 wiping the very update trace needed to debug it. The long-standing "update
 from Settings gets stuck" report (investigation log:
-`docs/superpowers/plans/2026-06-14-update-stuck-investigation.md`) was root-
+`DO-NOT-COMMIT/planning/plans/2026-06-14-update-stuck-investigation.md`) was root-
 caused and fixed in 0.2.10: both `install.sh` and `check_for_updates()`
 resolved the latest release via the unauthenticated, 60-req/hour
 `api.github.com` REST endpoint, which answered a 403 once rate-limited — read
@@ -133,5 +133,5 @@ assumptions (the bar contains multi-byte glyphs).
 - `README.md` — user-facing; keep "What works today", Controls, Configuration,
   and Roadmap in sync with shipped features.
 - `agent/` — what the in-app assistant is told (see its README).
-- `docs/superpowers/{specs,plans}` — dated historical design records; append
-  new ones, don't retrofit old ones.
+- `DO-NOT-COMMIT/planning/{specs,plans}` — dated historical design records (kept
+  out of the public repo); append new ones, don't retrofit old ones.
