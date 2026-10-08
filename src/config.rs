@@ -140,6 +140,13 @@ pub struct Config {
     /// Whether desktop icons are shown on the wallpaper.
     #[serde(default = "default_true")]
     pub desktop_enabled: bool,
+    /// Background "scrim" drawn behind desktop icon glyphs and labels **when a
+    /// wallpaper is shown**, for legibility. A color (`#rrggbb`, `#rrggbbaa`, or
+    /// a named color); `"none"` (or `"off"`) disables it so labels sit directly
+    /// on the wallpaper. Unset = a semi-transparent black (`#000000c8`). It has
+    /// no effect on the plain (solid) desktop, which never draws a scrim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop_scrim: Option<String>,
     /// Pinned desktop shortcuts (reuses AppEntry); shown alongside ~/Desktop files.
     /// Seeded with Files + Store for existing configs that predate this field.
     #[serde(default = "default_desktop_pins", skip_serializing_if = "Vec::is_empty")]
@@ -169,6 +176,23 @@ pub struct Config {
 }
 
 impl Config {
+    /// Resolve the desktop icon-label scrim color (see [`desktop_scrim`]).
+    /// Unset → a semi-transparent black; `"none"`/`"off"` → transparent (no
+    /// scrim); any other value → that color, falling back to the default when it
+    /// does not parse.
+    ///
+    /// [`desktop_scrim`]: Self::desktop_scrim
+    pub fn desktop_scrim_color(&self) -> crate::cell::Rgba {
+        const DEFAULT: crate::cell::Rgba = crate::cell::Rgba { r: 0, g: 0, b: 0, a: 200 };
+        match self.desktop_scrim.as_deref().map(str::trim) {
+            None | Some("") => DEFAULT,
+            Some(s) if s.eq_ignore_ascii_case("none") || s.eq_ignore_ascii_case("off") => {
+                crate::cell::Rgba::TRANSPARENT
+            }
+            Some(s) => crate::badge::parse_color(s).unwrap_or(DEFAULT),
+        }
+    }
+
     /// The apps the launcher should offer: the explicit `launcher` list, or the
     /// autostart `apps` when no launcher list is configured.
     pub fn launcher_apps(&self) -> Vec<AppEntry> {
@@ -211,6 +235,7 @@ impl Default for Config {
             default_apps: crate::openwith::default_handlers(),
             filemanager_view: None,
             desktop_enabled: true,
+            desktop_scrim: None,
             desktop_pins: default_desktop_pins(),
             desktop_positions: std::collections::BTreeMap::new(),
             assistant_command: None,

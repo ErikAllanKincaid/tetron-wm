@@ -276,7 +276,7 @@ impl<F: FsOps> DesktopIcons<F> {
 
     /// Render the icon layer into a `w×h` buffer (transparent background so the
     /// wallpaper shows through; only icon tiles draw).
-    pub fn render(&self, w: i32, h: i32, over_wallpaper: bool) -> crate::buffer::CellBuffer {
+    pub fn render(&self, w: i32, h: i32, over_wallpaper: bool, scrim: crate::cell::Rgba) -> crate::buffer::CellBuffer {
         use crate::cell::{Cell, Rgba};
         // Label/glyph color follows the theme's `text`, which always contrasts
         // with the wallpaper (`desktop_bg`) in every theme — the old hardcoded
@@ -291,11 +291,12 @@ impl<F: FsOps> DesktopIcons<F> {
         let SEL_BG = sel_bg;
         let transparent = Rgba::TRANSPARENT;
         // Over an image wallpaper the theme text has no guaranteed contrast, so
-        // give each glyph + label a dark scrim and white ink (the easiest, most
-        // reliable readability win). On the plain desktop keep the transparent
-        // label so nothing changes there.
+        // give each glyph + label a scrim and white ink (the easiest, most
+        // reliable readability win). The scrim color is configurable
+        // (`desktop_scrim`); `Rgba::TRANSPARENT` means the user turned it off, so
+        // labels sit directly on the wallpaper. On the plain desktop keep the
+        // transparent label so nothing changes there.
         let (ink, empty_bg, glyph_bg) = if over_wallpaper {
-            let scrim = Rgba { r: 0, g: 0, b: 0, a: 200 };
             (Rgba::rgb(255, 255, 255), scrim, scrim)
         } else {
             (FG, transparent, transparent)
@@ -739,7 +740,7 @@ mod tests {
         let mut dt = DesktopIcons::new(d.clone());
         dt.reload(&[], &BTreeMap::new());
         dt.layout(100, 30);
-        let buf = dt.render(100, 30, false);
+        let buf = dt.render(100, 30, false, crate::cell::Rgba::TRANSPARENT);
         assert_eq!(buf.width(), 100);
         assert_eq!(buf.height(), 30);
         let _ = fs::remove_dir_all(&d);

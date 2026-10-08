@@ -117,7 +117,7 @@ impl Settings {
     fn item_count(&self) -> usize {
         match self.section {
             0 => 7,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized
-            1 => 4,                            // shadows, theme, wallpaper toggle, wallpaper file
+            1 => 5,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
@@ -259,6 +259,11 @@ impl Settings {
             // current value); ←/→ do nothing (it is free text, not a cycler).
             (1, 3) if dir == 0 => {
                 self.wp_edit = Some(self.cfg.wallpaper.clone().unwrap_or_default());
+            }
+            // Icon label scrim on/off: "on" keeps the default (or a configured
+            // color); "off" stores "none" so labels sit directly on the wallpaper.
+            (1, 4) => {
+                self.cfg.desktop_scrim = if scrim_on(&self.cfg) { Some("none".into()) } else { None };
             }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
@@ -446,8 +451,10 @@ impl Settings {
                     },
                 };
                 self.row(&mut buf, cx, 6, 3, "Wallpaper file", file_val);
-                buf.write_str(cx, 8, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
-                buf.write_str(cx, 9, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
+                self.row(&mut buf, cx, 7, 4, "Icon label scrim", toggle_val(scrim_on(&self.cfg)));
+                buf.write_str(cx, 9, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
+                buf.write_str(cx, 10, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
+                buf.write_str(cx, 11, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -580,6 +587,14 @@ fn toggle_val(on: bool) -> String {
     if on { "\u{25CF} on".into() } else { "\u{25CB} off".into() }
 }
 
+/// Whether the desktop icon-label scrim is on (anything but `"none"`/`"off"`).
+fn scrim_on(cfg: &Config) -> bool {
+    !matches!(
+        cfg.desktop_scrim.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("none") | Some("off")
+    )
+}
+
 /// The full command line (program + args) of a launcher entry, for display.
 fn command_line(a: &AppEntry) -> String {
     if a.args.is_empty() {
@@ -681,6 +696,20 @@ mod tests {
     #[test]
     fn wallpaper_default_filename_is_wallpaper_jpg() {
         assert_eq!(Config::default().wallpaper.as_deref(), Some("wallpaper.jpg"));
+    }
+
+    #[test]
+    fn icon_scrim_toggle_flips() {
+        let mut s = Settings::new(Config::default());
+        while SECTIONS[s.section] != "Appearance" {
+            s.next_section();
+        }
+        s.sel = 4; // "Icon label scrim" row
+        assert!(s.config().desktop_scrim.is_none()); // default = on
+        s.toggle();
+        assert_eq!(s.config().desktop_scrim.as_deref(), Some("none")); // -> off
+        s.toggle();
+        assert!(s.config().desktop_scrim.is_none()); // -> back on
     }
 
     #[test]

@@ -1,6 +1,25 @@
 use tetron_wm::config::Config;
 
 #[test]
+fn desktop_scrim_color_resolves() {
+    use tetron_wm::cell::Rgba;
+    // Unset → the default semi-transparent black.
+    let c = Config::default();
+    assert_eq!(c.desktop_scrim_color(), Rgba { r: 0, g: 0, b: 0, a: 200 });
+    // "none"/"off" → fully transparent (no scrim).
+    let c = Config { desktop_scrim: Some("none".into()), ..Config::default() };
+    assert_eq!(c.desktop_scrim_color(), Rgba::TRANSPARENT);
+    let c = Config { desktop_scrim: Some("OFF".into()), ..Config::default() };
+    assert_eq!(c.desktop_scrim_color(), Rgba::TRANSPARENT);
+    // A color string → that color (alpha honored).
+    let c = Config { desktop_scrim: Some("#112233aa".into()), ..Config::default() };
+    assert_eq!(c.desktop_scrim_color(), Rgba { r: 0x11, g: 0x22, b: 0x33, a: 0xaa });
+    // Garbage → falls back to the default.
+    let c = Config { desktop_scrim: Some("not-a-color".into()), ..Config::default() };
+    assert_eq!(c.desktop_scrim_color(), Rgba { r: 0, g: 0, b: 0, a: 200 });
+}
+
+#[test]
 fn defaults_are_sane() {
     let c = Config::default();
     // tetron-wm defaults snapping OFF (docs/CONFIG.md: snapping + window shadows

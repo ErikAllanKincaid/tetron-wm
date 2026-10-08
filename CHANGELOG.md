@@ -6,6 +6,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- **Desktop icon-label scrim is configurable.** The dark backing drawn behind
+  desktop icon glyphs and labels over a wallpaper is now set by `desktop_scrim`
+  in `config.toml` (a color, or `"none"`/`"off"` to turn it off so labels sit
+  directly on the wallpaper); unset keeps the default semi-transparent black.
+  **Settings → Appearance** gains an **Icon label scrim** on/off toggle. Only
+  applies over a wallpaper; the solid desktop is unchanged.
+
 ## [0.14.3] — 2026-10-07
 
 ### Added

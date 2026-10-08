@@ -4065,7 +4065,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // icons/labels blend on top of it; without one, the compositor's
         // desktop_bg base shows through as before.
         if self.cfg.desktop_enabled {
-            let buf = self.desktop.render(self.w, self.h, self.wallpaper.is_some());
+            let buf = self.desktop.render(self.w, self.h, self.wallpaper.is_some(), self.cfg.desktop_scrim_color());
             layers.push(Layer { z: 0, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None });
         }
 
