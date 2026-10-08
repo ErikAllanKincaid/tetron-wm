@@ -38,6 +38,8 @@ tetron-wm is the desktop layer of **tetron-os**, a GUI-less Linux that boots str
 
 To install just the kmscon pair on an existing box (handy for a truecolor VC tty even on a GUI machine), run **[`scripts/install-kmscon.sh`](scripts/install-kmscon.sh)** — it apt-installs it from backports on Debian, or builds the Aetf fork from source on Ubuntu/Mint (behind a prompt). It installs only the packages; it does not touch your getty/VT/login.
 
+For the full picture — why the kernel console falls short, how the kmscon stack fits together, how the image wallpaper works on a text console, and how to make tetron-wm the persistent login on tty1 — see the illustrated walkthrough **[`docs/tetron-wm_bare_console_guide.html`](docs/tetron-wm_bare_console_guide.html)**. For the copy-paste commands (scripted and by-hand paths), see **[`docs/SETUP_tetron-wm_bare_console_kmscon.md`](docs/SETUP_tetron-wm_bare_console_kmscon.md)**.
+
 > Over SSH you are in whatever terminal your client provides, so kmscon is not involved there; tetron-wm just runs in terminal mode. On a raw VT without kmscon, use [gpm](#mouse-on-a-bare-linux-console-gpm) for the mouse instead.
 
 ## What works today

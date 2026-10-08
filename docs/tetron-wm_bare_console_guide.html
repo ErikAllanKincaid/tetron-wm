@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tetron-wm on a Bare Console</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  /* Layout: single reading column, a layered stack diagram, numbered build steps.
+     Palette nods to tetron-wm's shipped "nord" theme (frost blue accent). */
+  :root {
+    --bg:      #f6f8fa;
+    --surface: #ffffff;
+    --surface-2:#eef1f5;
+    --fg:      #1b222c;
+    --muted:   #596573;
+    --border:  #dde2e9;
+    --accent:  #4c6f99;
+    --accent-ink:#35506f;
+    --warn:    #b06a2c;
+    --good:    #4f7a46;
+    --code-bg: #1d232c;
+    --code-fg: #e7ecf3;
+    --code-dim:#8b97a7;
+    --radius: 10px;
+    --maxw: 50rem;
+    color-scheme: light;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:      #1b2027;
+      --surface: #232a33;
+      --surface-2:#2b333e;
+      --fg:      #e6eaf0;
+      --muted:   #9ba6b4;
+      --border:  #333c48;
+      --accent:  #8fb8dc;
+      --accent-ink:#b0cfe9;
+      --warn:    #e0a96b;
+      --good:    #a3c293;
+      --code-bg: #12161c;
+      --code-fg: #e7ecf3;
+      --code-dim:#7d8a9b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:      #1b2027;
+    --surface: #232a33;
+    --surface-2:#2b333e;
+    --fg:      #e6eaf0;
+    --muted:   #9ba6b4;
+    --border:  #333c48;
+    --accent:  #8fb8dc;
+    --accent-ink:#b0cfe9;
+    --warn:    #e0a96b;
+    --good:    #a3c293;
+    --code-bg: #12161c;
+    --code-fg: #e7ecf3;
+    --code-dim:#7d8a9b;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-block: 0;
+  }
+
+  /* ---- hero ---- */
+  header.hero { padding-block: 4rem 2.5rem; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 1rem;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 6vw, 3.1rem);
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+  .lede {
+    font-size: 1.18rem;
+    color: var(--muted);
+    max-width: 38rem;
+    text-wrap: pretty;
+    margin: 0;
+  }
+  .lede strong { color: var(--fg); font-weight: 600; }
+
+  /* ---- section rhythm ---- */
+  section { padding-block: 1.75rem; border-top: 1px solid var(--border); }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: .25rem 0 1rem;
+    text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono);
+    font-size: .95rem;
+    color: var(--accent-ink);
+    margin-right: .6rem;
+    font-weight: 500;
+  }
+  h3 {
+    font-size: 1.08rem;
+    font-weight: 600;
+    margin: 1.6rem 0 .5rem;
+  }
+  p { margin: 0 0 1rem; max-width: 42rem; }
+  a { color: var(--accent-ink); text-underline-offset: 2px; }
+  strong { font-weight: 600; }
+  .mono-inline {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: .05em .4em;
+    white-space: nowrap;
+  }
+
+  /* ---- stack diagram ---- */
+  .stack { display: flex; flex-direction: column; gap: 6px; margin: 1.25rem 0 .5rem; }
+  .layer {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: .85rem 1rem;
+    min-width: 0;
+  }
+  .layer.top { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .layer .lname { font-weight: 600; }
+  .layer .lname .tag {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: .5rem;
+  }
+  .layer .ldesc { font-size: .92rem; color: var(--muted); margin-top: .15rem; }
+  .arrow { text-align: center; color: var(--muted); font-size: .8rem; font-family: var(--mono); }
+  .ground {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding-top: .3rem;
+  }
+
+  /* ---- callout ---- */
+  .note, .warn, .paths {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: .9rem 1.1rem;
+    margin: 1.25rem 0;
+    font-size: .95rem;
+  }
+  .note { border-left-color: var(--accent); }
+  .warn { border-left-color: var(--warn); }
+  .note .k, .warn .k {
+    font-family: var(--mono);
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    display: block;
+    margin-bottom: .3rem;
+  }
+  .note .k { color: var(--accent-ink); }
+  .warn .k { color: var(--warn); }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; overflow: hidden; }
+  .paths > div { padding: .9rem 1.1rem; min-width: 0; }
+  .paths > div + div { border-left: 1px solid var(--border); }
+  .paths h4 { font-family: var(--mono); font-size: .8rem; margin: 0 0 .35rem; color: var(--accent-ink); }
+  .paths p { font-size: .9rem; color: var(--muted); margin: 0; }
+  @media (max-width: 34rem) {
+    .paths { grid-template-columns: 1fr; }
+    .paths > div + div { border-left: 0; border-top: 1px solid var(--border); }
+  }
+
+  /* ---- code ---- */
+  figure.code { margin: 1rem 0; min-width: 0; }
+  figure.code figcaption {
+    font-family: var(--mono);
+    font-size: .74rem;
+    color: var(--muted);
+    margin-bottom: .35rem;
+    letter-spacing: .04em;
+  }
+  .codebox { position: relative; }
+  pre {
+    margin: 0;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .85rem;
+    line-height: 1.6;
+    tab-size: 2;
+  }
+  pre .c { color: var(--code-dim); }     /* comment  */
+  pre .p { color: #7fb3d5; }             /* prompt   */
+  pre .r { color: #e2a76f; }             /* root #   */
+  .copy {
+    position: absolute;
+    top: .55rem; right: .55rem;
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--code-dim);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 6px;
+    padding: .25rem .5rem;
+    cursor: pointer;
+  }
+  .copy:hover { color: var(--code-fg); }
+  .copy.ok { color: var(--good); border-color: var(--good); }
+
+  /* ---- misc lists ---- */
+  ul.clean { margin: 0 0 1rem; padding-left: 1.2rem; max-width: 42rem; }
+  ul.clean li { margin-bottom: .4rem; }
+
+  table.trouble { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  .table-scroll { overflow-x: auto; margin: 1rem 0; }
+  table.trouble th, table.trouble td {
+    text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  table.trouble th { font-size: .74rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  table.trouble td:first-child { font-weight: 500; white-space: nowrap; }
+
+  footer { padding-block: 2.5rem 3.5rem; color: var(--muted); font-size: .88rem; border-top: 1px solid var(--border); }
+  footer a { color: var(--accent-ink); }
+  footer .links { font-family: var(--mono); font-size: .8rem; line-height: 2; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Linux console · KMS/DRM · no display server</p>
+    <h1>A mouse-driven desktop on a bare text console</h1>
+    <p class="lede"><strong>tetron-wm</strong> gives you floating windows, a taskbar, and a real
+      pointer on a Linux machine with no X11 and no Wayland. This walks through <em>why</em> each
+      piece is there, not just the commands, so you can build it, adapt it, and explain it to
+      someone else.</p>
+  </header>
+
+  <section>
+    <h2>The problem: the kernel console is a bad terminal</h2>
+    <p>When a Linux box boots without a graphical server, you land on a <strong>kernel virtual
+      terminal</strong> (VT) — the thing you reach with Ctrl+Alt+F2. It works, but it is a terminal
+      from another era: a fixed bitmap font, 16 colors, and no mouse. A desktop like tetron-wm
+      needs the opposite of all three: 24-bit color for themes and wallpaper, a scalable font with
+      box and block glyphs for its window chrome, and a pointer that both the desktop and the apps
+      inside it can read.</p>
+    <p>You could start X or Wayland just to host one terminal, but that drags in a display server,
+      a compositor, and GPU drivers you did not want on a headless or minimal box. There is a
+      lighter layer that sits exactly where the kernel VT sits and speaks all three languages:
+      <strong>kmscon</strong>.</p>
+  </section>
+
+  <section>
+    <h2>The stack: who does what</h2>
+    <p>kmscon is a userspace console that draws straight onto the framebuffer through the kernel's
+      KMS/DRM interface. It replaces the kernel VT as the thing you log in to, and it provides
+      truecolor, fontconfig fonts, XKB keyboard layouts, and mouse-report passthrough. tetron-wm
+      then runs <em>inside</em> kmscon as an ordinary full-screen program. No display server is
+      involved at any layer.</p>
+
+    <div class="stack" role="img" aria-label="From top to bottom: tetron-wm runs inside kmscon, which draws through KMS/DRM onto the monitor.">
+      <div class="layer top">
+        <div class="lname">tetron-wm <span class="tag">your $SHELL replacement</span></div>
+        <div class="ldesc">Floating windows, top panel, taskbar, mouse. A normal TUI program.</div>
+      </div>
+      <div class="arrow">▲ runs inside ▲</div>
+      <div class="layer">
+        <div class="lname">kmscon <span class="tag">userspace console</span></div>
+        <div class="ldesc">Truecolor · fontconfig fonts · XKB keyboards · mouse passthrough. Replaces the kernel VT.</div>
+      </div>
+      <div class="arrow">▲ draws through ▲</div>
+      <div class="layer">
+        <div class="lname">KMS/DRM <span class="tag">kernel</span></div>
+        <div class="ldesc">Kernel mode-setting: hands kmscon the framebuffer on your GPU, no X/Wayland needed.</div>
+      </div>
+      <div class="ground">▼ monitor ▼</div>
+    </div>
+    <p style="font-size:.92rem;color:var(--muted)">Over SSH none of this applies: your SSH client
+      <em>is</em> the terminal, so tetron-wm just runs in it directly. kmscon is only for sitting
+      down at the physical machine.</p>
+  </section>
+
+  <section>
+    <h2>Why a specific kmscon, not the one in your package manager</h2>
+    <p>Truecolor landed in kmscon 9.0, and mouse-report passthrough lives in the actively
+      <strong>maintained fork by Aetf</strong> (<a href="https://github.com/Aetf/kmscon">Aetf/kmscon</a>
+      + <a href="https://github.com/Aetf/libtsm">Aetf/libtsm</a>). The stock kmscon that older
+      distributions still ship predates the mouse support, so the pointer will not work. That one
+      detail is the whole reason the install is not a one-liner on every distro.</p>
+
+    <div class="paths">
+      <div>
+        <h4>Debian trixie</h4>
+        <p>The maintained line is already packaged in <strong>trixie-backports</strong> (numbered
+          kmscon 10 / libtsm4 4.7.1 there). A clean apt install, no compiler.</p>
+      </div>
+      <div>
+        <h4>Ubuntu / Mint</h4>
+        <p>apt only has the too-old pair, so you build the fork from source: libtsm first, then
+          kmscon. Two small meson projects.</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="k">Good to know</span>
+      <p>kmscon has <strong>no <span class="mono-inline">--version</span> flag</strong>. Do not go
+        looking for one. The Debian package numbers (10 / 4.7.1) and the upstream tags (9.x / 4.x)
+        are the same code counted differently, so do not gate anything on "version ≥ 10".</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The trick that makes a wallpaper possible on text</h2>
+    <p>A text console has no pixels to paint a photo with. So how does tetron-wm show an image
+      wallpaper? It does not draw pixels at all. It runs <a href="https://hpjansson.org/chafa/">chafa</a>,
+      which turns any JPEG or PNG into <strong>truecolor cell-art</strong>: each character cell is
+      filled with a block or half-block glyph in a foreground and background color chosen to
+      approximate that patch of the image. With 24-bit color and a few thousand cells, the result
+      reads as a photo from normal viewing distance. The same technique is why the wallpaper works
+      identically on kmscon, in a GUI terminal, and over SSH. Install chafa and drop in an image;
+      no chafa just means a solid-color desktop, with everything else intact.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">01</span>Install tetron-wm</h2>
+    <p>Grab the prebuilt binary into <span class="mono-inline">~/.local/bin</span>. The tag is read
+      from the GitHub "latest release" redirect rather than the rate-limited API.</p>
+    <figure class="code">
+      <figcaption>fetch the latest release binary</figcaption>
+      <div class="codebox"><pre><span class="p">$</span> mkdir -p ~/.local/bin
+<span class="p">$</span> tag=$(curl -fsSI https://github.com/ErikAllanKincaid/tetron-wm/releases/latest \
+      | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r' | sed 's#.*/tag/##')
+<span class="p">$</span> target=x86_64-unknown-linux-gnu          <span class="c"># ARM64: aarch64-unknown-linux-gnu</span>
+<span class="p">$</span> curl -fsSL "https://github.com/ErikAllanKincaid/tetron-wm/releases/download/$tag/tetron-wm-$target.tar.gz" \
+      | tar -xz -C ~/.local/bin
+<span class="p">$</span> chmod +x ~/.local/bin/tetron-wm</pre></div>
+    </figure>
+    <p>No binary for your CPU? Build it with <span class="mono-inline">cargo install --git
+      https://github.com/ErikAllanKincaid/tetron-wm</span> (needs Rust 1.95+). Then put it on
+      your PATH:</p>
+    <figure class="code">
+      <figcaption>add to PATH (zsh; bash uses ~/.bash_profile)</figcaption>
+      <div class="codebox"><pre><span class="p">$</span> echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.zprofile
+<span class="p">$</span> . ~/.zprofile &amp;&amp; which tetron-wm</pre></div>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>Install chafa (the wallpaper renderer)</h2>
+    <figure class="code">
+      <figcaption>one package</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> apt-get update &amp;&amp; apt-get install -y chafa</pre></div>
+    </figure>
+    <p>That is the whole dependency for an image wallpaper. It is the one piece that is genuinely
+      easy on every distro.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>Install the maintained kmscon</h2>
+    <h3>Debian trixie — from backports</h3>
+    <figure class="code">
+      <figcaption>enable backports, then install kmscon + libtsm4</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> tee /etc/apt/sources.list.d/trixie-backports.sources &gt;/dev/null &lt;&lt;'EOF'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: trixie-backports
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+<span class="r">#</span> apt-get update
+<span class="r">#</span> apt-get install -y -t trixie-backports kmscon libtsm4
+<span class="r">#</span> apt-get install -y --no-install-recommends fonts-dejavu-core fonts-terminus</pre></div>
+    </figure>
+    <p>The <span class="mono-inline">-t trixie-backports</span> pin pulls libtsm4 4.7.1 to satisfy
+      kmscon 10 (plain trixie's older libtsm4 is rejected). kmscon lands at
+      <span class="mono-inline">/usr/bin/kmscon</span>.</p>
+
+    <h3>Ubuntu / Mint — from source</h3>
+    <figure class="code">
+      <figcaption>build dependencies + console fonts</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> apt-get update
+<span class="r">#</span> apt-get install -y --no-install-recommends \
+    build-essential meson ninja-build pkg-config git ca-certificates \
+    libdrm-dev libegl-dev libgles-dev libgbm-dev libglib2.0-dev \
+    libpango1.0-dev libpixman-1-dev libsystemd-dev libudev-dev libxkbcommon-dev \
+    fonts-dejavu-core fonts-terminus</pre></div>
+    </figure>
+    <figure class="code">
+      <figcaption>libtsm first (kmscon links against it), then kmscon</figcaption>
+      <div class="codebox"><pre><span class="p">$</span> cd /tmp &amp;&amp; git clone --depth 1 https://github.com/Aetf/libtsm &amp;&amp; cd libtsm
+<span class="p">$</span> meson setup build --prefix=/usr/local --buildtype=release -Dc_args=-Wno-error -Dtests=false
+<span class="p">$</span> ninja -C build
+<span class="r">#</span> ninja -C build install &amp;&amp; ldconfig
+
+<span class="p">$</span> cd /tmp &amp;&amp; git clone --depth 1 https://github.com/Aetf/kmscon &amp;&amp; cd kmscon
+<span class="p">$</span> m=$(uname -m)
+<span class="p">$</span> export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/$m-linux-gnu/pkgconfig"
+<span class="p">$</span> export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib/$m-linux-gnu"
+<span class="p">$</span> meson setup build --prefix=/usr/local --buildtype=release -Dc_args=-Wno-error -Dtests=false
+<span class="p">$</span> ninja -C build
+<span class="r">#</span> ninja -C build install &amp;&amp; ldconfig</pre></div>
+    </figure>
+    <div class="note">
+      <span class="k">Why those two flags</span>
+      <p><span class="mono-inline">-Dc_args=-Wno-error</span>: the tagged release builds with
+        <span class="mono-inline">-Werror</span>, and a newer GCC trips a format-truncation warning
+        that is harmless here. <span class="mono-inline">-Dtests=false</span>: the test subdir needs
+        libcheck you do not have. A source build lands kmscon at
+        <span class="mono-inline">/usr/local/bin/kmscon</span> — remember that path for step 06.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>Test kmscon on a spare VT</h2>
+    <p>Before touching your login console, prove the stack on an unused VT. From a root shell:</p>
+    <figure class="code">
+      <figcaption>launch kmscon on VT 3, then press Ctrl+Alt+F3</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> kmscon --vt 3 --xkb-layout us -- /bin/login</pre></div>
+    </figure>
+    <p>Log in on that VT, run <span class="mono-inline">tetron-wm</span>, and confirm the windows
+      and mouse work. Ctrl+Alt+F1 switches back to where you started.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>Add a wallpaper</h2>
+    <p>tetron-wm's default config already points at
+      <span class="mono-inline">wallpapers/wallpaper.jpg</span> under its config dir, so dropping a
+      file there is all it takes:</p>
+    <figure class="code">
+      <figcaption>~/.config/tetron-wm/wallpapers/</figcaption>
+      <div class="codebox"><pre><span class="p">$</span> mkdir -p ~/.config/tetron-wm/wallpapers
+<span class="p">$</span> cp /path/to/your-image.jpg ~/.config/tetron-wm/wallpapers/wallpaper.jpg</pre></div>
+    </figure>
+    <p>Everything else is optional and also lives in
+      <span class="mono-inline">~/.config/tetron-wm/config.toml</span> (or Settings → Appearance
+      inside the running desktop):</p>
+    <figure class="code">
+      <figcaption>config.toml — the knobs that matter on a console</figcaption>
+      <div class="codebox"><pre>wallpaper = "wallpaper.jpg"
+wallpaper_enabled = true
+<span class="c"># truecolor = true        # if kmscon colors look 256-ish</span>
+<span class="c"># icon_style = "ascii"    # default; "nerd" needs a Nerd Font; "emoji" also works</span>
+<span class="c"># desktop_scrim = "none"  # backing behind icon labels over a wallpaper</span></pre></div>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span>Make it the login on tty1, for good</h2>
+    <p>The goal is: boot, land on tty1 already running tetron-wm. That is a chain of four handoffs,
+      and it helps to see the whole chain before editing anything:</p>
+    <figure class="code">
+      <figcaption>the boot-to-desktop handoff</figcaption>
+      <div class="codebox"><pre>systemd  →  kmsconvt@tty1  →  agetty --autologin you  →  login shell  →  exec tetron-wm
+<span class="c">           (the console)     (skips the password)       (~/.zprofile)   (on tty1 only)</span></pre></div>
+    </figure>
+
+    <div class="warn">
+      <span class="k">Keep an escape hatch</span>
+      <p>These steps change how tty1 logs in. Keep a second VT (Ctrl+Alt+F2) or an SSH session open
+        the whole time, so a mistake never locks you out.</p>
+    </div>
+
+    <h3>a. Point tty1 at kmscon instead of the kernel getty</h3>
+    <figure class="code">
+      <figcaption>swap the service that owns tty1</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> systemctl disable --now getty@tty1
+<span class="r">#</span> systemctl enable  --now kmsconvt@tty1</pre></div>
+    </figure>
+
+    <h3>b. Autologin your user on that console</h3>
+    <p><span class="mono-inline">systemctl edit kmsconvt@tty1</span> and add the override below.
+      The blank <span class="mono-inline">ExecStart=</span> clears the default command first, and
+      kmscon then launches <span class="mono-inline">agetty --autologin</span> instead of a
+      password prompt. Use <span class="mono-inline">/usr/local/bin/kmscon</span> if you built from
+      source; replace <span class="mono-inline">you</span> with your username.</p>
+    <figure class="code">
+      <figcaption>drop-in: /etc/systemd/system/kmsconvt@tty1.service.d/override.conf</figcaption>
+      <div class="codebox"><pre>[Service]
+ExecStart=
+ExecStart=/usr/bin/kmscon "--vt=%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin you --noclear - $TERM</pre></div>
+    </figure>
+    <figure class="code">
+      <figcaption>apply it</figcaption>
+      <div class="codebox"><pre><span class="r">#</span> systemctl daemon-reload &amp;&amp; systemctl restart kmsconvt@tty1</pre></div>
+    </figure>
+
+    <h3>c. Launch tetron-wm from the login shell — tty1 only</h3>
+    <p>Append this to <span class="mono-inline">~/.zprofile</span> (bash:
+      <span class="mono-inline">~/.bash_profile</span>). The guard means SSH and other VTs still
+      give you a plain shell.</p>
+    <figure class="code">
+      <figcaption>~/.zprofile</figcaption>
+      <div class="codebox"><pre>if [ "$(tty)" = "/dev/tty1" ] &amp;&amp; [ -z "$TETRON_WM_ACTIVE" ]; then
+  export TETRON_WM_ACTIVE=1
+  exec tetron-wm
+fi</pre></div>
+    </figure>
+    <p><span class="mono-inline">exec</span> hands the session to tetron-wm; quitting the desktop
+      ends the session, and kmscon logs you straight back in. Drop the
+      <span class="mono-inline">exec</span> if you would rather land on a shell when you quit.
+      Reboot, and tty1 comes up in the desktop with your wallpaper.</p>
+  </section>
+
+  <section>
+    <h2>When something looks wrong</h2>
+    <div class="table-scroll">
+      <table class="trouble">
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Solid-color desktop, no wallpaper</td><td>chafa is missing — do step 02.</td></tr>
+          <tr><td>Colors look flat / 256-ish on kmscon</td><td>Set <span class="mono-inline">truecolor = true</span> in config.toml.</td></tr>
+          <tr><td>No mouse on a raw VT (no kmscon)</td><td><span class="mono-inline">apt-get install -y gpm &amp;&amp; systemctl enable --now gpm</span>. Not needed under kmscon, which passes the mouse itself.</td></tr>
+          <tr><td>Boxes/tofu with <span class="mono-inline">icon_style = "nerd"</span></td><td>Install a Symbols Nerd Font and run <span class="mono-inline">fc-cache -f</span>, or stay on <span class="mono-inline">ascii</span>.</td></tr>
+          <tr><td>Wallpaper shows glyph tofu on kmscon</td><td>The console font lacks the sextant glyphs chafa uses — a font-coverage gap, not a bug. The DejaVu/Terminus fonts from step 03 help.</td></tr>
+          <tr><td>tty1 login is broken</td><td>From another VT or SSH: <span class="mono-inline">systemctl disable --now kmsconvt@tty1 &amp;&amp; systemctl enable --now getty@tty1</span>.</td></tr>
+          <tr><td>Debug the desktop itself</td><td>Read <span class="mono-inline">~/tetron-wm-debug.log</span>, or open the in-app Logs viewer.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Optional extras</h2>
+    <ul class="clean">
+      <li><strong>A Nerd Font</strong> — only if you want <span class="mono-inline">icon_style = "nerd"</span>. Install the tiny "Symbols Only" font from <a href="https://github.com/ryanoasis/nerd-fonts">ryanoasis/nerd-fonts</a> into <span class="mono-inline">~/.local/share/fonts</span> and run <span class="mono-inline">fc-cache -f</span>. The default <span class="mono-inline">ascii</span> needs no font.</li>
+      <li><strong>gpm</strong> — a mouse on a raw VT <em>without</em> kmscon. Under kmscon you do not need it.</li>
+      <li><strong>tetron &amp; tetron-tui</strong> — the mesh-VPN daemon and its dashboard. They power only the optional tetron tray segment; the desktop runs fine without them. Add them only if you use that VPN.</li>
+    </ul>
+    <div class="note">
+      <span class="k">The shortcut, once you understand it</span>
+      <p>The tetron-wm repo ships <span class="mono-inline">install.sh</span> (binary + chafa + Nerd
+        Font) and <span class="mono-inline">scripts/install-kmscon.sh</span> (the backports-or-source
+        logic from step 03, automated). Now that you know what they do, running them is a choice,
+        not a leap of faith.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>Built so the next person can understand it, adapt it, and pass it on.</p>
+    <div class="links">
+      tetron-wm · github.com/ErikAllanKincaid/tetron-wm<br>
+      kmscon fork · github.com/Aetf/kmscon · github.com/Aetf/libtsm<br>
+      chafa · hpjansson.org/chafa · Nerd Fonts · github.com/ryanoasis/nerd-fonts
+    </div>
+  </footer>
+</div>
+
+<script>
+  // Copy buttons: write to clipboard inside the click handler, fall back to selection.
+  document.querySelectorAll('.codebox').forEach(function (box) {
+    var pre = box.querySelector('pre');
+    if (!pre) return;
+    var btn = document.createElement('button');
+    btn.className = 'copy';
+    btn.type = 'button';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', function () {
+      var text = pre.innerText;
+      var done = function () { btn.textContent = 'copied'; btn.classList.add('ok');
+        setTimeout(function () { btn.textContent = 'copy'; btn.classList.remove('ok'); }, 1400); };
+      try {
+        navigator.clipboard.writeText(text).then(done, function () { selectFallback(pre); });
+      } catch (e) { selectFallback(pre); }
+    });
+    box.appendChild(btn);
+  });
+  function selectFallback(pre) {
+    try {
+      var r = document.createRange(); r.selectNodeContents(pre);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    } catch (e) {}
+  }
+</script>
+
+</body>
+</html>
