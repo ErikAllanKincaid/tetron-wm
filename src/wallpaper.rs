@@ -7,6 +7,44 @@
 
 use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
+use std::path::PathBuf;
+
+/// Resolve a configured wallpaper path to a file on disk.
+///
+/// - An absolute path (`/…`) is used as-is.
+/// - A `~`-path is expanded against the home directory.
+/// - A relative path is resolved against the config dir
+///   (`~/.config/tetron-wm/`), trying a `wallpapers/` subdir first, then the
+///   config-dir root. It is **never** resolved against the process cwd (the
+///   daemon's cwd is unpredictable — a service, a reload, launched from
+///   anywhere), so a bare filename always means "next to your config".
+///
+/// Returns the first candidate that exists, or the best-effort candidate when
+/// none exist (so the caller's own "missing file" handling / log still fires).
+pub fn resolve_path(path: &str) -> PathBuf {
+    let path = path.trim();
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    let p = PathBuf::from(path);
+    if p.is_absolute() {
+        return p;
+    }
+    if let Some(cfg) = crate::config::config_dir() {
+        let sub = cfg.join("wallpapers").join(path);
+        if sub.exists() {
+            return sub;
+        }
+        let root = cfg.join(path);
+        if root.exists() {
+            return root;
+        }
+        return sub; // best-effort (lets the caller log the expected location)
+    }
+    p
+}
 
 /// Build a `w`×`h` cell wallpaper from `path` using chafa's symbol output,
 /// stretched to fill exactly. Returns `None` if chafa is missing/fails.
@@ -81,6 +119,35 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
         }
     }
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absolute_path_passes_through() {
+        assert_eq!(resolve_path("/tmp/wall.png"), PathBuf::from("/tmp/wall.png"));
+        // whitespace is trimmed
+        assert_eq!(resolve_path("  /tmp/wall.png  "), PathBuf::from("/tmp/wall.png"));
+    }
+
+    #[test]
+    fn tilde_expands_to_home() {
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(resolve_path("~/pic.png"), home.join("pic.png"));
+        }
+    }
+
+    #[test]
+    fn relative_resolves_under_config_dir() {
+        // A bare filename resolves beneath the config dir, never the cwd.
+        if let Some(cfg) = crate::config::config_dir() {
+            let got = resolve_path("pic.png");
+            assert!(got.starts_with(&cfg), "{got:?} should be under {cfg:?}");
+            assert!(got.ends_with("pic.png"));
+        }
+    }
 }
 
 /// Apply one SGR parameter string, updating `fg`/`bg` (truecolor `38;2;r;g;b` /

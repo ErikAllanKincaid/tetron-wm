@@ -6,6 +6,20 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- **Image wallpaper, configurable (v1).** Set `wallpaper = "<path>"` in
+  `config.toml` to put an image behind your windows. The path may be absolute,
+  `~`-relative, or relative to the config dir (a `wallpapers/` subdir is checked
+  first, then the config root), so a bare filename means "next to your config".
+  The image is rendered to colored cells via `chafa`, so it works on any
+  terminal including a bare kmscon console. **Settings → Appearance** gains a
+  **Wallpaper** on/off toggle (`wallpaper_enabled`) and a **Wallpaper file** text
+  box: drop an image in `~/.config/tetron-wm/wallpapers/` and type its filename
+  (the panel shows that path as a reminder). If `chafa` is missing or the image
+  can not be read, the desktop stays solid and the reason is logged. The
+  `TETRON_WM_WALLPAPER` env var still overrides the config for quick testing.
+  `install.sh` now installs `chafa` as an optional dependency.
+
 ## [0.14.2] — 2026-10-06
 
 ### Changed

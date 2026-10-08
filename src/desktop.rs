@@ -739,7 +739,7 @@ mod tests {
         let mut dt = DesktopIcons::new(d.clone());
         dt.reload(&[], &BTreeMap::new());
         dt.layout(100, 30);
-        let buf = dt.render(100, 30);
+        let buf = dt.render(100, 30, false);
         assert_eq!(buf.width(), 100);
         assert_eq!(buf.height(), 30);
         let _ = fs::remove_dir_all(&d);

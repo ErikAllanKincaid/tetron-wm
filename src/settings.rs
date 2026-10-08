@@ -67,12 +67,15 @@ pub struct Settings {
     update_status: String,
     /// `Some` while the Apps section's add form is open.
     edit: Option<AppEdit>,
+    /// `Some` while the Appearance → Wallpaper filename box is being typed into;
+    /// holds the in-progress text (committed to `cfg.wallpaper` on Enter).
+    wp_edit: Option<String>,
 }
 
 impl Settings {
     /// Create a settings panel editing a copy of `cfg`.
     pub fn new(cfg: Config) -> Self {
-        Self { apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(), edit: None }
+        Self { apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(), edit: None, wp_edit: None }
     }
 
     /// Take a pending action requested by the user (cleared on read).
@@ -107,14 +110,14 @@ impl Settings {
     /// Whether the Apps section's text-entry form is currently open (the client
     /// forwards typed characters only in this state).
     pub fn is_editing(&self) -> bool {
-        self.edit.is_some()
+        self.edit.is_some() || self.wp_edit.is_some()
     }
 
     /// Number of interactive rows in the current section.
     fn item_count(&self) -> usize {
         match self.section {
             0 => 7,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized
-            1 => 2,                            // shadows, theme
+            1 => 4,                            // shadows, theme, wallpaper toggle, wallpaper file
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
@@ -124,6 +127,9 @@ impl Settings {
     }
 
     pub fn move_up(&mut self) {
+        if self.wp_edit.is_some() {
+            return; // typing a filename — arrows do nothing
+        }
         if let Some(e) = self.edit.as_mut() {
             e.field = 0; // focus the Name field
             return;
@@ -131,6 +137,9 @@ impl Settings {
         self.sel = self.sel.saturating_sub(1);
     }
     pub fn move_down(&mut self) {
+        if self.wp_edit.is_some() {
+            return;
+        }
         if let Some(e) = self.edit.as_mut() {
             e.field = 1; // focus the Command field
             return;
@@ -140,7 +149,7 @@ impl Settings {
         }
     }
     pub fn prev_section(&mut self) {
-        if self.edit.is_some() {
+        if self.edit.is_some() || self.wp_edit.is_some() {
             return; // don't leave a half-typed form via arrow keys
         }
         if self.section > 0 {
@@ -149,7 +158,7 @@ impl Settings {
         }
     }
     pub fn next_section(&mut self) {
-        if self.edit.is_some() {
+        if self.edit.is_some() || self.wp_edit.is_some() {
             return;
         }
         if self.section + 1 < SECTIONS.len() {
@@ -158,29 +167,36 @@ impl Settings {
         }
     }
 
-    /// Append a character to the focused form field (Apps add form only).
+    /// Append a character to the active text field (Apps add form, or the
+    /// Appearance → Wallpaper filename box).
     pub fn type_char(&mut self, c: char) {
         if let Some(e) = self.edit.as_mut() {
             match e.field {
                 0 => e.name.push(c),
                 _ => e.command.push(c),
             }
+        } else if let Some(s) = self.wp_edit.as_mut() {
+            s.push(c);
         }
     }
 
-    /// Delete the last character of the focused form field.
+    /// Delete the last character of the active text field.
     pub fn backspace(&mut self) {
         if let Some(e) = self.edit.as_mut() {
             match e.field {
                 0 => { e.name.pop(); }
                 _ => { e.command.pop(); }
             }
+        } else if let Some(s) = self.wp_edit.as_mut() {
+            s.pop();
         }
     }
 
-    /// Abandon the Apps add form without saving.
+    /// Abandon the active text field without saving (Apps add form or the
+    /// wallpaper filename box).
     pub fn cancel_edit(&mut self) {
         self.edit = None;
+        self.wp_edit = None;
     }
 
     /// Toggle / activate the selected row.
@@ -198,6 +214,14 @@ impl Settings {
 
     /// Apply a change to the selected setting. `dir`: 0 = toggle, -1/+1 = down/up.
     fn adjust(&mut self, dir: i32) {
+        // While the wallpaper filename box is open, Enter (dir 0) commits it and
+        // every other adjust is swallowed so typing cannot change another row.
+        if self.wp_edit.is_some() {
+            if dir == 0 {
+                self.commit_wallpaper();
+            }
+            return;
+        }
         match (self.section, self.sel) {
             (0, 0) => self.cfg.snapping_enabled = flip(self.cfg.snapping_enabled, dir),
             (0, 1) => {
@@ -229,6 +253,12 @@ impl Settings {
                     (cur_idx + 1) % presets.len()
                 };
                 self.cfg.theme = presets[next_idx].clone();
+            }
+            (1, 2) => self.cfg.wallpaper_enabled = flip(self.cfg.wallpaper_enabled, dir),
+            // Wallpaper filename: Enter opens the text box (pre-filled with the
+            // current value); ←/→ do nothing (it is free text, not a cycler).
+            (1, 3) if dir == 0 => {
+                self.wp_edit = Some(self.cfg.wallpaper.clone().unwrap_or_default());
             }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
@@ -339,10 +369,19 @@ impl Settings {
         self.sel = self.cfg.launcher.len(); // park on the "＋ Add app…" row
     }
 
+    /// Save the wallpaper filename box into `cfg.wallpaper` (empty = no
+    /// wallpaper → `None`), then close the box.
+    fn commit_wallpaper(&mut self) {
+        if let Some(s) = self.wp_edit.take() {
+            let s = s.trim();
+            self.cfg.wallpaper = if s.is_empty() { None } else { Some(s.to_string()) };
+        }
+    }
+
     /// Handle a content-local click; returns `true` if a setting changed.
     pub fn handle_click(&mut self, p: Point, _w: i32, _h: i32) -> bool {
-        if self.edit.is_some() {
-            return false; // the add form is keyboard-driven
+        if self.edit.is_some() || self.wp_edit.is_some() {
+            return false; // text-entry boxes are keyboard-driven
         }
         if p.x < SIDEBAR_W {
             let i = (p.y - 1) as usize;
@@ -396,6 +435,19 @@ impl Settings {
             1 => {
                 self.row(&mut buf, cx, 3, 0, "Window shadows", toggle_val(self.cfg.window_shadows));
                 self.row(&mut buf, cx, 4, 1, "Theme", self.cfg.theme.clone());
+                self.row(&mut buf, cx, 5, 2, "Wallpaper", toggle_val(self.cfg.wallpaper_enabled));
+                // Filename text box. While editing, show the live buffer with a
+                // cursor; otherwise the saved value (or a placeholder).
+                let file_val = match &self.wp_edit {
+                    Some(s) => format!("{s}\u{2588}"), // block cursor while typing
+                    None => match self.cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                        Some(p) => p.to_string(),
+                        None => "(none — press Enter to type)".to_string(),
+                    },
+                };
+                self.row(&mut buf, cx, 6, 3, "Wallpaper file", file_val);
+                buf.write_str(cx, 8, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
+                buf.write_str(cx, 9, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -600,6 +652,58 @@ mod tests {
         s.cancel_edit();
         assert!(!s.is_editing());
         assert!(s.config().launcher.is_empty());
+    }
+
+    /// Move selection to the Appearance → "Wallpaper file" row.
+    fn to_wallpaper_file(s: &mut Settings) {
+        while SECTIONS[s.section] != "Appearance" {
+            s.next_section();
+        }
+        s.sel = 0;
+        while s.sel < 3 {
+            s.move_down();
+        }
+    }
+
+    #[test]
+    fn wallpaper_file_box_commits_filename() {
+        let cfg = Config { wallpaper: None, ..Config::default() };
+        let mut s = Settings::new(cfg);
+        to_wallpaper_file(&mut s);
+        s.toggle(); // open the filename box (empty, since wallpaper is None)
+        assert!(s.is_editing());
+        for c in "gentle-dawn.png".chars() { s.type_char(c); }
+        s.toggle(); // commit
+        assert!(!s.is_editing());
+        assert_eq!(s.config().wallpaper.as_deref(), Some("gentle-dawn.png"));
+    }
+
+    #[test]
+    fn wallpaper_default_filename_is_wallpaper_jpg() {
+        assert_eq!(Config::default().wallpaper.as_deref(), Some("wallpaper.jpg"));
+    }
+
+    #[test]
+    fn wallpaper_file_empty_clears_to_none() {
+        let cfg = Config { wallpaper: Some("old.png".into()), ..Config::default() };
+        let mut s = Settings::new(cfg);
+        to_wallpaper_file(&mut s);
+        s.toggle(); // opens pre-filled with "old.png"
+        for _ in 0.."old.png".len() { s.backspace(); }
+        s.toggle(); // commit empty → None
+        assert_eq!(s.config().wallpaper, None);
+    }
+
+    #[test]
+    fn wallpaper_file_cancel_keeps_prior_value() {
+        let cfg = Config { wallpaper: Some("keep.png".into()), ..Config::default() };
+        let mut s = Settings::new(cfg);
+        to_wallpaper_file(&mut s);
+        s.toggle();
+        for c in "junk".chars() { s.type_char(c); }
+        s.cancel_edit();
+        assert!(!s.is_editing());
+        assert_eq!(s.config().wallpaper.as_deref(), Some("keep.png"));
     }
 
     #[test]

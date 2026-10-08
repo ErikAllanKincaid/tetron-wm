@@ -612,6 +612,7 @@ impl SessionCore {
         let systems = crate::systems::load();
         let launcher = Launcher::new(Self::build_launcher_apps(&cfg, &systems));
         let desktop_dir = dirs::home_dir().map(|h| h.join("Desktop")).unwrap_or_default();
+        let wallpaper = Self::build_wallpaper(w, h, &cfg);
         let mut core = Self {
             wm: WindowManager::new(work),
             contents: HashMap::new(),
@@ -658,7 +659,7 @@ impl SessionCore {
             simple: false,
             images: crate::imagestore::ImageStore::new(),
             desktop: crate::desktop::DesktopIcons::new(desktop_dir),
-            wallpaper: Self::build_wallpaper(w, h),
+            wallpaper,
             desktop_last_poll: std::time::Instant::now(),
             desktop_last_mtime: None,
             app_image_ids: HashMap::new(),
@@ -1909,9 +1910,9 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.w = w;
                 self.h = h;
                 self.wm.set_work_area(Rect::new(0, 1, w, h - 1));
-                // PROTOTYPE wallpaper: rebuild at the new size (a tty never
-                // resizes, so this only fires on a GUI terminal / SSH).
-                self.wallpaper = Self::build_wallpaper(w, h);
+                // Rebuild the wallpaper at the new size (a tty never resizes, so
+                // this only fires on a GUI terminal / SSH).
+                self.wallpaper = Self::build_wallpaper(w, h, &self.cfg);
                 // Re-fit the desktop grid so icons stay anchored top-right.
                 self.desktop.layout(w, h);
                 // Re-fit any maximized window and its app to the new work area.
@@ -2504,11 +2505,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             // Rebuilding the launcher rescans $PATH, so only do it when the
             // custom-app list actually changed (not on every shadow/theme tweak).
             let launcher_changed = cfg.launcher != self.cfg.launcher;
+            let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
+                || cfg.wallpaper != self.cfg.wallpaper;
             self.cfg = cfg;
             crate::theme::set(&self.cfg.theme);
             let _ = self.cfg.save();
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
+            }
+            if wallpaper_changed {
+                self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
             }
         }
     }
@@ -4008,14 +4014,38 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// 2. The menubar layer (z = 1000).
     /// 3. The dock layer (z = 1000).
     ///
-    /// PROTOTYPE: build the chafa wallpaper from `TETRON_WM_WALLPAPER` (if set
-    /// and the file exists), sized to the `w`×`h` cell grid. `None` otherwise.
-    fn build_wallpaper(w: i32, h: i32) -> Option<crate::buffer::CellBuffer> {
-        let path = std::env::var("TETRON_WM_WALLPAPER").ok()?;
-        if path.is_empty() || !std::path::Path::new(&path).exists() {
+    /// Build the chafa cell wallpaper sized to the `w`×`h` grid, or `None` for a
+    /// solid desktop. The source is `TETRON_WM_WALLPAPER` (dev override) if set,
+    /// else the `wallpaper` config key when `wallpaper_enabled` is on. The config
+    /// path is resolved via [`wallpaper::resolve_path`] (absolute / `~` / relative
+    /// to the config dir). A missing file or missing `chafa` returns `None`
+    /// (desktop stays solid) and logs why.
+    fn build_wallpaper(w: i32, h: i32, cfg: &Config) -> Option<crate::buffer::CellBuffer> {
+        let path: std::path::PathBuf = match std::env::var("TETRON_WM_WALLPAPER") {
+            Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
+            _ => {
+                if !cfg.wallpaper_enabled {
+                    return None;
+                }
+                let spec = cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
+                crate::wallpaper::resolve_path(spec)
+            }
+        };
+        if !path.exists() {
+            crate::dbg_log(&format!("wallpaper: file not found: {}", path.display()));
             return None;
         }
-        crate::wallpaper::from_image(&path, w, h)
+        let s = path.to_string_lossy();
+        match crate::wallpaper::from_image(&s, w, h) {
+            Some(buf) => {
+                crate::dbg_log(&format!("wallpaper: loaded {} ({w}x{h})", path.display()));
+                Some(buf)
+            }
+            None => {
+                crate::dbg_log(&format!("wallpaper: chafa failed/missing for {} — solid fallback (install chafa)", path.display()));
+                None
+            }
+        }
     }
 
     /// The cursor is set to the last known mouse position.

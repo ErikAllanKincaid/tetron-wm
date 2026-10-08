@@ -100,13 +100,19 @@ install_optional_deps() {
             || brew install esolitos/ipa/sshpass 2>/dev/null \
             || echo "tetron-wm: sshpass install skipped (Add Remote will prompt for the password interactively instead)"
         fi
+        if ! command -v chafa >/dev/null 2>&1; then
+          echo "tetron-wm: installing optional dependency chafa (image wallpaper)…"
+          brew install chafa || echo "tetron-wm: chafa install skipped (run 'brew install chafa' later for image wallpaper)"
+        fi
       fi ;;
     Linux)
       # bluetoothctl/rfkill ship with the distro; gpm gives a bare-console
-      # mouse and sshpass automates Systems → Add Remote key transfers.
+      # mouse, sshpass automates Systems → Add Remote key transfers, and chafa
+      # renders image wallpapers to cells (works on a kmscon console too).
       pkgs=""
       command -v gpm >/dev/null 2>&1 || pkgs="gpm"
       command -v sshpass >/dev/null 2>&1 || pkgs="$pkgs sshpass"
+      command -v chafa >/dev/null 2>&1 || pkgs="$pkgs chafa"
       pkgs="$(echo "$pkgs" | sed 's/^ *//')"
       if [ -n "$pkgs" ]; then
         echo "tetron-wm: installing optional dependencies: $pkgs …"

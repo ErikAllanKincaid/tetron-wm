@@ -93,6 +93,22 @@ pub struct Config {
     /// `TETRON_WM_TRUECOLOR` env var (1/0) overrides this key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub truecolor: Option<bool>,
+    /// Desktop wallpaper image. An absolute path, a `~`-path, or a path relative
+    /// to the config dir (`~/.config/tetron-wm/`, checking a `wallpapers/` subdir
+    /// first). Rendered to colored cells via `chafa` (so it works on any terminal,
+    /// including a kmscon console) and composited behind the windows. Unset/empty
+    /// = a solid desktop (the theme `desktop_bg`). Needs `chafa` installed; if it
+    /// is missing or the image fails to load, the desktop falls back to solid.
+    /// The `TETRON_WM_WALLPAPER` env var overrides this key (for quick testing).
+    /// Defaults to `wallpaper.jpg` (resolved under `~/.config/tetron-wm/wallpapers/`),
+    /// so dropping a `wallpaper.jpg` there is all it takes; absent, the desktop
+    /// stays solid.
+    #[serde(default = "default_wallpaper", skip_serializing_if = "Option::is_none")]
+    pub wallpaper: Option<String>,
+    /// Master on/off for the wallpaper. When false, the desktop is solid even if
+    /// `wallpaper` names an image (the Settings → Appearance toggle flips this).
+    #[serde(default = "default_true")]
+    pub wallpaper_enabled: bool,
     /// Glyph set for file-type icons where the Kitty graphics image icons can't
     /// render (kmscon, a bare VT, plain SSH): "ascii" (default, renders in every
     /// font), "nerd" (Nerd Font glyphs -- needs one installed, tetron-os ships
@@ -183,6 +199,8 @@ impl Default for Config {
             terminal_bg: None,
             terminal_fg: None,
             truecolor: None,
+            wallpaper: default_wallpaper(),
+            wallpaper_enabled: true,
             icon_style: crate::iconset::IconStyle::default(),
             default_project_dir: None,
             recent_dirs: Vec::new(),
@@ -205,6 +223,9 @@ impl Default for Config {
 }
 
 fn default_true() -> bool { true }
+
+/// Default wallpaper filename, resolved under `~/.config/tetron-wm/wallpapers/`.
+fn default_wallpaper() -> Option<String> { Some("wallpaper.jpg".into()) }
 
 /// Default desktop shortcuts: none. The desktop shows only the real contents of
 /// `~/Desktop`; pins are opt-in via `[[desktop_pins]]`.
