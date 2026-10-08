@@ -12,6 +12,21 @@ It's a multiplexer at heart, like tmux, but with windows and a mouse: apps run a
 
 > **Status: active development.** The shell, window management, a persistent daemon that runs apps in a **separate process so they survive a UI reload/update**, mouse passthrough into apps, an app launcher + store, a file manager, desktop icons, settings, theming, a macOS-style status tray, and configurable grid tiling all work today. GUI/Wayland streaming is on the [roadmap](docs/ROADMAP_tetron-wm.md).
 
+###### TLDR: Install tetron-wm.
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
+```
+
+One prompted script ([`contrib/install-tetron-wm-suite.sh`](contrib/install-tetron-wm-suite.sh)) that optionally installs, each step opt-in:
+
+1. **tetron-wm** — the latest prebuilt binary (all OSes).
+2. **config dir** — `~/.config/tetron-wm/` with a starter `config.toml` plus `themes/` and `wallpapers/` directories (all OSes).
+3. **kmscon** — the truecolor + mouse console for a bare Linux VT (Linux).
+4. **tty1 autologin** — boot straight into tetron-wm on tty1 via kmscon, the full console appliance (Linux + systemd; off by default, always confirmed, prints how to undo).
+
+Steps 3–4 are for a GUI-less / console box — say no on a normal desktop. Non-interactive: add `-y` (takes the defaults: wm + config + kmscon, **not** tty1), or `--all -y` for the whole appliance. Just want the binary? Use the one-liner in [Install](#install) below.
+
 ## tetron
 
 ###### TLDR: Install the entire suite.
@@ -36,7 +51,7 @@ tetron-wm is the desktop layer of **tetron-os**, a GUI-less Linux that boots str
 
 **Why the maintained kmscon.** This needs the maintained line of kmscon (truecolor + mouse-report passthrough — the [Aetf](https://github.com/Aetf/kmscon) fork). On Debian it is in **trixie-backports** (packaged there as kmscon 10 + libtsm4 4.7.1); the stock kmscon older Debian/Ubuntu ship lacks the mouse support tetron-wm needs. tetron-os's `firstboot.sh` installs it and swaps the getty on the console VT for `kmsconvt@`, so the machine comes up in kmscon running tetron-wm.
 
-To install just the kmscon pair on an existing box (handy for a truecolor VC tty even on a GUI machine), run **[`scripts/install-kmscon.sh`](scripts/install-kmscon.sh)** — it apt-installs it from backports on Debian, or builds the Aetf fork from source on Ubuntu/Mint (behind a prompt). It installs only the packages; it does not touch your getty/VT/login.
+To install just the kmscon pair on an existing box (handy for a truecolor VC tty even on a GUI machine), run **[`scripts/install-kmscon.sh`](scripts/install-kmscon.sh)** — it apt-installs it from backports on Debian, or builds the Aetf fork from source on Ubuntu/Mint (behind a prompt). It installs only the packages; it does not touch your getty/VT/login. To do the whole console appliance in one go (kmscon **and** the tty1 autologin), use the [suite installer](#tldr-install-tetron-wm) above with `--all`.
 
 For the full picture — why the kernel console falls short, how the kmscon stack fits together, how the image wallpaper works on a text console, and how to make tetron-wm the persistent login on tty1 — see the illustrated walkthrough **[`docs/tetron-wm_bare_console_guide.html`](docs/tetron-wm_bare_console_guide.html)**. For the copy-paste commands (scripted and by-hand paths), see **[`docs/SETUP_tetron-wm_bare_console_kmscon.md`](docs/SETUP_tetron-wm_bare_console_kmscon.md)**.
 

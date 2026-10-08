@@ -6,6 +6,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- **One-shot suite installer** (`contrib/install-tetron-wm-suite.sh`, with a
+  TLDR in the README). A single prompted `curl | bash` that optionally installs
+  tetron-wm, seeds `~/.config/tetron-wm/` (config.toml + themes/ + wallpapers/),
+  installs kmscon, and sets up tty1 autologin into the desktop. Every step is
+  opt-in; the tty1 step is off by default, confirmed, and prints how to undo it.
+  `-y` takes the defaults; `--all -y` builds the full console appliance.
+
 ## [0.14.4] — 2026-10-08
 
 ### Fixed
