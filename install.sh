@@ -79,10 +79,53 @@ echo "tetron-wm: installed $tag -> $BIN_DIR/tetron-wm"
 #   blueutil (macOS)  — Bluetooth tray control
 #   gpm (Linux)       — mouse on a bare console / VT
 #   sshpass           — automates the one-time password for Systems → Add Remote
+#   chafa             — render an image wallpaper to cells (works on kmscon too)
+#   Symbols Nerd Font — the glyphs used by `icon_style = "nerd"`
 # Transparent and skippable: it prints what it runs, skips silently with no
 # package manager, honours TETRON_WM_SKIP_DEPS, and in a non-interactive
 # `curl | sh` requires explicit TETRON_WM_INSTALL_DEPS=1 so piping the installer
 # never surprises you with package installs.
+# A Nerd Font supplies the Private-Use-Area glyphs tetron-wm draws for
+# `icon_style = "nerd"`. "Symbols Only" is tiny and has no Latin letters, so
+# fontconfig uses it purely as a fallback for those glyphs (in kmscon and most
+# terminals) without changing your normal text font. No sudo on Linux (user
+# fonts dir); a brew cask on macOS.
+install_nerd_font() {
+  # Already have one? fontconfig is the arbiter on both platforms.
+  if command -v fc-list >/dev/null 2>&1 && fc-list 2>/dev/null | grep -qi "nerd font"; then
+    return 0
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      if command -v brew >/dev/null 2>&1; then
+        echo "tetron-wm: installing optional dependency Symbols Nerd Font (icon_style=nerd)…"
+        brew install --cask font-symbols-only-nerd-font 2>/dev/null \
+          || echo "tetron-wm: Nerd Font skipped (run 'brew install --cask font-symbols-only-nerd-font' later for icon_style=nerd)"
+      fi ;;
+    Linux)
+      if ! command -v unzip >/dev/null 2>&1; then
+        echo "tetron-wm: Nerd Font skipped (needs 'unzip'; install it + a Nerd Font for icon_style=nerd)"
+        return 0
+      fi
+      fdir="$HOME/.local/share/fonts"
+      url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip"
+      tmp="$(mktemp -d)" || return 0
+      echo "tetron-wm: installing optional dependency Symbols Nerd Font (icon_style=nerd)…"
+      if fetch "$url" > "$tmp/nf.zip" 2>/dev/null && [ -s "$tmp/nf.zip" ]; then
+        mkdir -p "$fdir"
+        if unzip -o -q "$tmp/nf.zip" '*.ttf' -d "$fdir" 2>/dev/null; then
+          command -v fc-cache >/dev/null 2>&1 && fc-cache -f "$fdir" >/dev/null 2>&1
+          echo "tetron-wm: Symbols Nerd Font installed to $fdir"
+        else
+          echo "tetron-wm: Nerd Font extract failed (install a Nerd Font manually for icon_style=nerd)"
+        fi
+      else
+        echo "tetron-wm: Nerd Font download skipped (install a Nerd Font manually for icon_style=nerd)"
+      fi
+      rm -rf "$tmp" ;;
+  esac
+}
+
 install_optional_deps() {
   [ "${TETRON_WM_SKIP_DEPS:-0}" = "1" ] && return 0
   if [ ! -t 0 ] && [ "${TETRON_WM_INSTALL_DEPS:-0}" != "1" ]; then return 0; fi
@@ -113,6 +156,7 @@ install_optional_deps() {
       command -v gpm >/dev/null 2>&1 || pkgs="gpm"
       command -v sshpass >/dev/null 2>&1 || pkgs="$pkgs sshpass"
       command -v chafa >/dev/null 2>&1 || pkgs="$pkgs chafa"
+      command -v unzip >/dev/null 2>&1 || pkgs="$pkgs unzip"   # for the Nerd Font below
       pkgs="$(echo "$pkgs" | sed 's/^ *//')"
       if [ -n "$pkgs" ]; then
         echo "tetron-wm: installing optional dependencies: $pkgs …"
@@ -127,6 +171,7 @@ install_optional_deps() {
         fi
       fi ;;
   esac
+  install_nerd_font
 }
 install_optional_deps
 

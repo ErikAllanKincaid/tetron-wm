@@ -21,6 +21,10 @@ carry user-visible feature work and the occasional breaking config change.
   can not be read, the desktop stays solid and the reason is logged. The
   `TETRON_WM_WALLPAPER` env var still overrides the config for quick testing.
   `install.sh` now installs `chafa` as an optional dependency.
+- **`install.sh` installs a Symbols Nerd Font** (the glyphs `icon_style = "nerd"`
+  draws) as an optional dependency: a brew cask on macOS, and on Linux the
+  "Symbols Only" release dropped into `~/.local/share/fonts` (no sudo) so
+  fontconfig uses it as a glyph fallback in kmscon and most terminals.
 
 ## [0.14.2] — 2026-10-06
 
