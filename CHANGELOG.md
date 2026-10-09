@@ -25,6 +25,10 @@ carry user-visible feature work and the occasional breaking config change.
   meson.** The maintained fork needs meson >= 1.1 but those ship 1.0.1;
   `install-kmscon.sh` now detects a too-old meson and bootstraps a newer one
   into a throwaway venv for the build (ninja from apt is new enough).
+- **tty1 launch snippet now uses the binary's absolute path and prepends
+  `~/.local/bin` to PATH.** The login profile runs before the interactive rc,
+  so a bare `tetron-wm` could be missing from PATH at login and drop you to a
+  shell instead of the desktop.
 
 ## [0.14.4] — 2026-10-08
 

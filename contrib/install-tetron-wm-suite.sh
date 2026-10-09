@@ -182,13 +182,17 @@ setup_tty1() {
   if grep -q 'TETRON_WM_ACTIVE' "$prof" 2>/dev/null; then
     log "login snippet already present in $prof"
   else
-    cat >> "$prof" <<'EOF'
+    # Use the absolute binary path and prepend ~/.local/bin: this profile runs
+    # before the interactive rc (e.g. ~/.zshrc), so a bare `tetron-wm` can be
+    # missing from PATH at login. `$wm` is expanded now; the rest stays literal.
+    cat >> "$prof" <<EOF
 
 # Launch tetron-wm on tty1 login (added by install-tetron-wm-suite.sh).
-# Drop `exec` to land on a shell when you quit the desktop.
-if [ "$(tty)" = "/dev/tty1" ] && [ -z "$TETRON_WM_ACTIVE" ]; then
+# Drop \`exec\` to land on a shell when you quit the desktop.
+if [ "\$(tty)" = "/dev/tty1" ] && [ -z "\$TETRON_WM_ACTIVE" ]; then
   export TETRON_WM_ACTIVE=1
-  exec tetron-wm
+  export PATH="\$HOME/.local/bin:\$PATH"
+  exec "$wm"
 fi
 EOF
     log "appended tty1 launch snippet to $prof"
