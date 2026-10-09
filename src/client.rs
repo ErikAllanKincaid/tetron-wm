@@ -505,14 +505,32 @@ pub(crate) fn route_mouse(
     if ev.button == B::Left && ev.action == A::Down {
         *grab = Some(if in_app { Grab::App } else { Grab::Chrome });
     }
-    if ev.button == B::Left && matches!(ev.action, A::Drag | A::Up) {
-        if let Some(g) = *grab {
+    // While a grab is held, a button-less Move is a drag continuation. Some
+    // terminals (kmscon's experimental mouse) report motion during a drag as a
+    // bare `Moved` with no button bit, so crossterm never yields a Drag event —
+    // we track the held button ourselves via `grab` and treat the move as a drag
+    // so titlebar move / edge resize (and in-app drags) work there too.
+    if let Some(g) = *grab {
+        let is_left_up = ev.button == B::Left && ev.action == A::Up;
+        let is_left_drag = ev.button == B::Left && ev.action == A::Drag;
+        let is_bare_move = ev.action == A::Move;
+        if is_left_up || is_left_drag || is_bare_move {
             let r = match g {
+                // Give the app a real Left drag, not a bare move, so mouse apps
+                // (btop, vim, lazygit) see button-held motion.
+                Grab::App if is_bare_move => send(
+                    out,
+                    &ClientMsg::MouseInput(crate::mouse::MouseInput {
+                        button: B::Left,
+                        action: A::Drag,
+                        ..ev
+                    }),
+                ),
                 Grab::App => send(out, &ClientMsg::MouseInput(ev)),
-                Grab::Chrome if ev.action == A::Drag => send(out, &ClientMsg::MouseDrag(p)),
-                Grab::Chrome => send(out, &ClientMsg::MouseUp(p)),
+                Grab::Chrome if is_left_up => send(out, &ClientMsg::MouseUp(p)),
+                Grab::Chrome => send(out, &ClientMsg::MouseDrag(p)),
             };
-            if ev.action == A::Up {
+            if is_left_up {
                 *grab = None;
             }
             return r;

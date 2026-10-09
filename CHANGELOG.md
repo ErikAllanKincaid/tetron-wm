@@ -29,6 +29,14 @@ carry user-visible feature work and the occasional breaking config change.
   `-y` takes the defaults; `--all -y` builds the full console appliance.
 
 ### Fixed
+- **Window move/resize work under kmscon (and any terminal that reports
+  button-less drag motion).** tetron-wm keyed titlebar-move / edge-resize on
+  crossterm's `Drag` event, which only fires when a motion carries the held
+  button. kmscon's mouse reports motion during a drag as a plain `Moved` with
+  no button, so drags never started. The client now tracks the left button
+  itself (via the existing pointer grab) and treats button-less motion while
+  held as a drag — for chrome and for in-app drags. Also types the `ioctl`
+  request constants per libc so the crate builds for the musl (static) target.
 - **Suite installer no longer aborts the kmscon step on an Enter-through run.**
   A "yes" to the suite's "Install kmscon?" prompt now carries through to the
   kmscon installer (passes `-y`) instead of hitting a second, No-default

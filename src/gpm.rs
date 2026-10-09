@@ -181,8 +181,14 @@ pub fn start(
 /// Determine our virtual-console number, or `None` if stdin isn't a Linux VT.
 #[cfg(target_os = "linux")]
 fn detect_vc() -> Option<i32> {
-    const KDGKBTYPE: libc::c_ulong = 0x4B33;
-    const VT_GETSTATE: libc::c_ulong = 0x5603;
+    // `ioctl`'s request arg is `c_int` on musl but `c_ulong` on glibc; type the
+    // constants to match so the crate also builds for the musl target (static).
+    #[cfg(target_env = "musl")]
+    type IoctlReq = libc::c_int;
+    #[cfg(not(target_env = "musl"))]
+    type IoctlReq = libc::c_ulong;
+    const KDGKBTYPE: IoctlReq = 0x4B33;
+    const VT_GETSTATE: IoctlReq = 0x5603;
     #[repr(C)]
     struct VtStat {
         v_active: libc::c_ushort,
