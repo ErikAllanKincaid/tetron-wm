@@ -132,6 +132,20 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                     let ctrl_alt = ctrl && k.modifiers.contains(KeyModifiers::ALT);
                     let is_leader = (ctrl && k.code == KeyCode::Char(' ')) || k.code == KeyCode::Null;
                     let shift = k.modifiers.contains(KeyModifiers::SHIFT);
+                    // kmscon and the Linux VT send the Backspace key as Ctrl-H
+                    // (0x08), not DEL (0x7f)/KeyCode::Backspace, so none of
+                    // tetron-wm's text fields would erase (they match Backspace).
+                    // Normalize it to Backspace for all of tetron-wm's own key
+                    // routing below; the app-passthrough path keeps the raw key
+                    // (raw_code/raw_mods) so Ctrl-H still reaches apps (readline,
+                    // emacs). Terminals that send DEL already arrive as Backspace.
+                    let raw_code = k.code;
+                    let raw_mods = k.modifiers;
+                    let mut k = k;
+                    if matches!(k.code, KeyCode::Char('h')) && k.modifiers == KeyModifiers::CONTROL {
+                        k.code = KeyCode::Backspace;
+                        k.modifiers = KeyModifiers::NONE;
+                    }
 
                     // Global clipboard shortcuts (classic terminal bindings),
                     // handled before any mode routing so they work everywhere:
@@ -376,10 +390,10 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             KeyCode::Down => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
                             KeyCode::Left => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             KeyCode::Right => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
-                            _ => send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers, f.app_cursor)))?,
+                            _ => send(&mut out_stream, &ClientMsg::Key(encode_key(raw_code, raw_mods, f.app_cursor)))?,
                         }
                     } else {
-                        send(&mut out_stream, &ClientMsg::Key(encode_key(k.code, k.modifiers, f.app_cursor)))?;
+                        send(&mut out_stream, &ClientMsg::Key(encode_key(raw_code, raw_mods, f.app_cursor)))?;
                     }
                 }
                 Event::Mouse(me) => {

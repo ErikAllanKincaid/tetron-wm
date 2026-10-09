@@ -29,6 +29,14 @@ carry user-visible feature work and the occasional breaking config change.
   `-y` takes the defaults; `--all -y` builds the full console appliance.
 
 ### Fixed
+- **Backspace erases in tetron-wm's own text fields under kmscon / the Linux
+  console.** Those consoles send the Backspace key as `Ctrl-H` (0x08), not DEL
+  (0x7f)/`KeyCode::Backspace`, so the Settings wallpaper box, window rename,
+  launcher search, Add-Remote form, etc. never erased (the keystroke fell
+  through unhandled). The client now normalizes `Ctrl-H` to Backspace for its
+  own key routing, while the app-passthrough path keeps the raw key so `Ctrl-H`
+  still reaches shells/apps (which already treated it as erase — hence shells
+  were unaffected). Terminals that send DEL were always fine.
 - **Window move/resize work under kmscon (and any terminal that reports
   button-less drag motion).** tetron-wm keyed titlebar-move / edge-resize on
   crossterm's `Drag` event, which only fires when a motion carries the held
