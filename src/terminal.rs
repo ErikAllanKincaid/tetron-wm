@@ -34,8 +34,11 @@ impl Caps {
         // can't see the terminal (e.g. SSH with TERM stripped to xterm-256color).
         let force = std::env::var("TETRON_WM_GRAPHICS").map(|v| v != "0").unwrap_or(false);
         let graphics = known || force;
-        // Known terminals are all truecolor; otherwise trust COLORTERM.
-        let auto_truecolor = graphics || ct.contains("truecolor") || ct.contains("24bit");
+        // Known terminals are all truecolor; otherwise trust COLORTERM, or detect
+        // kmscon (truecolor on a bare console, but TERM=xterm-256color + no
+        // COLORTERM, so env detection alone misses it).
+        let auto_truecolor =
+            graphics || ct.contains("truecolor") || ct.contains("24bit") || under_kmscon();
         // An explicit override (env, else the `truecolor` config key) wins: many
         // terminals support 24-bit color but set TERM=xterm-256color with no
         // COLORTERM, so auto-detection downsamples subtle themes to the 256-color
@@ -43,6 +46,44 @@ impl Caps {
         let truecolor = truecolor_override().unwrap_or(auto_truecolor);
         Caps { truecolor, pixel_mouse: graphics, kitty_graphics: graphics }
     }
+}
+
+/// Whether an ancestor process is `kmscon`. kmscon renders truecolor (and, on
+/// the maintained line, mouse) on a bare console, but sets `TERM=xterm-256color`
+/// with no `COLORTERM`, so env-based detection misses it. The session's shell
+/// and this client run under the kmscon process, so walk `/proc` up the parent
+/// chain and look for it. Linux-only and cheap (the chain is a few hops:
+/// client ← login ← kmscon); bounded so a cycle can never spin.
+#[cfg(target_os = "linux")]
+fn under_kmscon() -> bool {
+    let mut pid = std::process::id();
+    for _ in 0..16 {
+        if pid <= 1 {
+            break;
+        }
+        if std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            .map(|c| c.trim() == "kmscon")
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        let ppid = std::fs::read_to_string(format!("/proc/{pid}/status"))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|l| l.strip_prefix("PPid:"))
+                    .and_then(|v| v.trim().parse::<u32>().ok())
+            });
+        match ppid {
+            Some(p) => pid = p,
+            None => break,
+        }
+    }
+    false
+}
+#[cfg(not(target_os = "linux"))]
+fn under_kmscon() -> bool {
+    false
 }
 
 /// Explicit truecolor choice: the `TETRON_WM_TRUECOLOR` env var (`1/true/yes/on`

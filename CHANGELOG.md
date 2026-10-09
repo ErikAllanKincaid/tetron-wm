@@ -7,6 +7,12 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Changed
+- **Truecolor is auto-detected under kmscon.** kmscon renders truecolor but sets
+  `TERM=xterm-256color` with no `COLORTERM`, so env detection alone downsampled
+  subtle themes. tetron-wm now also detects kmscon by walking `/proc` up the
+  parent chain (the client runs under the kmscon process) and enables truecolor
+  automatically — no config needed. The explicit `truecolor` config key / env
+  override still wins.
 - **Default install dir is now `/usr/local/bin`** (was `~/.local/bin`), so the
   binary is system-wide and already on `PATH`. `install.sh` escalates with
   `sudo` when the target needs root; set `TETRON_WM_BIN_DIR` for a no-sudo
