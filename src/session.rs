@@ -4628,12 +4628,13 @@ fn update_command(branch: &str) -> String {
     let branch = branch.as_str();
     let repo = crate::REPO_URL;
     let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
-    // Keep the new binary where the running one lives (cargo bin vs ~/.local/bin).
+    // Keep the new binary where the running one lives (cargo bin, /usr/local/bin,
+    // or a user dir). install.sh sudo-escalates when that dir needs root.
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .map(|d| d.display().to_string())
-        .unwrap_or_else(|| "$HOME/.local/bin".into());
+        .unwrap_or_else(|| "/usr/local/bin".into());
     let root_flag = std::env::current_exe().map(|p| cargo_root_flag(&p)).unwrap_or_default();
     let dir = crate::systems::sh_quote(&exe_dir);
     // Reload via the freshly-installed binary's ABSOLUTE path, not a bare

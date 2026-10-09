@@ -3,13 +3,37 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 #
-# Override the install directory with TETRON_WM_BIN_DIR (default: ~/.local/bin).
+# The default install dir is /usr/local/bin (system-wide, already on PATH), which
+# needs root — the script uses sudo when the dir is not writable. For a no-sudo,
+# userspace install set TETRON_WM_BIN_DIR to a writable dir, e.g.:
+#   TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL …/install.sh | sh
 set -eu
 
 # Prebuilt binaries come from the tetron-wm release repo. The binary is named
 # `tetron-wm` and installs to its own paths, so it collides with nothing else.
 REPO="ErikAllanKincaid/tetron-wm"
-BIN_DIR="${TETRON_WM_BIN_DIR:-$HOME/.local/bin}"
+BIN_DIR="${TETRON_WM_BIN_DIR:-/usr/local/bin}"
+
+# Does writing BIN_DIR need root? Walk up to the first existing ancestor and
+# test it: a path under $HOME (even if the dir doesn't exist yet) is writable
+# and needs no sudo, while /usr/local/bin exists but is root-owned.
+need_sudo_for() {
+  d="$1"
+  while [ ! -e "$d" ]; do d="$(dirname "$d")"; [ "$d" = "/" ] && break; done
+  [ -w "$d" ] && return 1 || return 0
+}
+SUDO=""
+if need_sudo_for "$BIN_DIR"; then
+  if [ "$(id -u)" -eq 0 ]; then :
+  elif command -v sudo >/dev/null 2>&1; then
+    echo "tetron-wm: $BIN_DIR needs root — using sudo (set TETRON_WM_BIN_DIR to a user dir for a no-sudo install)"
+    SUDO="sudo"
+  else
+    echo "tetron-wm: cannot write $BIN_DIR and sudo is unavailable." >&2
+    echo "  Retry with:  TETRON_WM_BIN_DIR=\"\$HOME/.local/bin\" curl -fsSL …/install.sh | sh" >&2
+    exit 1
+  fi
+fi
 
 # Stock Debian often has wget but not curl; accept either.
 fetch() {
@@ -65,13 +89,13 @@ fi
 
 url="https://github.com/$REPO/releases/download/$tag/tetron-wm-$target.tar.gz"
 echo "tetron-wm: downloading $tag ($target)…"
-mkdir -p "$BIN_DIR"
-if ! fetch "$url" | tar -xz -C "$BIN_DIR" 2>/dev/null || [ ! -f "$BIN_DIR/tetron-wm" ]; then
+$SUDO mkdir -p "$BIN_DIR"
+if ! fetch "$url" | $SUDO tar -xz -C "$BIN_DIR" 2>/dev/null || [ ! -f "$BIN_DIR/tetron-wm" ]; then
   echo "tetron-wm: no prebuilt binary for $target in $tag."
   echo "Install with Rust instead:  cargo install --git https://github.com/$REPO"
   exit 1
 fi
-chmod +x "$BIN_DIR/tetron-wm"
+$SUDO chmod +x "$BIN_DIR/tetron-wm"
 
 echo "tetron-wm: installed $tag -> $BIN_DIR/tetron-wm"
 

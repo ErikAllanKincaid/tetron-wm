@@ -6,6 +6,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Changed
+- **Default install dir is now `/usr/local/bin`** (was `~/.local/bin`), so the
+  binary is system-wide and already on `PATH`. `install.sh` escalates with
+  `sudo` when the target needs root; set `TETRON_WM_BIN_DIR` for a no-sudo
+  install into your home. The in-app updater installs to wherever the running
+  binary lives, so a `/usr/local/bin` install updates in place (prompting for
+  `sudo` in the update window).
+
 ### Added
 - **One-shot suite installer** (`contrib/install-tetron-wm-suite.sh`, with a
   TLDR in the README). A single prompted `curl | bash` that optionally installs

@@ -113,7 +113,7 @@ install_wm() {
 }
 
 # Where the binary landed, for later steps (install.sh default: ~/.local/bin).
-wm_bin() { command -v tetron-wm 2>/dev/null || echo "${TETRON_WM_BIN_DIR:-$HOME/.local/bin}/tetron-wm"; }
+wm_bin() { command -v tetron-wm 2>/dev/null || echo "${TETRON_WM_BIN_DIR:-/usr/local/bin}/tetron-wm"; }
 
 # ── Step 2: config dir ─────────────────────────────────────────────────────────
 seed_config() {
@@ -152,7 +152,7 @@ install_kmscon() {
 setup_tty1() {
   have systemctl || { warn "no systemd (systemctl) — skipping tty1 setup"; return 0; }
   have kmscon    || { warn "kmscon is not installed — run the kmscon step first; skipping tty1"; return 0; }
-  local wm; wm="$(wm_bin)"
+  local wm wmdir; wm="$(wm_bin)"; wmdir="$(dirname "$wm")"
   [ -x "$wm" ] || { warn "tetron-wm not found on PATH — install it first; skipping tty1"; return 0; }
 
   warn "This edits your tty1 login console. Keep a second VT (Ctrl+Alt+F2) or an"
@@ -191,7 +191,7 @@ setup_tty1() {
 # Drop \`exec\` to land on a shell when you quit the desktop.
 if [ "\$(tty)" = "/dev/tty1" ] && [ -z "\$TETRON_WM_ACTIVE" ]; then
   export TETRON_WM_ACTIVE=1
-  export PATH="\$HOME/.local/bin:\$PATH"
+  export PATH="$wmdir:\$PATH"
   exec "$wm"
 fi
 EOF
@@ -229,10 +229,7 @@ main() {
   echo
   log "done."
   if [ "$WANT_TTY1" != y ]; then
-    case ":$PATH:" in
-      *":$HOME/.local/bin:"*) log "run it with:  tetron-wm" ;;
-      *) log "add ~/.local/bin to PATH, then run:  tetron-wm" ;;
-    esac
+    log "run it with:  tetron-wm   (install.sh noted the PATH if the dir is not already on it)"
   fi
 }
 

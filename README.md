@@ -131,6 +131,12 @@ Requires a [Rust toolchain](https://rustup.rs).
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 ```
 
+Installs to `/usr/local/bin` (already on `PATH`, system-wide), using `sudo` when that dir needs root. For a no-sudo install into your home, set `TETRON_WM_BIN_DIR`:
+
+```bash
+TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+```
+
 **Or build from source** with a [Rust toolchain](https://rustup.rs):
 
 ```bash
