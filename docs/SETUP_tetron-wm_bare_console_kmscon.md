@@ -273,11 +273,29 @@ sudo systemctl daemon-reload && sudo systemctl restart kmsconvt@tty1
 Append to `~/.zprofile` (bash: `~/.bash_profile`):
 
 ```sh
-if [ "$(tty)" = "/dev/tty1" ] && [ -z "$TETRON_WM_ACTIVE" ]; then
-  export TETRON_WM_ACTIVE=1
-  exec tetron-wm
+# Launch tetron-wm on the primary console (kmscon session, or raw VT1).
+if [ -z "$TETRON_WM_ACTIVE" ] && [ -z "$SSH_CONNECTION" ]; then
+  _tw=0
+  [ "$(tty)" = "/dev/tty1" ] && _tw=1
+  _p=$PPID
+  while [ "$_tw" = 0 ] && [ "${_p:-0}" -gt 1 ]; do
+    case "$(cat /proc/$_p/comm 2>/dev/null)" in kmscon) _tw=1 ;; esac
+    _p=$(awk '/^PPid:/{print $2}' /proc/$_p/status 2>/dev/null)
+  done
+  if [ "$_tw" = 1 ]; then
+    export TETRON_WM_ACTIVE=1
+    export PATH="/usr/local/bin:$PATH"
+    exec /usr/local/bin/tetron-wm
+  fi
+  unset _tw _p
 fi
 ```
+
+> Do **not** gate only on `[ "$(tty)" = "/dev/tty1" ]`: kmscon runs the login
+> shell on a pseudo-terminal (`/dev/pts/N`), so that test is false under
+> kmscon and the desktop never starts (you land at a shell prompt). The block
+> above instead detects the console by walking the process tree up to
+> `kmscon` (and still accepts a raw VT1), while excluding SSH logins.
 
 `exec` hands the session to tetron-wm; quitting ends the session and kmscon
 re-logs you in. Drop `exec` to land on a shell when you quit. Reboot (or restart

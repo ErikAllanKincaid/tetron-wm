@@ -134,6 +134,21 @@ seed_config() {
   log "drop images in $cfg/wallpapers/ and set wallpaper=... ; editable themes: tetron-wm theme --dump <name>"
 }
 
+# kmscon supports truecolor but does not set COLORTERM, so tetron-wm would
+# auto-downsample subtle themes (nord → teal/navy). Force truecolor on in
+# config.toml for the kmscon appliance (top level, before any [table] header).
+ensure_truecolor() {
+  local f="$HOME/.config/tetron-wm/config.toml"
+  if [ ! -f "$f" ]; then
+    mkdir -p "$(dirname "$f")"; printf 'truecolor = true\n' > "$f"
+    log "created config.toml with truecolor = true (kmscon)"; return 0
+  fi
+  grep -qE '^[[:space:]]*truecolor[[:space:]]*=' "$f" && return 0
+  local tmp; tmp="$(mktemp)"
+  awk 'BEGIN{ins=0} /^\[/ && ins==0 {print "truecolor = true"; ins=1} {print} END{if(ins==0) print "truecolor = true"}' "$f" > "$tmp" \
+    && mv "$tmp" "$f" && log "set truecolor = true in config.toml (kmscon supports it; no COLORTERM)"
+}
+
 # ── Step 3: kmscon ─────────────────────────────────────────────────────────────
 install_kmscon() {
   log "installing kmscon (truecolor + mouse console)…"
@@ -187,26 +202,40 @@ setup_tty1() {
   $SUDO systemctl daemon-reload
   $SUDO systemctl restart kmsconvt@tty1
 
-  log "3/3 exec tetron-wm from the tty1 login shell ($prof)"
+  log "3/3 exec tetron-wm from the console login shell ($prof)"
   if grep -q 'TETRON_WM_ACTIVE' "$prof" 2>/dev/null; then
     log "login snippet already present in $prof"
   else
-    # Use the absolute binary path and prepend ~/.local/bin: this profile runs
-    # before the interactive rc (e.g. ~/.zshrc), so a bare `tetron-wm` can be
-    # missing from PATH at login. `$wm` is expanded now; the rest stays literal.
+    # Launch on the primary console. kmscon runs the login shell on a PTS, not
+    # /dev/tty1, so a `tty = /dev/tty1` test never matches under kmscon; walk the
+    # process tree up to kmscon instead (and still accept a raw VT1). Exclude
+    # SSH. Absolute binary path + PATH prepend: this profile runs before the
+    # interactive rc, where the install dir may not be on PATH yet. `$wm`/`$wmdir`
+    # are expanded now; everything else stays literal for login time.
     cat >> "$prof" <<EOF
 
-# Launch tetron-wm on tty1 login (added by install-tetron-wm-suite.sh).
-# Drop \`exec\` to land on a shell when you quit the desktop.
-if [ "\$(tty)" = "/dev/tty1" ] && [ -z "\$TETRON_WM_ACTIVE" ]; then
-  export TETRON_WM_ACTIVE=1
-  export PATH="$wmdir:\$PATH"
-  exec "$wm"
+# Launch tetron-wm on the primary console (kmscon session, or raw VT1), not over
+# SSH or in nested shells. Drop \`exec\` to land on a shell when you quit.
+if [ -z "\$TETRON_WM_ACTIVE" ] && [ -z "\$SSH_CONNECTION" ]; then
+  _tw=0
+  [ "\$(tty)" = "/dev/tty1" ] && _tw=1
+  _p=\$PPID
+  while [ "\$_tw" = 0 ] && [ "\${_p:-0}" -gt 1 ]; do
+    case "\$(cat /proc/\$_p/comm 2>/dev/null)" in kmscon) _tw=1 ;; esac
+    _p=\$(awk '/^PPid:/{print \$2}' /proc/\$_p/status 2>/dev/null)
+  done
+  if [ "\$_tw" = 1 ]; then
+    export TETRON_WM_ACTIVE=1
+    export PATH="$wmdir:\$PATH"
+    exec "$wm"
+  fi
+  unset _tw _p
 fi
 EOF
-    log "appended tty1 launch snippet to $prof"
+    log "appended console launch snippet to $prof"
   fi
 
+  ensure_truecolor
   # Keep apps alive across UI reloads/updates by running the apphost as a service.
   "$wm" service install >/dev/null 2>&1 && log "installed the tetron-wm apphost service" || true
   log "tty1 is set. Reboot (or: sudo systemctl restart kmsconvt@tty1 ; then Ctrl+Alt+F1)."

@@ -42,6 +42,14 @@ carry user-visible feature work and the occasional breaking config change.
   truecolor and the mouse fell back to gpm (coarse, laggy). The suite's tty1
   step now hardcodes `xterm-256color` and disables the now-redundant `gpm`
   under kmscon; the bare-console setup doc is corrected to match.
+- **Console launch snippet detects kmscon instead of testing `tty = /dev/tty1`.**
+  kmscon runs the login shell on a pseudo-terminal, so the old `tty1` test was
+  always false under kmscon and the desktop never started (the login shell just
+  sat at a prompt). The snippet now walks the process tree up to `kmscon` (and
+  still accepts a raw VT1), excluding SSH logins.
+- **Appliance forces `truecolor = true` in config.toml.** kmscon supports
+  truecolor but does not set `COLORTERM`, so auto-detection downsampled subtle
+  themes. The suite's tty1 step now sets the `truecolor` config key.
 
 ## [0.14.4] — 2026-10-08
 
