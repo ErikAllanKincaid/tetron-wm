@@ -21,6 +21,10 @@ carry user-visible feature work and the occasional breaking config change.
   "Proceed with the source build?" prompt that an Enter would decline. The
   kmscon script now also logs that it is building from source under `-y`
   instead of proceeding silently.
+- **kmscon source build no longer dies on Debian bookworm / LMDE 6's old
+  meson.** The maintained fork needs meson >= 1.1 but those ship 1.0.1;
+  `install-kmscon.sh` now detects a too-old meson and bootstraps a newer one
+  into a throwaway venv for the build (ninja from apt is new enough).
 
 ## [0.14.4] — 2026-10-08
 

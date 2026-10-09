@@ -43,6 +43,10 @@ LIBTSM_REF="${LIBTSM_REF:-}"
 # (truecolor + mouse); Debian's backports package (10.x) compares >= this, while
 # the stock 9.0.0 some distros ship compares below it and triggers a rebuild.
 MIN_KMSCON="9.1"
+# Minimum meson for the current maintained fork's meson.build. Aetf/libtsm 4.3.0
+# needs >=1.1, but Debian bookworm / LMDE 6 only package meson 1.0.1 — too old,
+# so on those we bootstrap a newer meson into a throwaway venv (see ensure_meson).
+MIN_MESON="1.1"
 
 ASSUME_YES=0; FORCE_SOURCE=0; APT_ONLY=0; WANT_FONTS=1
 
@@ -196,6 +200,26 @@ install_build_deps() {
 		libpango1.0-dev libpixman-1-dev libsystemd-dev libudev-dev libxkbcommon-dev
 }
 
+# The maintained fork's meson.build requires a newer meson than Debian
+# bookworm / LMDE 6 package (1.0.1). When the system meson is too old, pip a
+# recent one into a venv under $BUILD and prepend it to PATH for the build.
+# (ninja from apt is new enough, so we only replace meson.)
+ensure_meson() {
+	local v=""
+	have meson && v="$(meson --version 2>/dev/null || true)"
+	if [ -n "$v" ] && ver_ge "$v" "$MIN_MESON"; then
+		log "meson $v (>= $MIN_MESON, ok)"
+		return 0
+	fi
+	warn "meson ${v:-not found} is older than $MIN_MESON — bootstrapping a newer meson in a venv"
+	$SUDO apt-get install -y --no-install-recommends python3 python3-venv
+	python3 -m venv "$BUILD/meson-venv"
+	"$BUILD/meson-venv/bin/pip" install -q --upgrade pip meson \
+		|| die "could not pip-install meson into a venv (network?)"
+	PATH="$BUILD/meson-venv/bin:$PATH"; export PATH
+	log "bootstrapped meson $(meson --version) in $BUILD/meson-venv"
+}
+
 # Resolve the latest release tag of a GitHub repo via the (unauthenticated,
 # not-rate-limited) releases/latest redirect; empty when the repo has no release.
 latest_tag() {
@@ -245,6 +269,7 @@ source_build() {
 	confirm_source || die "aborted (no changes made)."
 	install_build_deps
 	BUILD="$(mktemp -d)"; trap 'rm -rf "$BUILD"' EXIT
+	ensure_meson   # upgrade meson if the distro's is too old (bookworm/LMDE 6)
 	# libtsm first; kmscon links against it. Point pkg-config/loader at $PREFIX so
 	# the freshly built libtsm is found during and after the kmscon build.
 	build_one "$LIBTSM_REPO" "$LIBTSM_REF" libtsm
