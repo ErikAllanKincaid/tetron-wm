@@ -315,6 +315,7 @@ wallpaper.
 | Boxes/tofu with `icon_style = "nerd"` | redo B4 / `fc-cache -f`, or use `ascii`. |
 | Wallpaper glyph tofu on kmscon | console font lacks the sextant glyphs chafa uses — font coverage, not a bug; the DejaVu/Terminus fonts help. |
 | tty1 login broken | from another VT/SSH: `sudo systemctl disable --now kmsconvt@tty1 && sudo systemctl enable --now getty@tty1`. |
+| Desktop appears on tty1 but with no truecolor/mouse (debug log `term=linux`) | kmscon crashed and systemd fell back to `getty@tty1`. Check `journalctl -u kmsconvt@tty1 -b`. A `mod-*.so: undefined symbol` + `SEGV` means a **stale kmscon module** from an older build: `sudo rm -f /usr/local/lib/*/kmscon/mod-*.so` then re-run `scripts/install-kmscon.sh --source` (it now wipes old modules before reinstalling). |
 | Debug the desktop | `~/tetron-wm-debug.log`, or the in-app Logs viewer. |
 
 ---

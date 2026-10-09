@@ -307,6 +307,14 @@ source_build() {
 	local m; m="$(uname -m)"
 	export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib/$m-linux-gnu/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 	export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/$m-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+	# Wipe modules from any previous (possibly older) kmscon before reinstalling:
+	# the module set differs between versions (e.g. 9.1.0 shipped mod-bbulk.so /
+	# mod-pixman.so, main does not), and a stale mod-*.so the new kmscon loads
+	# fails with "undefined symbol: uterm_display_blit" and then SEGVs the whole
+	# console — which silently falls back to the kernel getty (no truecolor/mouse).
+	for d in "$PREFIX"/lib/*/kmscon "$PREFIX"/lib/kmscon; do
+		[ -d "$d" ] && { log "clearing stale kmscon modules in $d"; $SUDO rm -f "$d"/mod-*.so; }
+	done
 	build_one "$KMSCON_REPO" "$KMSCON_REF" kmscon
 	$SUDO ldconfig
 	install_fonts

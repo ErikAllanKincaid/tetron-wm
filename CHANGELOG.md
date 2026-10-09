@@ -62,7 +62,11 @@ carry user-visible feature work and the occasional breaking config change.
   mouse — under kmscon the login shell is on a PTS where gpm cannot help, so
   there was no mouse at all. `install-kmscon.sh` now builds the maintained line
   from `main` (what Debian ships as kmscon 10 / libtsm 4.7.1) and enables the
-  (default-off) `mouse` option in `kmscon.conf`.
+  (default-off) `mouse` option in `kmscon.conf`. It also **wipes kmscon's module
+  dir before reinstalling**: the module set differs between versions (9.1.0 had
+  `mod-bbulk.so`/`mod-pixman.so`, `main` does not), and a stale leftover made the
+  new kmscon fail with `undefined symbol: uterm_display_blit` and SEGV on
+  startup — which silently fell back to the kernel getty (no truecolor/mouse).
 
 ## [0.14.4] — 2026-10-08
 
