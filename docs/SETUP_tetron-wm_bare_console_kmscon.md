@@ -253,8 +253,16 @@ source build; the blank `ExecStart=` clears the default first):
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/bin/kmscon "--vt=%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin erik --noclear - $TERM
+ExecStart=/usr/bin/kmscon "--vt=%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin erik --noclear - xterm-256color
 ```
+
+> The last argument is the login `TERM`. Set it to the literal
+> `xterm-256color` (what kmscon emulates), **not** `$TERM`: inside a systemd
+> unit `$TERM` expands to the console value `linux`, which makes tetron-wm
+> think it is on a kernel VT — no truecolor, mouse falls back to gpm, and the
+> rendering looks coarse. Hardcoding `xterm-256color` gives truecolor and
+> kmscon's own mouse. (With kmscon driving the mouse, a running `gpm` is
+> redundant: `sudo systemctl disable --now gpm`.)
 
 ```sh
 sudo systemctl daemon-reload && sudo systemctl restart kmsconvt@tty1
@@ -283,8 +291,9 @@ wallpaper.
 | Symptom | Fix |
 |---|---|
 | Solid-color desktop, no wallpaper | chafa missing (A1 opt-in / B2). |
-| Colors look 256-ish on kmscon | `truecolor = true` in config.toml. |
-| No mouse on a raw VT (no kmscon) | `sudo apt-get install -y gpm && sudo systemctl enable --now gpm`. Not needed under kmscon. |
+| On tty1: no truecolor + no/laggy mouse, debug log shows `term=linux` | The autologin `TERM` is wrong. Set the override's last agetty arg to `xterm-256color`, not `$TERM` (see step 2). Confirm with `grep 'caps:' ~/tetron-wm-debug.log` → want `truecolor=true term=xterm-256color`. |
+| Colors look 256-ish on kmscon | `truecolor = true` in config.toml (and check `TERM` per the row above). |
+| No mouse on a raw VT (no kmscon) | `sudo apt-get install -y gpm && sudo systemctl enable --now gpm`. Not needed under kmscon (disable it there: `sudo systemctl disable --now gpm`). |
 | Boxes/tofu with `icon_style = "nerd"` | redo B4 / `fc-cache -f`, or use `ascii`. |
 | Wallpaper glyph tofu on kmscon | console font lacks the sextant glyphs chafa uses — font coverage, not a bug; the DejaVu/Terminus fonts help. |
 | tty1 login broken | from another VT/SSH: `sudo systemctl disable --now kmsconvt@tty1 && sudo systemctl enable --now getty@tty1`. |

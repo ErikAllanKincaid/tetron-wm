@@ -37,6 +37,11 @@ carry user-visible feature work and the occasional breaking config change.
   `~/.local/bin` to PATH.** The login profile runs before the interactive rc,
   so a bare `tetron-wm` could be missing from PATH at login and drop you to a
   shell instead of the desktop.
+- **tty1 autologin now sets `TERM=xterm-256color`, not `$TERM`.** In a systemd
+  unit `$TERM` expands to the console's `linux`, so the desktop came up with no
+  truecolor and the mouse fell back to gpm (coarse, laggy). The suite's tty1
+  step now hardcodes `xterm-256color` and disables the now-redundant `gpm`
+  under kmscon; the bare-console setup doc is corrected to match.
 
 ## [0.14.4] — 2026-10-08
 

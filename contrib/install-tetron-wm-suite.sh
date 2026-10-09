@@ -160,7 +160,10 @@ setup_tty1() {
   warn "  sudo systemctl disable --now kmsconvt@tty1 && sudo systemctl enable --now getty@tty1"
   confirm "Make tty1 boot straight into tetron-wm?" n || { log "skipping tty1 setup"; return 0; }
 
-  local user kbin prof term='$TERM'
+  # TERM must name what kmscon emulates (xterm-256color). Do NOT use $TERM here:
+  # in a systemd unit it expands to the console's "linux", which makes tetron-wm
+  # think it is on a kernel VT — no truecolor, mouse via gpm, clunky rendering.
+  local user kbin prof term='xterm-256color'
   user="$(logname 2>/dev/null || echo "${SUDO_USER:-$USER}")"
   kbin="$(command -v kmscon)"
   case "$(basename "${SHELL:-sh}")" in zsh) prof="$HOME/.zprofile" ;; *) prof="$HOME/.bash_profile" ;; esac
@@ -172,9 +175,15 @@ setup_tty1() {
   log "2/3 autologin $user on tty1 (drop-in override)"
   local ovrd="/etc/systemd/system/kmsconvt@tty1.service.d"
   $SUDO mkdir -p "$ovrd"
-  # %%I -> %I (systemd instance); $TERM stays literal for agetty.
+  # %%I -> %I (systemd instance). The final arg is the login TERM: a literal
+  # xterm-256color (what kmscon emulates), NOT $TERM — see the note above.
   printf '[Service]\nExecStart=\nExecStart=%s "--vt=%%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin %s --noclear - %s\n' \
     "$kbin" "$user" "$term" | $SUDO tee "$ovrd/override.conf" >/dev/null
+  # Under kmscon the mouse comes from kmscon itself; a running gpm is redundant
+  # and can fight it for the input device. Disable it on the console appliance.
+  if command -v gpm >/dev/null 2>&1; then
+    $SUDO systemctl disable --now gpm >/dev/null 2>&1 && log "disabled gpm (kmscon provides the mouse)" || true
+  fi
   $SUDO systemctl daemon-reload
   $SUDO systemctl restart kmsconvt@tty1
 
