@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.5] — 2026-10-08
+
 ### Changed
 - **Truecolor is auto-detected under kmscon.** kmscon renders truecolor but sets
   `TERM=xterm-256color` with no `COLORTERM`, so env detection alone downsampled
