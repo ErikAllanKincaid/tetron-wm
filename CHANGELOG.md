@@ -14,6 +14,14 @@ carry user-visible feature work and the occasional breaking config change.
   opt-in; the tty1 step is off by default, confirmed, and prints how to undo it.
   `-y` takes the defaults; `--all -y` builds the full console appliance.
 
+### Fixed
+- **Suite installer no longer aborts the kmscon step on an Enter-through run.**
+  A "yes" to the suite's "Install kmscon?" prompt now carries through to the
+  kmscon installer (passes `-y`) instead of hitting a second, No-default
+  "Proceed with the source build?" prompt that an Enter would decline. The
+  kmscon script now also logs that it is building from source under `-y`
+  instead of proceeding silently.
+
 ## [0.14.4] — 2026-10-08
 
 ### Fixed

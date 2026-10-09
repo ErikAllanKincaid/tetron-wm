@@ -139,9 +139,10 @@ install_kmscon() {
   log "installing kmscon (truecolor + mouse console)…"
   local tmp; tmp="$(mktemp)"
   fetch "$RAW/scripts/install-kmscon.sh" > "$tmp" || die "could not download install-kmscon.sh"
-  local args=(); [ "$ASSUME_YES" = 1 ] && args=(-y)
-  # install-kmscon.sh reads its own source-build confirm from /dev/tty and uses sudo itself.
-  bash "$tmp" "${args[@]}"
+  # The suite already captured consent ("Install kmscon?"), so always pass -y: a
+  # second prompt here defaults to No and would abort on an Enter-through run.
+  # install-kmscon.sh still logs the source build, and still uses sudo itself.
+  bash "$tmp" -y
   rm -f "$tmp"
 }
 
@@ -205,7 +206,7 @@ main() {
   resolve WANT_WM     "Install tetron-wm (latest release)?" y
   resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/, wallpapers/)?" y
   if [ "$IS_LINUX" = 1 ]; then
-    resolve WANT_KMSCON "Install kmscon (truecolor + mouse on a bare console)?" y
+    resolve WANT_KMSCON "Install kmscon (truecolor + mouse console; compiles from source except on Debian trixie)?" y
     resolve WANT_TTY1   "Set up tty1 autologin into tetron-wm (console appliance)?" n
   else
     [ -z "$WANT_KMSCON" ] && WANT_KMSCON=n

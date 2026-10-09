@@ -167,7 +167,10 @@ apt_install_debian() {
 
 # ── Source build (Ubuntu/Mint, or forced): Aetf/libtsm + Aetf/kmscon ────────────
 confirm_source() {
-	[ "$ASSUME_YES" = 1 ] && return 0
+	if [ "$ASSUME_YES" = 1 ]; then
+		log "building kmscon from source: installs a build toolchain (apt) and compiles libtsm + kmscon into $PREFIX"
+		return 0
+	fi
 	cat >&2 <<-EOF
 		${B}apt on this system only has the stock kmscon, which predates the
 		truecolor + mouse support tetron-wm needs.${N}
