@@ -17,10 +17,13 @@
 #
 #   Debian (trixie): kmscon 10 + libtsm4 4.7.1 are in trixie-backports — a clean
 #                    apt install. The script enables backports (idempotent).
-#   Ubuntu/Mint:     apt only has the too-old pair, so the script BUILDS kmscon
-#                    10 + libtsm 4.7.1 from the upstream source (Aetf/kmscon,
-#                    Aetf/libtsm) — behind a confirmation prompt, since that
-#                    pulls a compiler toolchain and compiles two projects.
+#   Ubuntu/Mint:     apt only has the too-old pair, so the script BUILDS the
+#                    maintained line from the upstream default branch
+#                    (Aetf/kmscon, Aetf/libtsm `main` — what Debian ships as
+#                    kmscon 10 / libtsm 4.7.1, the versions that carry the
+#                    mouse-report passthrough; the tagged 9.1.0 / 4.3.0 releases
+#                    do NOT). Behind a confirmation prompt, since it pulls a
+#                    compiler toolchain and compiles two projects.
 #
 # Usage:  install-kmscon.sh [-y] [--source] [--apt] [--no-fonts] [-h]
 #   -y, --yes     do not prompt (assume yes to the source build)
@@ -37,11 +40,16 @@ set -euo pipefail
 PREFIX="${PREFIX:-/usr/local}"
 KMSCON_REPO="${KMSCON_REPO:-Aetf/kmscon}"
 LIBTSM_REPO="${LIBTSM_REPO:-Aetf/libtsm}"
-KMSCON_REF="${KMSCON_REF:-}"   # empty = resolve latest release, else default branch
-LIBTSM_REF="${LIBTSM_REF:-}"
-# Minimum acceptable kmscon version. 9.1 is the maintained fork's current line
-# (truecolor + mouse); Debian's backports package (10.x) compares >= this, while
-# the stock 9.0.0 some distros ship compares below it and triggers a rebuild.
+# Build the DEFAULT BRANCH (main), not the latest release tag. The newest tagged
+# releases are kmscon v9.1.0 / libtsm v4.3.0, and those PREDATE the mouse-report
+# passthrough — a source build of the tags gives truecolor but no mouse. The
+# maintained line with mouse lives on main, which Debian packages as kmscon 10 /
+# libtsm 4.7.1. Pin a tag by setting KMSCON_REF / LIBTSM_REF in the environment.
+KMSCON_REF="${KMSCON_REF:-main}"
+LIBTSM_REF="${LIBTSM_REF:-main}"
+# Minimum acceptable kmscon PACKAGE version (apt path only). Debian's backports
+# package (10.x) compares >= this; the stock 9.0.0 some distros ship compares
+# below it and triggers a rebuild. The source path builds main regardless.
 MIN_KMSCON="9.1"
 # Minimum meson for the current maintained fork's meson.build. Aetf/libtsm 4.3.0
 # needs >=1.1, but Debian bookworm / LMDE 6 only package meson 1.0.1 — too old,
@@ -139,6 +147,28 @@ install_fonts() {
 	[ "$WANT_FONTS" = 1 ] || return 0
 	log "installing console fonts ($FONT_PKGS)"
 	$SUDO apt-get install -y --no-install-recommends $FONT_PKGS
+}
+
+# ── Mouse ──────────────────────────────────────────────────────────────────────
+# kmscon ships mouse-report passthrough but defaults it OFF ("experimental"),
+# with a commented `#mouse` in kmscon.conf. tetron-wm needs it (the whole point
+# on a bare console), and the login shell runs on a PTS where gpm cannot help,
+# so enable it in whichever kmscon.conf applies (source sysconfdir or apt /etc).
+enable_mouse() {
+	local done=0 cfg
+	for cfg in "$PREFIX/etc/kmscon/kmscon.conf" /etc/kmscon/kmscon.conf; do
+		[ -f "$cfg" ] || continue
+		if grep -qE '^[[:space:]]*mouse[[:space:]]*$' "$cfg"; then
+			log "mouse already enabled in $cfg"; done=1
+		elif grep -qE '^[[:space:]]*#[[:space:]]*mouse[[:space:]]*$' "$cfg"; then
+			$SUDO sed -i -E 's/^[[:space:]]*#[[:space:]]*mouse[[:space:]]*$/mouse/' "$cfg"
+			log "enabled mouse in $cfg"; done=1
+		else
+			printf 'mouse\n' | $SUDO tee -a "$cfg" >/dev/null
+			log "added mouse to $cfg"; done=1
+		fi
+	done
+	[ "$done" = 1 ] || warn "no kmscon.conf found to enable mouse in (checked $PREFIX/etc and /etc)"
 }
 
 # ── Debian path: kmscon 10 + libtsm4 4.7.1 from trixie-backports ────────────────
@@ -285,7 +315,8 @@ source_build() {
 # ── Orchestration ────────────────────────────────────────────────────────────────
 main() {
 	if kmscon_adequate && [ "$FORCE_SOURCE" != 1 ]; then
-		log "adequate kmscon already installed: $(kmscon_describe) — nothing to do."
+		log "adequate kmscon already installed: $(kmscon_describe) — ensuring mouse is enabled."
+		enable_mouse
 		exit 0
 	fi
 
@@ -305,6 +336,7 @@ main() {
 	else
 		warn "kmscon not found on PATH after install; check the log above."
 	fi
+	enable_mouse
 	cat <<-EOF
 
 	${B}kmscon is installed.${N} This script changed no login/VT settings.

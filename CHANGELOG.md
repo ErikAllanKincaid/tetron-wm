@@ -50,6 +50,13 @@ carry user-visible feature work and the occasional breaking config change.
 - **Appliance forces `truecolor = true` in config.toml.** kmscon supports
   truecolor but does not set `COLORTERM`, so auto-detection downsampled subtle
   themes. The suite's tty1 step now sets the `truecolor` config key.
+- **kmscon source build now builds `main`, not the latest release tag, and
+  enables mouse.** The newest tagged releases (kmscon v9.1.0 / libtsm v4.3.0)
+  predate the mouse-report passthrough, so a tag build gave truecolor but no
+  mouse — under kmscon the login shell is on a PTS where gpm cannot help, so
+  there was no mouse at all. `install-kmscon.sh` now builds the maintained line
+  from `main` (what Debian ships as kmscon 10 / libtsm 4.7.1) and enables the
+  (default-off) `mouse` option in `kmscon.conf`.
 
 ## [0.14.4] — 2026-10-08
 
