@@ -225,6 +225,150 @@ impl ClipHistory {
     }
 }
 
+/// Everything about the clipboard that more than one thread touches: the session
+/// (render loop) and the daemon's control thread, which serves `tetron-wm clip`
+/// and the xclip/xsel/wl-copy shims even while no client is attached.
+#[derive(Default)]
+pub struct ClipShared {
+    pub history: ClipHistory,
+    /// The explicit clipboard (what a plain paste inserts).
+    pub clipboard: String,
+    /// The mouse-selection buffer.
+    pub primary: String,
+    /// Text set through the CLI that the session still has to forward to the
+    /// host terminal clipboard (OSC 52).
+    pub host_out: Option<String>,
+    /// `clipboard_history` switch: when false nothing is recorded.
+    pub enabled: bool,
+    /// Where the history is saved (set when persistence is enabled).
+    pub path: Option<PathBuf>,
+    saved_rev: u64,
+    saved_at: Option<std::time::Instant>,
+}
+
+impl ClipShared {
+    /// Write the history if it changed (at most about once a second unless
+    /// `force`). No-op without a path.
+    pub fn save_if_due(&mut self, force: bool) {
+        let Some(path) = self.path.clone() else { return };
+        if self.history.revision() == self.saved_rev {
+            return;
+        }
+        if !force && self.saved_at.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(1)) {
+            return;
+        }
+        match self.history.save(&path) {
+            Ok(()) => crate::dbg_log(&format!("clipboard: saved {} entries", self.history.len())),
+            Err(e) => crate::dbg_log(&format!("clipboard: save failed: {e}")),
+        }
+        self.saved_rev = self.history.revision();
+        self.saved_at = Some(std::time::Instant::now());
+    }
+
+    /// Load the history from `path` and save there from now on.
+    pub fn enable_persistence(&mut self, path: PathBuf) {
+        self.history.load(&path);
+        if let Some(e) = self.history.latest() {
+            self.clipboard = e.text.clone();
+        }
+        self.saved_rev = self.history.revision();
+        self.path = Some(path);
+    }
+}
+
+pub type SharedClip = std::sync::Arc<std::sync::Mutex<ClipShared>>;
+
+/// Fresh shared state with the given limits; `enabled` is `clipboard_history`.
+pub fn new_shared(limits: ClipLimits, enabled: bool) -> SharedClip {
+    std::sync::Arc::new(std::sync::Mutex::new(ClipShared { history: ClipHistory::new(limits), enabled, ..Default::default() }))
+}
+
+/// Lock, recovering from a poisoned mutex (one panic must not wedge the clipboard).
+pub fn lock(c: &SharedClip) -> std::sync::MutexGuard<'_, ClipShared> {
+    c.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A request over the daemon control socket (`tetron-wm clip ...`, the shims).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ClipCmd {
+    /// Set the clipboard (or the primary selection) and record it.
+    Copy { text: String, primary: bool },
+    /// Read the clipboard/primary, or history entry `index` (0 = newest).
+    Paste { primary: bool, index: Option<usize> },
+    List,
+    Clear,
+    Pin { index: usize },
+    Delete { index: usize },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClipReply {
+    pub ok: bool,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub entries: Vec<ClipEntry>,
+    #[serde(default)]
+    pub error: String,
+}
+
+impl ClipReply {
+    fn err(msg: &str) -> Self { ClipReply { ok: false, error: msg.into(), ..Default::default() } }
+}
+
+/// Apply a control-socket request to the shared state.
+pub fn handle_cmd(shared: &SharedClip, cmd: ClipCmd) -> ClipReply {
+    let mut s = lock(shared);
+    let r = apply_cmd(&mut s, cmd);
+    s.save_if_due(true);
+    r
+}
+
+fn apply_cmd(s: &mut ClipShared, cmd: ClipCmd) -> ClipReply {
+    match cmd {
+        ClipCmd::Copy { text, primary } => {
+            // Empty text is an explicit clear (xsel -c, wl-copy --clear): empty the
+            // buffer, record nothing, do not touch the host clipboard.
+            if primary {
+                s.primary = text.clone();
+            } else {
+                s.clipboard = text.clone();
+                if !text.is_empty() {
+                    s.host_out = Some(text.clone());
+                }
+            }
+            if s.enabled && !text.is_empty() {
+                s.history.record(&text, ClipSource::Cli);
+            }
+            ClipReply { ok: true, ..Default::default() }
+        }
+        ClipCmd::Paste { primary, index } => match index {
+            Some(i) => match s.history.get(i) {
+                Some(e) => ClipReply { ok: true, text: e.text.clone(), ..Default::default() },
+                None => ClipReply::err("no such history entry"),
+            },
+            None => {
+                let text = if primary { s.primary.clone() } else { s.clipboard.clone() };
+                ClipReply { ok: true, text, ..Default::default() }
+            }
+        },
+        ClipCmd::List => ClipReply { ok: true, entries: s.history.entries().to_vec(), ..Default::default() },
+        ClipCmd::Clear => {
+            s.history.clear();
+            ClipReply { ok: true, ..Default::default() }
+        }
+        ClipCmd::Pin { index } if index < s.history.len() => {
+            s.history.toggle_pin(index);
+            ClipReply { ok: true, ..Default::default() }
+        }
+        ClipCmd::Delete { index } if index < s.history.len() => {
+            s.history.delete(index);
+            ClipReply { ok: true, ..Default::default() }
+        }
+        ClipCmd::Pin { .. } | ClipCmd::Delete { .. } => ClipReply::err("no such history entry"),
+    }
+}
+
 /// `~/.local/share/tetron-wm/clipboard-history.jsonl` (honours `XDG_DATA_HOME`).
 pub fn history_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
@@ -333,6 +477,54 @@ mod tests {
         d.load(&path);
         assert_eq!(d.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn shared() -> SharedClip {
+        let s = ClipShared { enabled: true, ..Default::default() };
+        std::sync::Arc::new(std::sync::Mutex::new(s))
+    }
+
+    #[test]
+    fn cmd_copy_then_paste_and_list() {
+        let c = shared();
+        assert!(handle_cmd(&c, ClipCmd::Copy { text: "hi".into(), primary: false }).ok);
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: false, index: None }).text, "hi");
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: true, index: None }).text, "");
+        assert_eq!(lock(&c).host_out.as_deref(), Some("hi"));
+        let l = handle_cmd(&c, ClipCmd::List);
+        assert_eq!(l.entries.len(), 1);
+        assert_eq!(l.entries[0].source, ClipSource::Cli);
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: false, index: Some(0) }).text, "hi");
+        assert!(!handle_cmd(&c, ClipCmd::Paste { primary: false, index: Some(5) }).ok);
+    }
+
+    #[test]
+    fn cmd_primary_does_not_touch_clipboard_and_empty_is_rejected() {
+        let c = shared();
+        assert!(handle_cmd(&c, ClipCmd::Copy { text: "sel".into(), primary: true }).ok);
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: false, index: None }).text, "");
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: true, index: None }).text, "sel");
+        // An empty copy is an explicit clear, not an error and not a history entry.
+        assert!(handle_cmd(&c, ClipCmd::Copy { text: String::new(), primary: true }).ok);
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: true, index: None }).text, "");
+        assert_eq!(lock(&c).history.len(), 1, "only the earlier real copy is recorded");
+    }
+
+    #[test]
+    fn cmd_pin_delete_clear_and_disabled() {
+        let c = shared();
+        handle_cmd(&c, ClipCmd::Copy { text: "a".into(), primary: false });
+        handle_cmd(&c, ClipCmd::Copy { text: "b".into(), primary: false });
+        assert!(handle_cmd(&c, ClipCmd::Pin { index: 1 }).ok);
+        assert!(lock(&c).history.get(0).unwrap().pinned);
+        assert!(handle_cmd(&c, ClipCmd::Delete { index: 0 }).ok);
+        assert!(!handle_cmd(&c, ClipCmd::Delete { index: 9 }).ok);
+        assert!(handle_cmd(&c, ClipCmd::Clear).ok);
+        assert!(lock(&c).history.is_empty());
+        lock(&c).enabled = false;
+        handle_cmd(&c, ClipCmd::Copy { text: "z".into(), primary: false });
+        assert!(lock(&c).history.is_empty(), "disabled: clipboard set but not recorded");
+        assert_eq!(handle_cmd(&c, ClipCmd::Paste { primary: false, index: None }).text, "z");
     }
 
     #[test]

@@ -25,7 +25,8 @@ fn osc52_store_is_recorded_in_history() {
     // "hello" in base64 is aGVsbG8=
     launch(&mut core, r"printf '\033]52;c;aGVsbG8=\033\\'; sleep 3");
     assert!(pump_until(&mut core, |c| c.clip_history().len() == 1), "store recorded");
-    let e = core.clip_history().get(0).unwrap();
+    let hist = core.clip_history();
+    let e = hist.get(0).unwrap();
     assert_eq!(e.text, "hello");
     assert_eq!(e.source, tetron_wm::clipboard::ClipSource::App);
     core.shutdown();
@@ -102,7 +103,8 @@ fn persistence_round_trip_through_a_session() {
     core.shutdown();
     let mut again = SessionCore::new(80, 24, Config::default());
     again.enable_clipboard_persistence(path.clone());
-    assert_eq!(again.clip_history().get(0).map(|e| e.text.as_str()), Some("hello"));
+    let h = again.clip_history();
+    assert_eq!(h.get(0).map(|e| e.text.as_str()), Some("hello"));
     again.shutdown();
     let off = Config { clipboard_persist: false, ..Config::default() };
     let mut mem = SessionCore::new(80, 24, off);

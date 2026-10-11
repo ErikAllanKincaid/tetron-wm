@@ -356,6 +356,10 @@ pub enum ClientMsg {
     ActivityRefresh,
     /// Activity monitor: close the panel (`Esc` when no kill is pending).
     ActivityClose,
+    /// A clipboard request (`tetron-wm clip`, the xclip/xsel shims). Served by
+    /// the daemon's control thread, which writes the reply; applying it here is
+    /// the in-process equivalent (the reply is dropped).
+    Clip(crate::clipboard::ClipCmd),
     /// Toggle the keyboard-shortcut help overlay.
     ToggleHelp,
     /// Scroll the help overlay by this many rows (negative = up; `i32::MIN`/`MAX` = top/bottom).
@@ -482,19 +486,9 @@ pub struct SessionCore {
     apphost: Box<dyn AppHost>,
     /// Active or last mouse text-selection in an app window (for middle paste).
     selection: Option<TextSel>,
-    /// Primary selection buffer: the text of the last mouse selection, pasted on
-    /// a middle click. Separate from any OSC-52 clipboard the apps themselves set.
-    primary: String,
-    /// History of everything copied (see `clipboard.rs`).
-    clip_history: crate::clipboard::ClipHistory,
-    /// Where the history is saved, once the daemon enables persistence.
-    clip_path: Option<std::path::PathBuf>,
-    /// History revision last written to disk, and when.
-    clip_saved_rev: u64,
-    clip_saved_at: std::time::Instant,
-    /// Explicit clipboard buffer: set by Ctrl+Shift+C, pasted by Ctrl+Shift+V.
-    /// Distinct from `primary` (the mouse selection), mirroring the X11 split.
-    clipboard: String,
+    /// Clipboard, primary selection and history, shared with the daemon's
+    /// control thread (see `clipboard.rs`).
+    clip: crate::clipboard::SharedClip,
     /// The store window's id, if open (so it can be re-focused, not re-opened).
     store_win: Option<WindowId>,
     /// The settings window's id, if open.
@@ -633,12 +627,7 @@ impl SessionCore {
             contents: HashMap::new(),
             apphost,
             selection: None,
-            primary: String::new(),
-            clipboard: String::new(),
-            clip_history: crate::clipboard::ClipHistory::new(Self::clip_limits(&cfg)),
-            clip_path: None,
-            clip_saved_rev: 0,
-            clip_saved_at: std::time::Instant::now(),
+            clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
             store_win: None,
             settings_win: None,
             filemanager_win: None,
@@ -792,6 +781,17 @@ impl SessionCore {
         s.to_lowercase()
     }
 
+    /// The mouse-selection buffer (pasted by middle click / Shift+Insert).
+    fn primary_text(&self) -> String { crate::clipboard::lock(&self.clip).primary.clone() }
+
+    /// The explicit clipboard (set by Ctrl+Shift+C, an app's OSC 52 store or the
+    /// CLI; pasted by Ctrl+Shift+V and answered to OSC 52 reads).
+    fn clipboard_text(&self) -> String { crate::clipboard::lock(&self.clip).clipboard.clone() }
+
+    fn set_primary(&mut self, t: &str) { crate::clipboard::lock(&self.clip).primary = t.to_string(); }
+
+    fn set_clipboard(&mut self, t: &str) { crate::clipboard::lock(&self.clip).clipboard = t.to_string(); }
+
     /// Record a copy in the history, honouring the config switches. Does not
     /// touch the live clipboard.
     fn clip_record(&mut self, text: &str, src: crate::clipboard::ClipSource) {
@@ -805,11 +805,14 @@ impl SessionCore {
                 return;
             }
         }
-        self.clip_history.record(text, src);
+        crate::clipboard::lock(&self.clip).history.record(text, src);
     }
 
     /// The history (read-only), for the UI and tests.
-    pub fn clip_history(&self) -> &crate::clipboard::ClipHistory { &self.clip_history }
+    pub fn clip_history(&self) -> crate::clipboard::ClipHistory { crate::clipboard::lock(&self.clip).history.clone() }
+
+    /// A handle to the shared clipboard state, for the daemon's control thread.
+    pub fn clip_handle(&self) -> crate::clipboard::SharedClip { self.clip.clone() }
 
     /// Turn on disk persistence: load the file now and save changes later.
     /// Called by the daemon only, so tests never touch the real history file.
@@ -817,35 +820,12 @@ impl SessionCore {
         if !self.cfg.clipboard_history || !self.cfg.clipboard_persist {
             return;
         }
-        self.clip_history.load(&path);
-        if let Some(e) = self.clip_history.latest() {
-            self.clipboard = e.text.clone();
-        }
-        self.clip_saved_rev = self.clip_history.revision();
-        self.clip_path = Some(path);
-    }
-
-    /// Write the history if it changed (at most about once a second unless
-    /// `force`), and expire entries past `clipboard_ttl_secs`.
-    fn clip_save_if_due(&mut self, force: bool) {
-        let Some(path) = self.clip_path.clone() else { return };
-        if self.clip_history.revision() == self.clip_saved_rev {
-            return;
-        }
-        if !force && self.clip_saved_at.elapsed() < std::time::Duration::from_secs(1) {
-            return;
-        }
-        match self.clip_history.save(&path) {
-            Ok(()) => crate::dbg_log(&format!("clipboard: saved {} entries", self.clip_history.len())),
-            Err(e) => crate::dbg_log(&format!("clipboard: save failed: {e}")),
-        }
-        self.clip_saved_rev = self.clip_history.revision();
-        self.clip_saved_at = std::time::Instant::now();
+        crate::clipboard::lock(&self.clip).enable_persistence(path);
     }
 
     /// Flush the history to disk now (daemon exit).
     pub fn flush_clipboard(&mut self) {
-        self.clip_save_if_due(true);
+        crate::clipboard::lock(&self.clip).save_if_due(true);
     }
 
     /// Drain app events captured by the PTY emulators: bell rings become dock/
@@ -873,7 +853,7 @@ impl SessionCore {
             }
             if let Some(text) = self.apphost.take_clipboard(aid) {
                 crate::dbg_log(&format!("clipboard: forwarding {} bytes from '{title}' (OSC 52)", text.len()));
-                self.clipboard = text.clone();
+                self.set_clipboard(&text);
                 self.clip_record(&text, crate::clipboard::ClipSource::App);
                 self.pending_clipboard = Some(text);
             }
@@ -890,13 +870,17 @@ impl SessionCore {
                     crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' denied ({})", self.cfg.clipboard_osc52_read));
                     continue;
                 }
-                let text = if req.kind == 'p' { self.primary.as_str() } else { self.clipboard.as_str() };
-                let reply = crate::clipboard::osc52_reply(req.kind, text, req.bel);
+                let text = if req.kind == 'p' { self.primary_text() } else { self.clipboard_text() };
+                let reply = crate::clipboard::osc52_reply(req.kind, &text, req.bel);
                 crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' answered ({} bytes)", text.len()));
                 self.apphost.input(aid, reply.as_bytes());
             }
         }
-        self.clip_save_if_due(false);
+        // Text set through the `clip` CLI / shims goes out to the host terminal too.
+        if let Some(t) = crate::clipboard::lock(&self.clip).host_out.take() {
+            self.pending_clipboard = Some(t);
+        }
+        crate::clipboard::lock(&self.clip).save_if_due(false);
     }
 
     /// Point the desktop at a specific directory and reload (integration tests).
@@ -1978,33 +1962,34 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::MousePaste(p) => {
                 // Middle-click: write the primary selection to the terminal app
                 // under the pointer, via the same PTY-input path as keystrokes.
-                if !self.primary.is_empty() {
+                let primary = self.primary_text();
+                if !primary.is_empty() {
                     // Occlusion-aware so a middle-click on a titlebar does not
                     // paste into a window hidden beneath it.
                     if let Some((_id, aid, _cr)) = self.topmost_app_content_at(p) {
-                        let bytes = self.primary.clone().into_bytes();
+                        let bytes = primary.into_bytes();
                         self.apphost.input(aid, &bytes);
                     }
                 }
             }
             ClientMsg::PastePrimary => {
                 // Shift+Insert: paste the mouse (primary) selection into focus.
-                let text = self.primary.clone();
+                let text = self.primary_text();
                 self.paste_to_focused(&text);
             }
             ClientMsg::CopySelection => {
                 // Ctrl+Shift+C: promote the current mouse selection to the
                 // clipboard (for Ctrl+Shift+V) and out to the host via OSC 52.
-                if !self.primary.is_empty() {
-                    self.clipboard = self.primary.clone();
-                    self.pending_clipboard = Some(self.primary.clone());
-                    let text = self.primary.clone();
+                let text = self.primary_text();
+                if !text.is_empty() {
+                    self.set_clipboard(&text);
+                    self.pending_clipboard = Some(text.clone());
                     self.clip_record(&text, crate::clipboard::ClipSource::Copy);
                 }
             }
             ClientMsg::PasteClipboard => {
                 // Ctrl+Shift+V: paste the clipboard into the focused app.
-                let text = self.clipboard.clone();
+                let text = self.clipboard_text();
                 self.paste_to_focused(&text);
             }
             ClientMsg::ScrollFocused(dir) => {
@@ -2286,6 +2271,9 @@ or a remote-side error — its authorized_keys was left untouched)",
                         self.close(id);
                     }
                 }
+            }
+            ClientMsg::Clip(cmd) => {
+                crate::clipboard::handle_cmd(&self.clip, cmd);
             }
             ClientMsg::ToggleHelp => {
                 self.help_open = !self.help_open;
@@ -3505,7 +3493,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 if let Some(buf) = self.apphost.snapshot(sel.aid) {
                     let text = extract_text(&buf, sel.anchor, sel.head);
                     if !text.is_empty() {
-                        self.primary = text.clone();
+                        self.set_primary(&text);
                         self.clip_record(&text, crate::clipboard::ClipSource::Selection);
                     }
                 }

@@ -128,6 +128,12 @@ impl AppInstance {
         for (key, val) in std::env::vars() {
             builder.env(key, val);
         }
+        // Clipboard shims (xclip/xsel/wl-copy/wl-paste) first on PATH when enabled,
+        // so apps without a GUI clipboard use ours.
+        if let Some(dir) = crate::clipcli::shim_path_dir() {
+            let old = std::env::var("PATH").unwrap_or_default();
+            builder.env("PATH", format!("{}:{old}", dir.display()));
+        }
         // Pin TERM/COLORTERM to what the embedded emulator implements, letting
         // apps emit 24-bit color (captured here, re-emitted per the real terminal).
         // TERM stays `xterm-256color` (universally present in terminfo) — using

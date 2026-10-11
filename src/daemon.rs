@@ -50,11 +50,15 @@ pub fn run() -> std::io::Result<()> {
     let _ = std::fs::remove_file(&ctl_path);
     let ctl = Arc::new(AtomicU8::new(CTL_NONE));
     let ctl_queue: CtlQueue = Arc::new(std::sync::Mutex::new(Vec::new()));
+    // The clipboard state is created with the session below; the control thread
+    // reads it through this slot (`tetron-wm clip`, the xclip/xsel shims).
+    let clip_slot: Arc<std::sync::OnceLock<crate::clipboard::SharedClip>> = Arc::new(std::sync::OnceLock::new());
     if let Ok(ctl_listener) = UnixListener::bind(&ctl_path) {
         let _ = std::fs::set_permissions(&ctl_path, Permissions::from_mode(0o600));
         let ctl_flag = Arc::clone(&ctl);
         let queue = Arc::clone(&ctl_queue);
-        std::thread::spawn(move || serve_control(ctl_listener, ctl_flag, queue));
+        let slot = Arc::clone(&clip_slot);
+        std::thread::spawn(move || serve_control(ctl_listener, ctl_flag, queue, slot));
     }
 
     let cfg = Config::load();
@@ -63,6 +67,7 @@ pub fn run() -> std::io::Result<()> {
     let (w, h) = (100, 30); // provisional until the first client reports its size
     let apphost = ensure_apphost()?;
     let mut core = SessionCore::with_apphost(w, h, cfg.clone(), Box::new(apphost));
+    let _ = clip_slot.set(core.clip_handle());
     if let Some(p) = crate::clipboard::history_path() {
         core.enable_clipboard_persistence(p);
     }
@@ -366,7 +371,12 @@ fn apply_ctl(ctl: &Arc<AtomicU8>, queue: &CtlQueue, core: &mut SessionCore) -> b
 /// Accept control connections for the daemon's lifetime, flipping the shared flag
 /// on `Shutdown` / `Reload`. Each connection is one short-lived message from the
 /// `tetron-wm kill` / `tetron-wm reload` CLI.
-fn serve_control(listener: UnixListener, ctl: Arc<AtomicU8>, queue: CtlQueue) {
+fn serve_control(
+    listener: UnixListener,
+    ctl: Arc<AtomicU8>,
+    queue: CtlQueue,
+    clip: Arc<std::sync::OnceLock<crate::clipboard::SharedClip>>,
+) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
         let mut r = BufReader::new(stream);
@@ -375,6 +385,18 @@ fn serve_control(listener: UnixListener, ctl: Arc<AtomicU8>, queue: CtlQueue) {
             match serde_json::from_str::<ClientMsg>(line.trim()) {
                 Ok(ClientMsg::Shutdown) => ctl.store(CTL_SHUTDOWN, Ordering::SeqCst),
                 Ok(ClientMsg::Reload) => ctl.store(CTL_RELOAD, Ordering::SeqCst),
+                // Clipboard requests are answered right here (one JSON line back),
+                // so they work with no client attached and never wait on a frame.
+                Ok(ClientMsg::Clip(cmd)) => {
+                    let reply = match clip.get() {
+                        Some(shared) => crate::clipboard::handle_cmd(shared, cmd),
+                        None => crate::clipboard::ClipReply { error: "daemon is still starting".into(), ..Default::default() },
+                    };
+                    if let Ok(mut buf) = serde_json::to_vec(&reply) {
+                        buf.push(b'\n');
+                        let _ = std::io::Write::write_all(r.get_mut(), &buf);
+                    }
+                }
                 // Any other message (e.g. `tetron-wm launch/tile/theme/msg` from the
                 // CLI or the desktop assistant) queues for the render loop.
                 Ok(msg) => {

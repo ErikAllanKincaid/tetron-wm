@@ -99,6 +99,7 @@ COMMANDS:\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
 \x20                       to edit (e.g. theme --dump nord, then set theme = \"nord\")\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
+\x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
 \x20 service [install|uninstall|status]  per-user apphost service\n\
 \x20 --daemon, --apphost   run the daemon / app host directly\n\
 \x20 -V, --version         print version\n\
