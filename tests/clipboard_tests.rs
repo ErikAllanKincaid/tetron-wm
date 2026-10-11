@@ -239,3 +239,30 @@ fn frame_with_popover_open_renders() {
     assert_eq!(with, without + 1, "the popover adds exactly one layer");
     core.shutdown();
 }
+
+#[test]
+fn settings_toggle_persistence_and_limits_apply_live() {
+    let dir = std::env::temp_dir().join(format!("twm-clip-live-{}", std::process::id()));
+    let path = dir.join("h.jsonl");
+    let mut core = SessionCore::new(80, 24, Config::default());
+    core.enable_clipboard_persistence(path.clone());
+    seed(&core, &["a", "b", "c"]);
+    core.flush_clipboard();
+    assert!(path.exists());
+    // Persistence off: the file is deleted, memory keeps the history.
+    core.set_config_for_test(Config { clipboard_persist: false, ..Config::default() });
+    assert!(!path.exists());
+    assert_eq!(core.clip_history().len(), 3);
+    // Back on: written again.
+    core.set_config_for_test(Config::default());
+    assert!(path.exists());
+    // Smaller limit trims the oldest.
+    core.set_config_for_test(Config { clipboard_history_size: 2, ..Config::default() });
+    assert_eq!(core.clip_history().len(), 2);
+    // History off hides new records.
+    core.set_config_for_test(Config { clipboard_history: false, ..Config::default() });
+    seed(&core, &["zzz"]);
+    assert!(core.clip_history().entries().iter().all(|e| e.text != "zzz"));
+    core.shutdown();
+    let _ = std::fs::remove_dir_all(&dir);
+}

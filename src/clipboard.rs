@@ -265,6 +265,20 @@ impl ClipShared {
         self.saved_at = Some(std::time::Instant::now());
     }
 
+    /// Start saving to `path` (keeping the in-memory history); the next save
+    /// writes everything.
+    pub fn persist_to(&mut self, path: PathBuf) {
+        self.path = Some(path);
+        self.saved_rev = u64::MAX;
+    }
+
+    /// Stop saving and delete the history file.
+    pub fn stop_persisting(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
     /// Load the history from `path` and save there from now on.
     pub fn enable_persistence(&mut self, path: PathBuf) {
         self.history.load(&path);

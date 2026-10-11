@@ -490,6 +490,9 @@ pub struct SessionCore {
     apphost: Box<dyn AppHost>,
     /// Active or last mouse text-selection in an app window (for middle paste).
     selection: Option<TextSel>,
+    /// The history file path the daemon registered (so Settings can switch
+    /// persistence on later); `None` in tests, which never touch the real file.
+    clip_persist_path: Option<std::path::PathBuf>,
     /// The clipboard history popover (menubar segment / leader + v).
     clipmenu: crate::clipmenu::ClipMenu,
     /// Clipboard, primary selection and history, shared with the daemon's
@@ -634,6 +637,7 @@ impl SessionCore {
             apphost,
             selection: None,
             clipmenu: crate::clipmenu::ClipMenu::default(),
+            clip_persist_path: None,
             clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
             store_win: None,
             settings_win: None,
@@ -888,10 +892,40 @@ impl SessionCore {
     /// Turn on disk persistence: load the file now and save changes later.
     /// Called by the daemon only, so tests never touch the real history file.
     pub fn enable_clipboard_persistence(&mut self, path: std::path::PathBuf) {
+        self.clip_persist_path = Some(path.clone());
         if !self.cfg.clipboard_history || !self.cfg.clipboard_persist {
             return;
         }
+        self.clip_persist_path = Some(path.clone());
         crate::clipboard::lock(&self.clip).enable_persistence(path);
+    }
+
+    /// Apply changed `clipboard_*` settings live: limits, the on/off switch, and
+    /// turning disk persistence on (write the history) or off (delete the file).
+    fn apply_clipboard_config(&mut self) {
+        let limits = Self::clip_limits(&self.cfg);
+        let mut s = crate::clipboard::lock(&self.clip);
+        s.enabled = self.cfg.clipboard_history;
+        s.history.set_limits(limits);
+        let want = self.cfg.clipboard_history && self.cfg.clipboard_persist;
+        match (want, s.path.is_some(), self.clip_persist_path.clone()) {
+            (true, false, Some(p)) => s.persist_to(p),
+            (false, true, _) => s.stop_persisting(),
+            _ => {}
+        }
+        s.save_if_due(true);
+        drop(s);
+        if !self.cfg.clipboard_history {
+            self.clipmenu.close();
+        }
+    }
+
+    /// Replace the live config and re-apply the clipboard settings, as the
+    /// Settings panel does on every change (integration tests).
+    #[doc(hidden)]
+    pub fn set_config_for_test(&mut self, cfg: Config) {
+        self.cfg = cfg;
+        self.apply_clipboard_config();
     }
 
     /// Flush the history to disk now (daemon exit).
@@ -1074,6 +1108,12 @@ impl SessionCore {
     /// the keyboard or the mouse path.
     fn drain_settings_action(&mut self) {
         match self.focused_settings_mut().and_then(|s| s.take_action()) {
+            Some(crate::settings::SettingsAction::ClearClipboard) => {
+                crate::clipboard::lock(&self.clip).history.clear();
+                crate::clipboard::lock(&self.clip).save_if_due(true);
+                let hist = self.clip_history();
+                self.clipmenu.history_changed(&hist);
+            }
             Some(crate::settings::SettingsAction::CheckUpdates) => {
                 let branch = self.cfg.update_branch.clone();
                 let msg = check_for_updates(&branch);
@@ -2713,6 +2753,10 @@ or a remote-side error — its authorized_keys was left untouched)",
             // Rebuilding the launcher rescans $PATH, so only do it when the
             // custom-app list actually changed (not on every shadow/theme tweak).
             let launcher_changed = cfg.launcher != self.cfg.launcher;
+            let clip_changed = cfg.clipboard_history != self.cfg.clipboard_history
+                || cfg.clipboard_persist != self.cfg.clipboard_persist
+                || cfg.clipboard_history_size != self.cfg.clipboard_history_size
+                || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
             self.cfg = cfg;
@@ -2720,6 +2764,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             let _ = self.cfg.save();
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
+            }
+            if clip_changed {
+                self.apply_clipboard_config();
             }
             if wallpaper_changed {
                 self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
