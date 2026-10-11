@@ -240,6 +240,9 @@ pub struct ClipShared {
     pub host_out: Option<String>,
     /// `clipboard_history` switch: when false nothing is recorded.
     pub enabled: bool,
+    /// What the GUI clipboard last held, as seen by the GUI bridge (so its own
+    /// writes are not recorded again).
+    pub gui_synced: String,
     /// Where the history is saved (set when persistence is enabled).
     pub path: Option<PathBuf>,
     saved_rev: u64,

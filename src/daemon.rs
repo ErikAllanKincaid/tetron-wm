@@ -68,6 +68,11 @@ pub fn run() -> std::io::Result<()> {
     let apphost = ensure_apphost()?;
     let mut core = SessionCore::with_apphost(w, h, cfg.clone(), Box::new(apphost));
     let _ = clip_slot.set(core.clip_handle());
+    if cfg.clipboard_history {
+        if let Some(b) = crate::clipbridge::detect(&cfg.clipboard_gui_bridge) {
+            crate::clipbridge::spawn(core.clip_handle(), b);
+        }
+    }
     if let Some(p) = crate::clipboard::history_path() {
         core.enable_clipboard_persistence(p);
     }

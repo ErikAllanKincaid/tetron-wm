@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod clipbridge;
 pub mod clipcli;
 pub mod clipmenu;
 pub mod keymap;
