@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.6] — 2026-10-11
+
 ### Added
 
 - Suite installer (`contrib/install-tetron-wm-suite.sh`): setup menu and `--profile gui|console|appliance`; the console step is split into `--console`, `--vt N` (default 1), `--autologin` and `--autostart`, each also asked interactively; kmscon defaults off on a desktop machine; idempotent re-runs; `--uninstall` (and `--purge`) and `--dry-run`.
