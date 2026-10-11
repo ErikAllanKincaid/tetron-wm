@@ -33,6 +33,8 @@ struct PtyResponder {
     bells: Arc<std::sync::atomic::AtomicU32>,
     /// Last OSC-52 clipboard store from the app (forwarded to the host terminal).
     clip: Arc<Mutex<Option<String>>>,
+    /// OSC-52 clipboard READ queries from the app, awaiting an answer.
+    loads: Arc<Mutex<Vec<crate::apphost::proto::ClipReq>>>,
 }
 impl EventListener for PtyResponder {
     fn send_event(&self, event: Event) {
@@ -49,6 +51,22 @@ impl EventListener for PtyResponder {
             Event::ClipboardStore(_, text) => {
                 if let Ok(mut c) = self.clip.lock() {
                     *c = Some(text);
+                }
+            }
+            Event::ClipboardLoad(ty, fmt) => {
+                // The emulator hands us a formatter for the reply; render it with
+                // empty text to learn which terminator the app used, and let the
+                // frontend (which owns the clipboard) answer.
+                use alacritty_terminal::term::ClipboardType;
+                let kind = match ty {
+                    ClipboardType::Clipboard => 'c',
+                    ClipboardType::Selection => 'p',
+                };
+                let bel = fmt("").ends_with('\x07');
+                if let Ok(mut l) = self.loads.lock() {
+                    if l.len() < 16 {
+                        l.push(crate::apphost::proto::ClipReq { kind, bel });
+                    }
                 }
             }
             _ => {}
@@ -72,6 +90,7 @@ pub struct AppInstance {
     /// Bell rings + OSC-52 clipboard stores captured by the emulator's events.
     bells: Arc<std::sync::atomic::AtomicU32>,
     clip: Arc<Mutex<Option<String>>>,
+    loads: Arc<Mutex<Vec<crate::apphost::proto::ClipReq>>>,
     cols: u16,
     rows: u16,
     /// Wall-clock instant the child was spawned. Used by the activity monitor to
@@ -148,10 +167,14 @@ impl AppInstance {
         // child over the same PTY writer.
         let bells = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let clip: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let loads: Arc<Mutex<Vec<crate::apphost::proto::ClipReq>>> = Arc::new(Mutex::new(Vec::new()));
+        // OSC 52 in both directions: stores feed the clipboard history and
+        // reads (`ESC ] 52 ; c ; ? ST`) are answered by the frontend.
+        let term_cfg = Config { osc52: alacritty_terminal::term::Osc52::CopyPaste, ..Config::default() };
         let term = Arc::new(Mutex::new(Term::new(
-            Config::default(),
+            term_cfg,
             &TermSize::new(cols as usize, rows as usize),
-            PtyResponder { writer: writer.clone(), bells: bells.clone(), clip: clip.clone() },
+            PtyResponder { writer: writer.clone(), bells: bells.clone(), clip: clip.clone(), loads: loads.clone() },
         )));
 
         // Captured Kitty-graphics state, shared with the reader thread.
@@ -215,7 +238,7 @@ impl AppInstance {
             }
         });
 
-        Ok(AppInstance { term, master: pair.master, writer, child, graphics, bells, clip, cols, rows, spawned_at: Instant::now() })
+        Ok(AppInstance { term, master: pair.master, writer, child, graphics, bells, clip, loads, cols, rows, spawned_at: Instant::now() })
     }
 
     /// Bell rings since the last call (drained).
@@ -226,6 +249,11 @@ impl AppInstance {
     /// The app's latest OSC-52 clipboard store, if any (drained).
     pub fn take_clipboard(&self) -> Option<String> {
         self.clip.lock().ok().and_then(|mut c| c.take())
+    }
+
+    /// OSC-52 clipboard READ queries the app made since the last call (drained).
+    pub fn take_clip_requests(&self) -> Vec<crate::apphost::proto::ClipReq> {
+        self.loads.lock().map(|mut l| std::mem::take(&mut *l)).unwrap_or_default()
     }
 
     /// Convert the current emulator grid into a Tetron-wm [`CellBuffer`].

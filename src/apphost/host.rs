@@ -100,6 +100,10 @@ impl AppHost for LocalAppHost {
         self.apps.get(&id).and_then(|a| a.take_clipboard())
     }
 
+    fn take_clip_requests(&mut self, id: AppId) -> Vec<crate::apphost::proto::ClipReq> {
+        self.apps.get(&id).map(|a| a.take_clip_requests()).unwrap_or_default()
+    }
+
     fn snapshot(&self, id: AppId) -> Option<CellBuffer> {
         self.apps.get(&id).map(|a| a.snapshot())
     }

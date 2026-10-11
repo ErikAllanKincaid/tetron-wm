@@ -68,6 +68,10 @@ pub trait AppHost: Send {
     /// The app's latest OSC-52 clipboard store, if any (drained; default none).
     fn take_clipboard(&mut self, _id: AppId) -> Option<String> { None }
 
+    /// OSC 52 clipboard READ queries the app made since the last call (drained;
+    /// default none). The frontend answers by writing a reply via `input`.
+    fn take_clip_requests(&mut self, _id: AppId) -> Vec<crate::apphost::proto::ClipReq> { Vec::new() }
+
     /// The child process's OS pid, if known. Default returns `None` (the remote
     /// host doesn't surface this to its in-process callers).
     fn pid(&self, _id: AppId) -> Option<u32> { None }

@@ -199,14 +199,15 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
 
             let bells = local.take_bells(id);
             let clip = local.take_clipboard(id);
+            let clip_reqs = local.take_clip_requests(id);
             let grid_changed = last_grid.get(&id) != Some(&grid);
             let placements_changed = last_placements.get(&id) != Some(&placements);
             let mouse_changed = last_mouse.get(&id) != Some(&mouse);
             // A bare cursor move (e.g. arrow keys in a shell) changes no cells,
             // so it must be tracked separately or the caret would never update.
             let cursor_changed = last_cursor.get(&id) != Some(&cursor);
-            if grid_changed || placements_changed || mouse_changed || cursor_changed || !images.is_empty() || bells > 0 || clip.is_some() {
-                let evt = HostEvt::Frame { app: id.0, grid: grid.clone(), placements: placements.clone(), images, alive: true, mouse, cursor, bells, clip };
+            if grid_changed || placements_changed || mouse_changed || cursor_changed || !images.is_empty() || bells > 0 || clip.is_some() || !clip_reqs.is_empty() {
+                let evt = HostEvt::Frame { app: id.0, grid: grid.clone(), placements: placements.clone(), images, alive: true, mouse, cursor, bells, clip, clip_reqs };
                 if send(&mut writer, &evt).is_err() {
                     return;
                 }

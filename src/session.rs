@@ -485,6 +485,13 @@ pub struct SessionCore {
     /// Primary selection buffer: the text of the last mouse selection, pasted on
     /// a middle click. Separate from any OSC-52 clipboard the apps themselves set.
     primary: String,
+    /// History of everything copied (see `clipboard.rs`).
+    clip_history: crate::clipboard::ClipHistory,
+    /// Where the history is saved, once the daemon enables persistence.
+    clip_path: Option<std::path::PathBuf>,
+    /// History revision last written to disk, and when.
+    clip_saved_rev: u64,
+    clip_saved_at: std::time::Instant,
     /// Explicit clipboard buffer: set by Ctrl+Shift+C, pasted by Ctrl+Shift+V.
     /// Distinct from `primary` (the mouse selection), mirroring the X11 split.
     clipboard: String,
@@ -628,6 +635,10 @@ impl SessionCore {
             selection: None,
             primary: String::new(),
             clipboard: String::new(),
+            clip_history: crate::clipboard::ClipHistory::new(Self::clip_limits(&cfg)),
+            clip_path: None,
+            clip_saved_rev: 0,
+            clip_saved_at: std::time::Instant::now(),
             store_win: None,
             settings_win: None,
             filemanager_win: None,
@@ -755,6 +766,88 @@ impl SessionCore {
         self.refresh_fm_thumbnails();
     }
 
+    // ── Clipboard history ───────────────────────────────────────────────────
+
+    fn clip_limits(cfg: &Config) -> crate::clipboard::ClipLimits {
+        crate::clipboard::ClipLimits {
+            max_entries: cfg.clipboard_history_size.max(1),
+            max_item_bytes: cfg.clipboard_item_max_kb.max(1) * 1024,
+            ..Default::default()
+        }
+    }
+
+    /// Lower-cased title + command of the focused app window, for the
+    /// `clipboard_ignore_apps` match.
+    fn focused_app_label(&self) -> String {
+        let Some(id) = self.wm.focused() else { return String::new() };
+        let mut s = self.titles.iter().find(|(w, _)| *w == id).map(|(_, t)| t.clone()).unwrap_or_default();
+        if let Some(WinContent::App(aid)) = self.contents.get(&id) {
+            if let Some((cmd, args)) = self.apphost.launch_cmd(*aid) {
+                s.push(' ');
+                s.push_str(&cmd);
+                s.push(' ');
+                s.push_str(&args.join(" "));
+            }
+        }
+        s.to_lowercase()
+    }
+
+    /// Record a copy in the history, honouring the config switches. Does not
+    /// touch the live clipboard.
+    fn clip_record(&mut self, text: &str, src: crate::clipboard::ClipSource) {
+        use crate::clipboard::ClipSource;
+        if !self.cfg.clipboard_history || (src == ClipSource::Selection && !self.cfg.clipboard_record_selection) {
+            return;
+        }
+        if !self.cfg.clipboard_ignore_apps.is_empty() {
+            let label = self.focused_app_label();
+            if self.cfg.clipboard_ignore_apps.iter().any(|a| !a.is_empty() && label.contains(&a.to_lowercase())) {
+                return;
+            }
+        }
+        self.clip_history.record(text, src);
+    }
+
+    /// The history (read-only), for the UI and tests.
+    pub fn clip_history(&self) -> &crate::clipboard::ClipHistory { &self.clip_history }
+
+    /// Turn on disk persistence: load the file now and save changes later.
+    /// Called by the daemon only, so tests never touch the real history file.
+    pub fn enable_clipboard_persistence(&mut self, path: std::path::PathBuf) {
+        if !self.cfg.clipboard_history || !self.cfg.clipboard_persist {
+            return;
+        }
+        self.clip_history.load(&path);
+        if let Some(e) = self.clip_history.latest() {
+            self.clipboard = e.text.clone();
+        }
+        self.clip_saved_rev = self.clip_history.revision();
+        self.clip_path = Some(path);
+    }
+
+    /// Write the history if it changed (at most about once a second unless
+    /// `force`), and expire entries past `clipboard_ttl_secs`.
+    fn clip_save_if_due(&mut self, force: bool) {
+        let Some(path) = self.clip_path.clone() else { return };
+        if self.clip_history.revision() == self.clip_saved_rev {
+            return;
+        }
+        if !force && self.clip_saved_at.elapsed() < std::time::Duration::from_secs(1) {
+            return;
+        }
+        match self.clip_history.save(&path) {
+            Ok(()) => crate::dbg_log(&format!("clipboard: saved {} entries", self.clip_history.len())),
+            Err(e) => crate::dbg_log(&format!("clipboard: save failed: {e}")),
+        }
+        self.clip_saved_rev = self.clip_history.revision();
+        self.clip_saved_at = std::time::Instant::now();
+    }
+
+    /// Flush the history to disk now (daemon exit).
+    pub fn flush_clipboard(&mut self) {
+        self.clip_save_if_due(true);
+    }
+
     /// Drain app events captured by the PTY emulators: bell rings become dock/
     /// tray notifications (for unfocused or minimized windows), and OSC-52
     /// clipboard stores are forwarded to the host terminal. Called once per
@@ -780,9 +873,30 @@ impl SessionCore {
             }
             if let Some(text) = self.apphost.take_clipboard(aid) {
                 crate::dbg_log(&format!("clipboard: forwarding {} bytes from '{title}' (OSC 52)", text.len()));
+                self.clipboard = text.clone();
+                self.clip_record(&text, crate::clipboard::ClipSource::App);
                 self.pending_clipboard = Some(text);
             }
+            // OSC 52 READ queries (`ESC ] 52 ; c ; ? ST`): apps such as Fresh and
+            // vim's osc52 package paste this way. Answer from our clipboard,
+            // subject to `clipboard_osc52_read`.
+            for req in self.apphost.take_clip_requests(aid) {
+                let allowed = match self.cfg.clipboard_osc52_read.as_str() {
+                    "always" => true,
+                    "never" => false,
+                    _ => focused == Some(id),
+                };
+                if !allowed {
+                    crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' denied ({})", self.cfg.clipboard_osc52_read));
+                    continue;
+                }
+                let text = if req.kind == 'p' { self.primary.as_str() } else { self.clipboard.as_str() };
+                let reply = crate::clipboard::osc52_reply(req.kind, text, req.bel);
+                crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' answered ({} bytes)", text.len()));
+                self.apphost.input(aid, reply.as_bytes());
+            }
         }
+        self.clip_save_if_due(false);
     }
 
     /// Point the desktop at a specific directory and reload (integration tests).
@@ -1884,6 +1998,8 @@ or a remote-side error — its authorized_keys was left untouched)",
                 if !self.primary.is_empty() {
                     self.clipboard = self.primary.clone();
                     self.pending_clipboard = Some(self.primary.clone());
+                    let text = self.primary.clone();
+                    self.clip_record(&text, crate::clipboard::ClipSource::Copy);
                 }
             }
             ClientMsg::PasteClipboard => {
@@ -3389,7 +3505,8 @@ or a remote-side error — its authorized_keys was left untouched)",
                 if let Some(buf) = self.apphost.snapshot(sel.aid) {
                     let text = extract_text(&buf, sel.anchor, sel.head);
                     if !text.is_empty() {
-                        self.primary = text;
+                        self.primary = text.clone();
+                        self.clip_record(&text, crate::clipboard::ClipSource::Selection);
                     }
                 }
                 true

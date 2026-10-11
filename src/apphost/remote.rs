@@ -27,6 +27,8 @@ struct Cached {
     bells: u32,
     /// The app's latest OSC-52 clipboard store, not yet forwarded.
     clip: Option<String>,
+    /// OSC-52 clipboard read queries not yet answered.
+    clip_reqs: Vec<crate::apphost::proto::ClipReq>,
     /// The app's OS pid, as reported by the apphost on `Spawned`. `None`
     /// for apps the frontend learned about via the connect-time `Roster`
     /// (already running before this frontend came up).
@@ -146,7 +148,7 @@ fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, infligh
                 let _ = tx.send(Err(error));
             }
         }
-        HostEvt::Frame { app, grid, placements, images, alive, mouse, cursor, bells, clip } => {
+        HostEvt::Frame { app, grid, placements, images, alive, mouse, cursor, bells, clip, clip_reqs } => {
             let mut c = cache.lock().unwrap();
             let entry = c.apps.entry(AppId(app)).or_default();
             entry.grid = Some(grid);
@@ -158,6 +160,7 @@ fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, infligh
             if clip.is_some() {
                 entry.clip = clip;
             }
+            entry.clip_reqs.extend(clip_reqs);
             for b in images {
                 use base64::Engine;
                 if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&b.png_b64) {
@@ -253,6 +256,10 @@ impl AppHost for RemoteAppHost {
 
     fn take_bells(&mut self, id: AppId) -> u32 {
         self.cache.lock().unwrap().apps.get_mut(&id).map(|c| std::mem::take(&mut c.bells)).unwrap_or(0)
+    }
+
+    fn take_clip_requests(&mut self, id: AppId) -> Vec<crate::apphost::proto::ClipReq> {
+        self.cache.lock().unwrap().apps.get_mut(&id).map(|c| std::mem::take(&mut c.clip_reqs)).unwrap_or_default()
     }
 
     fn take_clipboard(&mut self, id: AppId) -> Option<String> {

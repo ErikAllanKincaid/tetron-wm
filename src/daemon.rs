@@ -63,6 +63,9 @@ pub fn run() -> std::io::Result<()> {
     let (w, h) = (100, 30); // provisional until the first client reports its size
     let apphost = ensure_apphost()?;
     let mut core = SessionCore::with_apphost(w, h, cfg.clone(), Box::new(apphost));
+    if let Some(p) = crate::clipboard::history_path() {
+        core.enable_clipboard_persistence(p);
+    }
     // Start the background system poller and feed its shared snapshot to the
     // session so the menubar tray reflects live host state. Keep `_poller` bound
     // for the daemon's lifetime so its thread is not detached/dropped.
@@ -124,6 +127,7 @@ pub fn run() -> std::io::Result<()> {
             break;
         }
     }
+    core.flush_clipboard();
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&ctl_path);
     if !reloading {
