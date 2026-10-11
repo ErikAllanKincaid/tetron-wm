@@ -38,6 +38,8 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("settings", &[","], "settings"),
     ("activity", &["A"], "activity monitor"),
     ("clipboard", &["v"], "clipboard history"),
+    ("copy", &["c"], "copy the mouse selection to the clipboard (Ctrl+Shift+C)"),
+    ("paste", &["p"], "paste the clipboard into the focused app (Ctrl+Shift+V)"),
     ("help", &["?", "h"], "shortcut help"),
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),

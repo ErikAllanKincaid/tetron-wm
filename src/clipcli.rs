@@ -47,10 +47,12 @@ fn out(text: &str) {
 
 const CLIP_USAGE: &str = "usage: tetron-wm clip <command>\n\
   copy [--primary] [text...]   set the clipboard from text or stdin\n\
+  copy-file PATH               set the clipboard from a file\n\
   paste [--primary] [-n N]     print the clipboard (or history entry N, 0 = newest)\n\
   list [--json]                show the history\n\
   clear                        empty the history\n\
-  pin N | delete N             pin / delete history entry N";
+  pin N | delete N             pin / delete history entry N\n\
+  setup-mc                     make mcedit use this clipboard (~/.config/mc/ini)";
 
 fn preview(text: &str, n: usize) -> String {
     let one: String = text.chars().map(|c| if c == '\n' { '\u{23CE}' } else { c }).collect();
@@ -59,9 +61,26 @@ fn preview(text: &str, n: usize) -> String {
 
 /// `tetron-wm clip ...`; returns the process exit code.
 pub fn run_clip(args: &[String]) -> i32 {
+    if args.first().map(String::as_str) == Some("setup-mc") {
+        return setup_mc();
+    }
     let primary = args.iter().any(|a| a == "--primary" || a == "-p");
     let rest: Vec<&String> = args.iter().skip(1).filter(|a| *a != "--primary" && *a != "-p").collect();
     let cmd = match args.first().map(String::as_str) {
+        // mc runs `<clipboard_store> <tmpfile>`: copy from the named file.
+        Some("copy-file") => match rest.first() {
+            Some(path) => match std::fs::read_to_string(path.as_str()) {
+                Ok(text) => ClipCmd::Copy { text, primary },
+                Err(e) => {
+                    eprintln!("tetron-wm clip copy-file: {path}: {e}");
+                    return 1;
+                }
+            },
+            None => {
+                eprintln!("tetron-wm clip copy-file: needs a file");
+                return 2;
+            }
+        },
         Some("copy") => {
             let text = if rest.is_empty() { read_stdin() } else { rest.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ") };
             ClipCmd::Copy { text, primary }
@@ -114,6 +133,84 @@ pub fn run_clip(args: &[String]) -> i32 {
         Err(e) => {
             eprintln!("tetron-wm clip: {e}");
             1
+        }
+    }
+}
+
+// ── Midnight Commander (mcedit) setup ───────────────────────────────────────
+
+/// mc keeps its editor clipboard in a private file unless `clipboard_store` and
+/// `clipboard_paste` (in the `[Misc]` section of `~/.config/mc/ini`) name
+/// commands. Returns the ini text with both pointing at `tetron-wm clip`, or
+/// `None` when they are already set to something.
+pub fn mc_ini_with_clip(ini: &str, exe: &str) -> Option<String> {
+    let has = |key: &str| ini.lines().any(|l| l.trim_start().starts_with(&format!("{key}=")) && l.split_once('=').is_some_and(|(_, v)| !v.trim().is_empty()));
+    if has("clipboard_store") || has("clipboard_paste") {
+        return None;
+    }
+    // mc runs these through a shell: quote an executable path with odd characters.
+    let exe = if exe.chars().all(|c| c.is_ascii_alphanumeric() || "_./-".contains(c)) {
+        exe.to_string()
+    } else {
+        crate::systems::sh_quote(exe)
+    };
+    let add = format!("clipboard_store={exe} clip copy-file\nclipboard_paste={exe} clip paste\n");
+    let mut out = String::new();
+    let mut done = false;
+    for line in ini.lines() {
+        // Drop any empty values we are about to replace.
+        let t = line.trim_start();
+        if t.starts_with("clipboard_store=") || t.starts_with("clipboard_paste=") {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+        if !done && line.trim() == "[Misc]" {
+            out.push_str(&add);
+            done = true;
+        }
+    }
+    if !done {
+        if !out.is_empty() && !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+        out.push_str("[Misc]\n");
+        out.push_str(&add);
+    }
+    Some(out)
+}
+
+/// `tetron-wm clip setup-mc`: point mcedit's clipboard at tetron-wm.
+fn setup_mc() -> i32 {
+    let Some(home) = dirs::home_dir() else {
+        eprintln!("tetron-wm clip setup-mc: no home directory");
+        return 1;
+    };
+    let path = home.join(".config/mc/ini");
+    let exe = std::env::current_exe().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_else(|| "tetron-wm".into());
+    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    match mc_ini_with_clip(&old, &exe) {
+        None => {
+            println!("mc: clipboard_store / clipboard_paste already set in {} (left alone)", path.display());
+            0
+        }
+        Some(new) => {
+            if path.exists() {
+                let _ = std::fs::copy(&path, path.with_extension("bak-tetron-wm"));
+            }
+            if let Some(d) = path.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            match std::fs::write(&path, new) {
+                Ok(()) => {
+                    println!("mc: mcedit copy/paste now use the tetron-wm clipboard ({})", path.display());
+                    0
+                }
+                Err(e) => {
+                    eprintln!("tetron-wm clip setup-mc: {e}");
+                    1
+                }
+            }
         }
     }
 }
@@ -455,6 +552,21 @@ mod tests {
         assert_eq!(parse_wl_paste(&a("--primary")), Action::Paste { primary: true, strip_nl: false });
         assert_eq!(parse_wl_paste(&a("-l")), Action::ListTypes);
         assert!(matches!(parse_wl_paste(&a("--watch cat")), Action::Error(_)));
+    }
+
+    #[test]
+    fn mc_ini_gets_clipboard_commands_once() {
+        let ini = "[Midnight-Commander]\nverbose=1\n\n[Misc]\ntimeformat_old=%Y\nclipboard_store=\n";
+        let out = mc_ini_with_clip(ini, "/usr/bin/tetron-wm").unwrap();
+        assert!(out.contains("[Misc]\nclipboard_store=/usr/bin/tetron-wm clip copy-file\nclipboard_paste=/usr/bin/tetron-wm clip paste\n"));
+        assert!(out.contains("timeformat_old=%Y"));
+        assert_eq!(out.matches("clipboard_store=").count(), 1, "empty value replaced, not duplicated");
+        assert_eq!(mc_ini_with_clip(&out, "/x"), None, "second run leaves it alone");
+        let fresh = mc_ini_with_clip("", "tetron-wm").unwrap();
+        assert!(fresh.starts_with("[Misc]\nclipboard_store=tetron-wm clip copy-file"));
+        assert_eq!(mc_ini_with_clip("[Misc]\nclipboard_store=xclip -i\n", "x"), None, "respects a user setting");
+        let spaced = mc_ini_with_clip("", "/opt/my dir/tetron-wm").unwrap();
+        assert!(spaced.contains("clipboard_store='/opt/my dir/tetron-wm' clip copy-file"));
     }
 
     #[test]
