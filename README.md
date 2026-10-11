@@ -18,14 +18,16 @@ It's a multiplexer at heart, like tmux, but with windows and a mouse: apps run a
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
 ```
 
-One prompted script ([`contrib/install-tetron-wm-suite.sh`](contrib/install-tetron-wm-suite.sh)) that optionally installs, each step opt-in:
+One prompted script ([`contrib/install-tetron-wm-suite.sh`](contrib/install-tetron-wm-suite.sh)). It opens with a menu, or take the same choice with `--profile`:
 
-1. **tetron-wm** — the latest prebuilt binary (all OSes).
-2. **config dir** — `~/.config/tetron-wm/` with a starter `config.toml` plus `themes/` and `wallpapers/` directories (all OSes).
-3. **kmscon** — the truecolor + mouse console for a bare Linux VT (Linux).
-4. **tty1 autologin** — boot straight into tetron-wm on tty1 via kmscon, the full console appliance (Linux + systemd; off by default, always confirmed, prints how to undo).
+| Setup | `--profile` | What it does |
+|---|---|---|
+| Desktop machine, tetron-wm in a terminal window | `gui` | the binary + `~/.config/tetron-wm/` only |
+| VC tty with kmscon, normal login, start it yourself | `console` | + kmscon on a VT (default tty1); you log in and run `tetron-wm` |
+| Console appliance, boots straight into the desktop | `appliance` (= `--all`) | + autologin on that VT + tetron-wm starts at login |
+| Anything else | custom (menu) | answer each question |
 
-Steps 3–4 are for a GUI-less / console box — say no on a normal desktop. Non-interactive: add `-y` (takes the defaults: wm + config + kmscon, **not** tty1), or `--all -y` for the whole appliance. Just want the binary? Use the one-liner in [Install](#install) below.
+Every piece is also its own choice or flag: `--wm`, `--config`, `--kmscon`, `--console`, `--vt N` (default **1**, the console that opens at boot), `--autologin`, `--autostart` (each with a `--no-` form). Re-running converges and never duplicates. `-y` takes the defaults (wm + config, plus kmscon unless a desktop session is detected) and never touches your login console unless you select it. `--dry-run` prints the plan without changing anything. **`--uninstall`** hands the VT back to the normal login prompt, removes the autostart block and the apphost service, and keeps the binary, config and kmscon (`--purge` removes the binary and config too). Just want the binary? Use the one-liner in [Install](#install) below.
 
 ## tetron
 

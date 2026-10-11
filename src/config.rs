@@ -169,6 +169,13 @@ pub struct Config {
     /// any other = build that branch from source, e.g. a "dev" test channel).
     #[serde(default = "default_update_branch")]
     pub update_branch: String,
+    /// Leader chord, `ctrl+<key>` (default `ctrl+space`). Needs `tetron-wm reload`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader: Option<String>,
+    /// `[keys]` table: leader-key overrides per action, e.g. `launcher = "l"` or
+    /// `launcher = ["l", "enter"]`. Actions and defaults: see `tetron-wm --help`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub keys: std::collections::BTreeMap<String, crate::keymap::KeySpec>,
     /// Per-app dock badge colors: keyword (matched case-insensitively as a
     /// substring of the app name/command) → color (named or `#rrggbb`).
     #[serde(default = "default_dock_badges", skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -242,6 +249,8 @@ impl Default for Config {
             assistant_args: Vec::new(),
             assistant_mode: default_assistant_mode(),
             update_branch: default_update_branch(),
+            leader: None,
+            keys: std::collections::BTreeMap::new(),
             dock_badges: default_dock_badges(),
         }
     }

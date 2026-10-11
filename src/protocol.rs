@@ -119,6 +119,11 @@ pub struct Flags {
     /// The power menu's "Add Remote" form is open; the client forwards typed
     /// characters and field navigation to it.
     pub power_editing: bool,
+    /// A power-menu confirm/forget dialog is open; the client routes Enter/y
+    /// (confirm) and Esc/n (cancel) to it.
+    pub power_dialog: bool,
+    /// No window is focused (empty desktop): bare Enter/Space open the launcher.
+    pub no_window: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.
     pub logs_focused: bool,
     /// The activity monitor is the focused window; the client routes

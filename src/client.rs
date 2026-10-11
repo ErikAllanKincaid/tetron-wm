@@ -43,6 +43,12 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
         }
     }
 
+    let cfg = crate::config::Config::load();
+    let (keymap, warns) = crate::keymap::Keymap::new(&cfg.keys, cfg.leader.as_deref());
+    for w in warns {
+        crate::dbg_log(&format!("keymap: {w}"));
+    }
+
     let flags = Arc::new(Mutex::new(Flags::default()));
     let detached = Arc::new(AtomicBool::new(false));
     let reload = Arc::new(AtomicBool::new(false));
@@ -130,7 +136,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                 Event::Key(k) if k.kind != KeyEventKind::Release => {
                     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
                     let ctrl_alt = ctrl && k.modifiers.contains(KeyModifiers::ALT);
-                    let is_leader = (ctrl && k.code == KeyCode::Char(' ')) || k.code == KeyCode::Null;
+                    let is_leader = keymap.is_leader(k.code, k.modifiers);
                     let shift = k.modifiers.contains(KeyModifiers::SHIFT);
                     // kmscon and the Linux VT send the Backspace key as Ctrl-H
                     // (0x08), not DEL (0x7f)/KeyCode::Backspace, so none of
@@ -200,25 +206,37 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             KeyCode::Char(c) if !ctrl => send(&mut out_stream, &ClientMsg::PowerFormChar(c))?,
                             _ => {}
                         }
-                    } else if leader {
+                    } else if f.power_dialog {
+                        // Power confirm / forget dialog: Enter/y confirms, Esc/n cancels.
                         leader = false;
                         match k.code {
-                            KeyCode::Char(' ') => send(&mut out_stream, &ClientMsg::ToggleSpotlight)?,
-                            KeyCode::Char('a') => send(&mut out_stream, &ClientMsg::ToggleMenu)?,
-                            KeyCode::Char('m') | KeyCode::Char('M') => send(&mut out_stream, &ClientMsg::MaximizeFocused)?,
-                            KeyCode::Char('n') | KeyCode::Char('N') => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
-                            KeyCode::Char('[') | KeyCode::Left => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
-                            KeyCode::Char(']') | KeyCode::Right => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
-                            KeyCode::Char('s') | KeyCode::Char('S') => send(&mut out_stream, &ClientMsg::OpenStore)?,
-                            KeyCode::Char(',') => send(&mut out_stream, &ClientMsg::OpenSettings)?,
-                            KeyCode::Char('A') => send(&mut out_stream, &ClientMsg::OpenActivity)?,
-                            KeyCode::Char('?') | KeyCode::Char('h') => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
-                            KeyCode::Char('r') | KeyCode::Char('R') => send(&mut out_stream, &ClientMsg::RenameFocused)?,
-                            KeyCode::Char('t') => send(&mut out_stream, &ClientMsg::TileAll)?,
-                            KeyCode::Char('T') => send(&mut out_stream, &ClientMsg::ToggleAutoTile)?,
-                            KeyCode::Char(c @ '1'..='9') => send(&mut out_stream, &ClientMsg::SendToCell(c as u8 - b'0'))?,
-                            KeyCode::Char('q') => break,                       // detach (apps persist)
-                            KeyCode::Char('Q') => { send(&mut out_stream, &ClientMsg::Shutdown)?; break; }
+                            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                send(&mut out_stream, &ClientMsg::PowerKeyConfirm)?
+                            }
+                            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                                send(&mut out_stream, &ClientMsg::PowerKeyCancel)?
+                            }
+                            _ => {}
+                        }
+                    } else if leader {
+                        leader = false;
+                        match (keymap.action(k.code), k.code) {
+                            (Some("spotlight"), _) => send(&mut out_stream, &ClientMsg::ToggleSpotlight)?,
+                            (Some("launcher"), _) => send(&mut out_stream, &ClientMsg::ToggleMenu)?,
+                            (Some("maximize"), _) => send(&mut out_stream, &ClientMsg::MaximizeFocused)?,
+                            (Some("minimize"), _) => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
+                            (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
+                            (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
+                            (Some("store"), _) => send(&mut out_stream, &ClientMsg::OpenStore)?,
+                            (Some("settings"), _) => send(&mut out_stream, &ClientMsg::OpenSettings)?,
+                            (Some("activity"), _) => send(&mut out_stream, &ClientMsg::OpenActivity)?,
+                            (Some("help"), _) => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
+                            (Some("rename"), _) => send(&mut out_stream, &ClientMsg::RenameFocused)?,
+                            (Some("tile"), _) => send(&mut out_stream, &ClientMsg::TileAll)?,
+                            (Some("auto_tile"), _) => send(&mut out_stream, &ClientMsg::ToggleAutoTile)?,
+                            (Some("detach"), _) => break,                       // detach (apps persist)
+                            (Some("shutdown"), _) => { send(&mut out_stream, &ClientMsg::Shutdown)?; break; }
+                            (_, KeyCode::Char(c @ '1'..='9')) => send(&mut out_stream, &ClientMsg::SendToCell(c as u8 - b'0'))?,
                             _ => {}
                         }
                     } else if f.logs_focused {
@@ -233,8 +251,17 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             _ => {}
                         }
                     } else if f.help_open {
-                        // The help overlay is modal: any key dismisses it.
-                        send(&mut out_stream, &ClientMsg::ToggleHelp)?;
+                        // The help overlay is modal: navigation keys scroll it,
+                        // any other key dismisses it.
+                        match k.code {
+                            KeyCode::Up | KeyCode::Char('k') => send(&mut out_stream, &ClientMsg::HelpScroll(-1))?,
+                            KeyCode::Down | KeyCode::Char('j') => send(&mut out_stream, &ClientMsg::HelpScroll(1))?,
+                            KeyCode::PageUp => send(&mut out_stream, &ClientMsg::HelpScroll(-10))?,
+                            KeyCode::PageDown | KeyCode::Char(' ') => send(&mut out_stream, &ClientMsg::HelpScroll(10))?,
+                            KeyCode::Home => send(&mut out_stream, &ClientMsg::HelpScroll(i32::MIN))?,
+                            KeyCode::End => send(&mut out_stream, &ClientMsg::HelpScroll(i32::MAX))?,
+                            _ => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
+                        }
                     } else if f.launcher_open {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::LauncherEsc)?,
@@ -392,6 +419,10 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             KeyCode::Right => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
                             _ => send(&mut out_stream, &ClientMsg::Key(encode_key(raw_code, raw_mods, f.app_cursor)))?,
                         }
+                    } else if f.no_window && !ctrl && matches!(k.code, KeyCode::Enter | KeyCode::Char(' ')) {
+                        // Empty desktop (nothing to receive input): Enter / Space open
+                        // the launcher. Esc never opens anything.
+                        send(&mut out_stream, &ClientMsg::ToggleMenu)?;
                     } else {
                         send(&mut out_stream, &ClientMsg::Key(encode_key(raw_code, raw_mods, f.app_cursor)))?;
                     }

@@ -1,31 +1,51 @@
 #!/usr/bin/env bash
-# install-tetron-wm-suite.sh — one script to stand up a tetron-wm desktop.
+# install-tetron-wm-suite.sh — one script to stand up (or remove) a tetron-wm desktop.
 #
 # Runs the individual installers for you and, optionally, turns a bare Linux box
-# into a console appliance that boots straight into the desktop. Every step is
-# opt-in and prompted; nothing happens without a yes. Pipe it:
+# into a console that boots straight into the desktop. Every step is opt-in and
+# prompted (or chosen with flags); nothing happens without a yes. Pipe it:
 #
 #   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
 #
-# It can install/configure, in order:
+# Three common setups (pick one from the menu, or pass --profile):
+#   gui        a machine with a desktop: tetron-wm in a terminal window.
+#              Installs the binary + config only.
+#   console    a VC tty with kmscon (truecolor + mouse) and a normal login
+#              prompt. You log in and run `tetron-wm` yourself.
+#   appliance  a VC tty with kmscon that logs in and starts tetron-wm for you
+#              at boot (autologin + autostart).
+#   custom     answer each question yourself.
+#
+# The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
 #   3. kmscon         — the truecolor + mouse console for a bare VT             [Linux]
-#   4. tty1 autologin — boot straight into tetron-wm on tty1 (via kmscon)       [Linux + systemd]
+#   4. console        — run kmscon on a VT in place of the kernel getty         [Linux + systemd]
+#      autologin      — that VT logs your user in without a password prompt
+#      autostart      — logging in on a kmscon console launches tetron-wm
 #
-# Steps 3–4 only apply to a GUI-less / console box; skip them on a normal
-# desktop (just say no). Step 4 edits your login console — it is off by default,
-# always confirmed, and prints how to undo it.
+# The console/autologin/autostart steps edit your login console: they are off
+# unless you choose them, always confirmed, and `--uninstall` reverses them.
 #
 # Usage:  install-tetron-wm-suite.sh [options]
 #   -y, --yes        assume the default answer to every prompt (non-interactive).
-#                    Defaults: wm=yes, config=yes, kmscon=yes (Linux), tty1=NO.
-#   --all            select every step (wm + config + kmscon + tty1). With -y,
-#                    builds the full console appliance with no prompts.
+#                    Defaults: wm=yes, config=yes, kmscon=yes on a console box
+#                    (no on a GUI box), console/autologin/autostart=NO unless
+#                    selected by a flag or --profile.
+#   --profile P      gui | console | appliance (see above)
+#   --all            wm + config + kmscon + console + autologin + autostart (=appliance)
 #   --wm / --no-wm             force the tetron-wm step on/off
 #   --config / --no-config     force the config-dir step on/off
 #   --kmscon / --no-kmscon     force the kmscon step on/off
-#   --tty1 / --no-tty1         force the tty1-autologin step on/off
+#   --console / --no-console   run kmscon on a VT (replaces getty there)
+#   --vt N                     which VT (default 1, the console that opens at boot)
+#   --autologin / --no-autologin   log in on that VT without a prompt (implies --console)
+#   --autostart / --no-autostart   launch tetron-wm on login at that VT only (--vt)
+#   --tty1                     shorthand for the full appliance on tty1 (older flag)
+#   --uninstall      undo the console / autologin / autostart changes and the
+#                    apphost service (prompted; keeps the binary, config, kmscon)
+#   --dry-run        print the plan the choices add up to, change nothing
+#   --purge          with --uninstall: also remove the binary and ~/.config/tetron-wm
 #   -h, --help       show this help
 #
 # Env overrides: REPO (default ErikAllanKincaid/tetron-wm), BRANCH (default main),
@@ -55,20 +75,32 @@ fetch() {
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 ASSUME_YES=0
-WANT_WM=""; WANT_CONFIG=""; WANT_KMSCON=""; WANT_TTY1=""
+WANT_WM=""; WANT_CONFIG=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""
+VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -y|--yes)     ASSUME_YES=1 ;;
-    --all)        WANT_WM=y; WANT_CONFIG=y; WANT_KMSCON=y; WANT_TTY1=y ;;
+    --profile)    shift; PROFILE="${1:-}" ;;
+    --all)        PROFILE=appliance ;;
     --wm)         WANT_WM=y ;;     --no-wm)     WANT_WM=n ;;
     --config)     WANT_CONFIG=y ;; --no-config) WANT_CONFIG=n ;;
     --kmscon)     WANT_KMSCON=y ;; --no-kmscon) WANT_KMSCON=n ;;
-    --tty1)       WANT_TTY1=y ;;   --no-tty1)   WANT_TTY1=n ;;
+    --console)    WANT_CONSOLE=y ;;   --no-console)   WANT_CONSOLE=n ;;
+    --autologin)  WANT_AUTOLOGIN=y ;; --no-autologin) WANT_AUTOLOGIN=n ;;
+    --autostart)  WANT_AUTOSTART=y ;; --no-autostart) WANT_AUTOSTART=n ;;
+    --vt)         shift; VT="${1:-}" ;;
+    --tty1)       WANT_CONSOLE=y; WANT_AUTOLOGIN=y; WANT_AUTOSTART=y; VT=1 ;;
+    --no-tty1)    WANT_CONSOLE=n; WANT_AUTOLOGIN=n; WANT_AUTOSTART=n ;;
+    --uninstall)  UNINSTALL=1 ;;
+    --purge)      PURGE=1 ;;
+    --dry-run)    DRY_RUN=1 ;;
     -h|--help)    usage 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
   shift
 done
+case "$PROFILE" in ""|gui|console|appliance) ;; *) die "--profile must be gui, console or appliance" ;; esac
+case "$VT" in ""|[1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--vt must be a VT number 1-63" ;; esac
 
 OS="$(uname -s)"
 IS_LINUX=0; [ "$OS" = "Linux" ] && IS_LINUX=1
@@ -161,67 +193,116 @@ install_kmscon() {
   rm -f "$tmp"
 }
 
-# ── Step 4: tty1 autologin into tetron-wm ──────────────────────────────────────
-# Mirrors docs/SETUP_tetron-wm_bare_console_kmscon.md "Persist on tty1":
-#   systemd → kmsconvt@tty1 → agetty --autologin USER → login shell → exec tetron-wm
-setup_tty1() {
-  have systemctl || { warn "no systemd (systemctl) — skipping tty1 setup"; return 0; }
-  have kmscon    || { warn "kmscon is not installed — run the kmscon step first; skipping tty1"; return 0; }
-  local wm wmdir; wm="$(wm_bin)"; wmdir="$(dirname "$wm")"
-  [ -x "$wm" ] || { warn "tetron-wm not found on PATH — install it first; skipping tty1"; return 0; }
+# ── Console state (so --uninstall and re-runs know what we changed) ────────────
+STATE="$HOME/.config/tetron-wm/suite-state"
+state_get() { [ -f "$STATE" ] && sed -n "s/^$1=//p" "$STATE" | tail -1; }
+state_set() {  # $1=key $2=value (replaces any previous value)
+  mkdir -p "$(dirname "$STATE")"
+  { [ -f "$STATE" ] && grep -v "^$1=" "$STATE"; echo "$1=$2"; } > "$STATE.new" 2>/dev/null || true
+  mv "$STATE.new" "$STATE"
+}
 
-  warn "This edits your tty1 login console. Keep a second VT (Ctrl+Alt+F2) or an"
+OVR_MARK='# managed by install-tetron-wm-suite.sh'
+SNIP_BEGIN='# >>> tetron-wm autostart (managed by install-tetron-wm-suite.sh) >>>'
+SNIP_END='# <<< tetron-wm autostart <<<'
+
+profile_file() {
+  case "$(basename "${SHELL:-sh}")" in zsh) echo "$HOME/.zprofile" ;; *) echo "$HOME/.bash_profile" ;; esac
+}
+
+# Remove our autostart block from a profile file — the marked block, and the
+# unmarked snippet older versions of this script wrote. No-op if absent.
+strip_autostart() {
+  local f="$1" tmp; [ -f "$f" ] || return 0
+  grep -qE 'tetron-wm autostart|TETRON_WM_ACTIVE' "$f" || return 0
+  tmp="$(mktemp)"
+  awk -v b="$SNIP_BEGIN" -v e="$SNIP_END" '
+    index($0,b)==1 {skip=1; marked=1}
+    !skip && /^# Launch tetron-wm on the primary console/ {skip=1; legacy=1}
+    skip {
+      if (marked && index($0,e)==1) {skip=0; marked=0}
+      else if (legacy && $0=="fi") {skip=0; legacy=0}
+      next
+    }
+    {print}' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+# ── Step 4a: kmscon on a VT (optionally with autologin) ────────────────────────
+#   systemd → kmsconvt@ttyN (→ agetty --autologin USER, if autologin)
+setup_console() {
+  local vt="$1" autologin="$2"
+  have systemctl || { warn "no systemd (systemctl) — skipping console setup"; return 0; }
+  have kmscon    || { warn "kmscon is not installed — run the kmscon step first; skipping console"; return 0; }
+
+  warn "This edits the login console on tty$vt. Keep a second VT (Ctrl+Alt+F2) or an"
   warn "SSH session open so a mistake can never lock you out. To undo later:"
-  warn "  sudo systemctl disable --now kmsconvt@tty1 && sudo systemctl enable --now getty@tty1"
-  confirm "Make tty1 boot straight into tetron-wm?" n || { log "skipping tty1 setup"; return 0; }
+  warn "  install-tetron-wm-suite.sh --uninstall"
+  confirm "Run kmscon on tty$vt in place of the kernel login prompt?" y || { log "skipping console setup"; return 0; }
 
   # TERM must name what kmscon emulates (xterm-256color). Do NOT use $TERM here:
   # in a systemd unit it expands to the console's "linux", which makes tetron-wm
   # think it is on a kernel VT — no truecolor, mouse via gpm, clunky rendering.
-  local user kbin prof term='xterm-256color'
+  local user kbin term='xterm-256color'
   user="$(logname 2>/dev/null || echo "${SUDO_USER:-$USER}")"
   kbin="$(command -v kmscon)"
-  case "$(basename "${SHELL:-sh}")" in zsh) prof="$HOME/.zprofile" ;; *) prof="$HOME/.bash_profile" ;; esac
 
-  log "1/3 point tty1 at kmscon instead of the kernel getty"
-  $SUDO systemctl disable --now getty@tty1 2>/dev/null || true
-  $SUDO systemctl enable  --now kmsconvt@tty1
+  log "1/2 point tty$vt at kmscon instead of the kernel getty"
+  $SUDO systemctl disable --now "getty@tty$vt" 2>/dev/null || true
+  $SUDO systemctl enable  --now "kmsconvt@tty$vt"
 
-  log "2/3 autologin $user on tty1 (drop-in override)"
-  local ovrd="/etc/systemd/system/kmsconvt@tty1.service.d"
-  $SUDO mkdir -p "$ovrd"
-  # %%I -> %I (systemd instance). The final arg is the login TERM: a literal
-  # xterm-256color (what kmscon emulates), NOT $TERM — see the note above.
-  printf '[Service]\nExecStart=\nExecStart=%s "--vt=%%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin %s --noclear - %s\n' \
-    "$kbin" "$user" "$term" | $SUDO tee "$ovrd/override.conf" >/dev/null
+  local ovrd="/etc/systemd/system/kmsconvt@tty$vt.service.d"
+  if [ "$autologin" = y ]; then
+    log "2/2 autologin $user on tty$vt (drop-in override)"
+    $SUDO mkdir -p "$ovrd"
+    # %%I -> %I (systemd instance). The final arg is the login TERM: a literal
+    # xterm-256color (what kmscon emulates), NOT $TERM — see the note above.
+    { printf '%s\n' "$OVR_MARK"
+      printf '[Service]\nExecStart=\nExecStart=%s "--vt=%%I" --seats=seat0 --no-switchvt --login -- /sbin/agetty --autologin %s --noclear - %s\n' \
+        "$kbin" "$user" "$term"; } | $SUDO tee "$ovrd/override.conf" >/dev/null
+  else
+    log "2/2 normal login prompt on tty$vt (no autologin)"
+    # Converge: drop an autologin override a previous run left behind.
+    if $SUDO grep -qF "$OVR_MARK" "$ovrd/override.conf" 2>/dev/null; then
+      $SUDO rm -f "$ovrd/override.conf"; $SUDO rmdir "$ovrd" 2>/dev/null || true
+    fi
+  fi
   # Under kmscon the mouse comes from kmscon itself; a running gpm is redundant
-  # and can fight it for the input device. Disable it on the console appliance.
-  if command -v gpm >/dev/null 2>&1; then
-    $SUDO systemctl disable --now gpm >/dev/null 2>&1 && log "disabled gpm (kmscon provides the mouse)" || true
+  # and can fight it for the input device. Disable it on the console.
+  if have gpm && systemctl is-enabled gpm >/dev/null 2>&1; then
+    $SUDO systemctl disable --now gpm >/dev/null 2>&1 && { log "disabled gpm (kmscon provides the mouse)"; state_set gpm_disabled 1; } || true
   fi
   $SUDO systemctl daemon-reload
-  $SUDO systemctl restart kmsconvt@tty1
+  $SUDO systemctl restart "kmsconvt@tty$vt"
+  state_set vt "$vt"; state_set autologin "$autologin"
+  ensure_truecolor
+  log "tty$vt is set. Reboot (or switch with Ctrl+Alt+F$vt) to see it."
+}
 
-  log "3/3 exec tetron-wm from the console login shell ($prof)"
-  if grep -q 'TETRON_WM_ACTIVE' "$prof" 2>/dev/null; then
-    log "login snippet already present in $prof"
-  else
-    # Launch on the primary console. kmscon runs the login shell on a PTS, not
-    # /dev/tty1, so a `tty = /dev/tty1` test never matches under kmscon; walk the
-    # process tree up to kmscon instead (and still accept a raw VT1). Exclude
-    # SSH. Absolute binary path + PATH prepend: this profile runs before the
-    # interactive rc, where the install dir may not be on PATH yet. `$wm`/`$wmdir`
-    # are expanded now; everything else stays literal for login time.
-    cat >> "$prof" <<EOF
+# ── Step 4b: autostart tetron-wm on kmscon login ───────────────────────────────
+setup_autostart() {
+  local vt="$1" wm wmdir prof; wm="$(wm_bin)"; wmdir="$(dirname "$wm")"; prof="$(profile_file)"
+  [ -x "$wm" ] || { warn "tetron-wm not found on PATH — install it first; skipping autostart"; return 0; }
+  strip_autostart "$prof"   # converge: replace any earlier (marked or legacy) block
+  # Launch only on the chosen VT. kmscon runs the login shell on a PTS, not
+  # /dev/ttyN, so a `tty = /dev/ttyN` test never matches under kmscon; walk the
+  # process tree up to the kmscon process and read its --vt=ttyN argument
+  # instead (also accept the raw VT). Exclude SSH. Absolute binary path
+  # + PATH prepend: this profile runs before the interactive rc, where the
+  # install dir may not be on PATH yet. `$wm`/`$wmdir` expand now; the rest stays
+  # literal for login time.
+  cat >> "$prof" <<EOF
 
-# Launch tetron-wm on the primary console (kmscon session, or raw VT1), not over
-# SSH or in nested shells. Drop \`exec\` to land on a shell when you quit.
+$SNIP_BEGIN
+# Launch tetron-wm on tty$vt (kmscon, or the raw VT), not over SSH, in nested
+# shells, or on other VTs. Drop \`exec\` to land on a shell when you quit.
 if [ -z "\$TETRON_WM_ACTIVE" ] && [ -z "\$SSH_CONNECTION" ]; then
   _tw=0
-  [ "\$(tty)" = "/dev/tty1" ] && _tw=1
+  [ "\$(tty)" = "/dev/tty$vt" ] && _tw=1
   _p=\$PPID
   while [ "\$_tw" = 0 ] && [ "\${_p:-0}" -gt 1 ]; do
-    case "\$(cat /proc/\$_p/comm 2>/dev/null)" in kmscon) _tw=1 ;; esac
+    case "\$(cat /proc/\$_p/comm 2>/dev/null)" in
+      kmscon) case "\$(tr '\\0' ' ' </proc/\$_p/cmdline 2>/dev/null)" in *"--vt=tty$vt "*) _tw=1 ;; esac ;;
+    esac
     _p=\$(awk '/^PPid:/{print \$2}' /proc/\$_p/status 2>/dev/null)
   done
   if [ "\$_tw" = 1 ]; then
@@ -231,42 +312,171 @@ if [ -z "\$TETRON_WM_ACTIVE" ] && [ -z "\$SSH_CONNECTION" ]; then
   fi
   unset _tw _p
 fi
+$SNIP_END
 EOF
-    log "appended console launch snippet to $prof"
-  fi
-
+  state_set autostart_profile "$prof"; state_set autostart_vt "$vt"
   ensure_truecolor
   # Keep apps alive across UI reloads/updates by running the apphost as a service.
-  "$wm" service install >/dev/null 2>&1 && log "installed the tetron-wm apphost service" || true
-  log "tty1 is set. Reboot (or: sudo systemctl restart kmsconvt@tty1 ; then Ctrl+Alt+F1)."
+  "$wm" service install >/dev/null 2>&1 && { log "installed the tetron-wm apphost service"; state_set apphost_service 1; } || true
+  log "autostart set in $prof (tetron-wm starts on tty$vt only)"
+}
+
+# ── Uninstall ──────────────────────────────────────────────────────────────────
+do_uninstall() {
+  printf '%stetron-wm suite uninstall%s\n\n' "$B" "$N"
+  local wm; wm="$(wm_bin)"
+
+  # 1. autostart snippet
+  local prof; for prof in "$HOME/.zprofile" "$HOME/.bash_profile"; do
+    if [ -f "$prof" ] && grep -qE 'tetron-wm autostart|TETRON_WM_ACTIVE' "$prof"; then
+      if confirm "Remove the tetron-wm autostart block from $prof?" y; then strip_autostart "$prof"; log "removed autostart from $prof"; fi
+    fi
+  done
+
+  # 2. console: every VT we set up (state file), else any marked override
+  local v vts=""; vts="$(state_get vt)"
+  local d; for d in /etc/systemd/system/kmsconvt@tty*.service.d; do
+    [ -d "$d" ] || continue
+    if $SUDO grep -qF "$OVR_MARK" "$d/override.conf" 2>/dev/null; then
+      v="${d##*kmsconvt@tty}"; v="${v%.service.d}"
+      case " $vts " in *" $v "*) ;; *) vts="$vts $v" ;; esac
+    fi
+  done
+  for v in $vts; do
+    if confirm "Give tty$v back to the normal login prompt (stop kmscon there)?" y; then
+      $SUDO rm -f "/etc/systemd/system/kmsconvt@tty$v.service.d/override.conf"
+      $SUDO rmdir "/etc/systemd/system/kmsconvt@tty$v.service.d" 2>/dev/null || true
+      $SUDO systemctl daemon-reload
+      $SUDO systemctl disable --now "kmsconvt@tty$v" 2>/dev/null || true
+      $SUDO systemctl enable  --now "getty@tty$v" 2>/dev/null || true
+      log "tty$v restored to getty"
+    fi
+  done
+  if [ "$(state_get gpm_disabled)" = 1 ] && have gpm; then
+    confirm "Re-enable gpm (the raw-console mouse daemon we disabled)?" y \
+      && $SUDO systemctl enable --now gpm >/dev/null 2>&1 && log "gpm re-enabled"
+  fi
+
+  # 3. apphost service
+  if [ -x "$wm" ] && confirm "Remove the tetron-wm apphost service?" y; then
+    "$wm" service uninstall >/dev/null 2>&1 && log "removed the apphost service" || true
+  fi
+
+  rm -f "$STATE"
+
+  # 4. optional: binary + config
+  if [ "$PURGE" = 1 ]; then
+    if [ -x "$wm" ] && confirm "Remove the tetron-wm binary ($wm)?" n; then
+      rm -f "$wm" 2>/dev/null || $SUDO rm -f "$wm"; log "removed $wm"
+    fi
+    if [ -d "$HOME/.config/tetron-wm" ] && confirm "Delete ~/.config/tetron-wm (config, themes, wallpapers)?" n; then
+      rm -rf "$HOME/.config/tetron-wm"; log "removed ~/.config/tetron-wm"
+    fi
+  else
+    log "kept the binary, ~/.config/tetron-wm and kmscon (add --purge to remove the first two)"
+  fi
+  log "done."
+}
+
+# ── Interactive choices (the same options as the flags) ─────────────────────────
+HAVE_TTY=0; [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ] && HAVE_TTY=1
+
+# Pick from a numbered menu; default on Enter. $1=question, $2=default number,
+# rest = options. Sets CHOICE to the chosen number.
+choose() {
+  local q="$1" def="$2" n=0 o ans; shift 2
+  printf '%s%s%s\n' "$B" "$q" "$N" >&2
+  for o in "$@"; do n=$((n+1)); printf '  %d) %s\n' "$n" "$o" >&2; done
+  printf '%sChoice [%s]: %s' "$B" "$def" "$N" >&2
+  read -r ans </dev/tty || ans=""
+  ans="${ans:-$def}"
+  case "$ans" in [1-9]) [ "$ans" -le "$n" ] && { CHOICE="$ans"; return 0; } ;; esac
+  warn "not a valid choice — using $def"; CHOICE="$def"
+}
+
+# Ask for the VT number (default 1) unless set by --vt / non-interactive.
+resolve_vt() {
+  [ -n "$VT" ] && return 0
+  VT=1
+  [ "$HAVE_TTY" = 1 ] || return 0
+  local ans; printf '%sWhich VT? tty1 opens at boot [1]: %s' "$B" "$N" >&2
+  read -r ans </dev/tty || ans=""
+  case "${ans:-1}" in [1-9]|[1-5][0-9]|6[0-3]) VT="${ans:-1}" ;; *) warn "not a VT number — using 1" ;; esac
+}
+
+# Is this a machine with a desktop session (so kmscon is not what you want)?
+is_graphical() {
+  [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && return 0
+  case "${XDG_SESSION_TYPE:-}" in x11|wayland) return 0 ;; esac
+  have systemctl && [ "$(systemctl get-default 2>/dev/null)" = "graphical.target" ]
+}
+
+apply_profile() {  # set any WANT_ flag the user has not already set on the command line
+  local k v
+  set_default() { eval "[ -n \"\$$1\" ] || $1=$2"; }
+  case "$1" in
+    gui)       set_default WANT_KMSCON n; set_default WANT_CONSOLE n; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
+    console)   set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
+    appliance) set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN y; set_default WANT_AUTOSTART y ;;
+  esac
 }
 
 # ── Orchestration ──────────────────────────────────────────────────────────────
 main() {
+  if [ "$UNINSTALL" = 1 ]; then do_uninstall; return; fi
   printf '%stetron-wm suite installer%s  (repo: %s, branch: %s)\n\n' "$B" "$N" "$REPO" "$BRANCH"
+
+  local gui_default=2
+  if [ "$IS_LINUX" = 1 ]; then
+    is_graphical && gui_default=1 || gui_default=3
+    # Menu only when no profile and nothing console-related was given as a flag.
+    if [ -z "$PROFILE" ] && [ "$HAVE_TTY" = 1 ] && [ -z "$WANT_KMSCON$WANT_CONSOLE$WANT_AUTOLOGIN$WANT_AUTOSTART" ]; then
+      choose "What are you setting up?" "$gui_default" \
+        "A desktop machine: tetron-wm in a terminal window  (gui)" \
+        "A VC tty with kmscon, normal login prompt, start tetron-wm yourself  (console)" \
+        "A console appliance: kmscon + autologin + tetron-wm starts at boot  (appliance)" \
+        "Custom: ask me about each piece"
+      case "$CHOICE" in 1) PROFILE=gui ;; 2) PROFILE=console ;; 3) PROFILE=appliance ;; esac
+    fi
+    [ -n "$PROFILE" ] && apply_profile "$PROFILE"
+  else
+    PROFILE=gui; apply_profile gui
+  fi
 
   resolve WANT_WM     "Install tetron-wm (latest release)?" y
   resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/, wallpapers/)?" y
   if [ "$IS_LINUX" = 1 ]; then
-    resolve WANT_KMSCON "Install kmscon (truecolor + mouse console; compiles from source except on Debian trixie)?" y
-    resolve WANT_TTY1   "Set up tty1 autologin into tetron-wm (console appliance)?" n
+    local kdef=y; is_graphical && kdef=n
+    resolve WANT_KMSCON "Install kmscon (truecolor + mouse console; compiles from source except on Debian trixie)?" "$kdef"
+    [ "$WANT_AUTOLOGIN" = y ] && [ -z "$WANT_CONSOLE" ] && WANT_CONSOLE=y
+    resolve WANT_CONSOLE   "Run kmscon on a VT in place of the kernel login prompt?" n
+    if [ "$WANT_CONSOLE" = y ]; then
+      resolve_vt
+      resolve WANT_AUTOLOGIN "Log in automatically on tty$VT (no password prompt)?" n
+    else
+      [ -z "$WANT_AUTOLOGIN" ] && WANT_AUTOLOGIN=n
+    fi
+    resolve WANT_AUTOSTART "Start tetron-wm automatically when you log in on a kmscon console?" n
+    [ "$WANT_AUTOSTART" = y ] && resolve_vt
   else
-    [ -z "$WANT_KMSCON" ] && WANT_KMSCON=n
-    [ -z "$WANT_TTY1" ]   && WANT_TTY1=n
-    [ "$WANT_KMSCON" = y ] && warn "kmscon is Linux-only — skipping"
-    [ "$WANT_TTY1" = y ]   && warn "tty1 setup is Linux-only — skipping"
-    WANT_KMSCON=n; WANT_TTY1=n
+    WANT_KMSCON=n; WANT_CONSOLE=n; WANT_AUTOLOGIN=n; WANT_AUTOSTART=n
   fi
+  [ -n "$VT" ] || VT=1
 
   echo
-  [ "$WANT_WM" = y ]     && install_wm
-  [ "$WANT_CONFIG" = y ] && seed_config
-  [ "$WANT_KMSCON" = y ] && install_kmscon
-  [ "$WANT_TTY1" = y ]   && setup_tty1
+  if [ "$DRY_RUN" = 1 ]; then
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
+    return 0
+  fi
+  [ "$WANT_WM" = y ]        && install_wm
+  [ "$WANT_CONFIG" = y ]    && seed_config
+  [ "$WANT_KMSCON" = y ]    && install_kmscon
+  [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"
+  [ "$WANT_AUTOSTART" = y ] && setup_autostart "$VT"
 
   echo
   log "done."
-  if [ "$WANT_TTY1" != y ]; then
+  if [ "$WANT_AUTOSTART" != y ]; then
     log "run it with:  tetron-wm   (install.sh noted the PATH if the dir is not already on it)"
   fi
 }

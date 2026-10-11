@@ -10,7 +10,7 @@ fn help_lists_the_tiling_shortcuts() {
 
 #[test]
 fn help_renders_a_centered_layer() {
-    let layers = render_help(80, 30);
+    let layers = render_help(80, 30, 0);
     assert_eq!(layers.len(), 1);
     // Centered: origin is left of mid-screen, with positive width.
     assert!(layers[0].origin.x > 0);

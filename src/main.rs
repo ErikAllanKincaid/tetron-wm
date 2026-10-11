@@ -2,6 +2,7 @@
 //!
 //! - `tetron-wm`            ensure the daemon is running, then attach a client.
 //! - `tetron-wm attach`     attach to an already-running daemon.
+//! - `tetron-wm --help`     list commands, config keys and env vars.
 //! - `tetron-wm --daemon`   run the daemon (normally spawned automatically).
 //! - `tetron-wm kill`       shut the daemon down (closing all windows).
 //! - `tetron-wm reload`     restart the frontend only; apps keep running.
@@ -24,9 +25,17 @@ fn main() -> std::io::Result<()> {
     let mut args = std::env::args().skip(1);
     let cmd = args.next();
     let rest: Vec<String> = args.collect();
+    if cmd.is_some() && rest.iter().any(|a| a == "--help" || a == "-h") && cmd.as_deref() != Some("launch") {
+        print!("{}", tetron_wm::cli_help::text());
+        return Ok(());
+    }
     match cmd.as_deref() {
         Some("--version" | "-V") => {
             println!("tetron-wm {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        Some("--help" | "-h" | "help") => {
+            print!("{}", tetron_wm::cli_help::text());
             Ok(())
         }
         Some("--daemon") => tetron_wm::daemon::run(),
@@ -97,7 +106,7 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tetron-wm: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, theme, msg, service, --version, --daemon)"
+                "tetron-wm: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, theme, msg, service, --version, --help, --daemon)"
             );
             Ok(())
         }

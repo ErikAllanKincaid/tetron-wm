@@ -366,6 +366,36 @@ impl PowerMenu {
         }
     }
 
+    /// Keyboard Enter / `y`: fire the open confirm or forget dialog, exactly as
+    /// clicking its confirm button would. No-op when no dialog is showing.
+    pub fn key_confirm(&mut self) -> PowerClick {
+        if let Some(action) = self.confirm {
+            self.close();
+            return PowerClick::Act(match action {
+                PowerAction::Exit => PowerOutcome::Detach,
+                PowerAction::Restart => PowerOutcome::Reload,
+                PowerAction::Shutdown => PowerOutcome::Shutdown,
+            });
+        }
+        if let Some(fc) = self.forget.as_ref() {
+            let name = fc.sys.name.clone();
+            let revoke = fc.revoke.then(|| fc.sys.clone());
+            self.close();
+            return PowerClick::Act(PowerOutcome::Forget { name, revoke });
+        }
+        PowerClick::Consumed
+    }
+
+    /// Keyboard Esc / `n`: dismiss whatever the power menu is showing.
+    pub fn key_cancel(&mut self) {
+        self.close();
+    }
+
+    /// Whether a confirm or forget dialog (not the Add Remote form) is showing.
+    pub fn dialog_open(&self) -> bool {
+        self.confirm.is_some() || self.forget.is_some()
+    }
+
     pub fn form_cancel(&mut self) {
         if self.form.take().is_some() {
             // Back to the Systems submenu so a typo isn't a full restart.
@@ -641,6 +671,7 @@ impl PowerMenu {
                 PowerAction::Shutdown => ("Shut down tetron-wm? All running apps will close.", "Shut Down"),
             };
             buf.write_str(2, 2, msg, t.text, t.window_bg);
+            buf.write_str(2, 3, "Enter / y = confirm    Esc / n = cancel", t.text, t.window_bg);
             // Buttons (local coords; pad the labels to fill their hit rects).
             let (cancel, confirm) = dialog_buttons(w, h);
             let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
@@ -754,6 +785,19 @@ mod tests {
         let (_, confirm) = dialog_buttons(w, h);
         assert_eq!(m.on_click(center(confirm), w, h, &s), PowerClick::Act(PowerOutcome::Detach));
         assert!(!m.is_open());
+    }
+
+    #[test]
+    fn keyboard_confirm_and_cancel_work_on_dialog() {
+        let mut m = PowerMenu::new();
+        m.confirm_action(PowerAction::Shutdown);
+        assert!(m.dialog_open());
+        m.key_cancel();
+        assert!(!m.is_open(), "Esc dismisses the dialog");
+        m.confirm_action(PowerAction::Shutdown);
+        assert_eq!(m.key_confirm(), PowerClick::Act(PowerOutcome::Shutdown));
+        assert!(!m.is_open());
+        assert_eq!(m.key_confirm(), PowerClick::Consumed, "no dialog: no-op");
     }
 
     #[test]
