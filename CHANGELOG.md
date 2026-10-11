@@ -6,6 +6,20 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+
+- Suite installer (`contrib/install-tetron-wm-suite.sh`): setup menu and `--profile gui|console|appliance`; the console step is split into `--console`, `--vt N` (default 1), `--autologin` and `--autostart`, each also asked interactively; kmscon defaults off on a desktop machine; idempotent re-runs; `--uninstall` (and `--purge`) and `--dry-run`.
+- Launcher keyboard triggers: leader then `l` or Enter (alongside `a`), and bare Enter or Space on an empty desktop (no window focused). Esc never opens anything.
+- `leader` and a `[keys]` table in `config.toml` remap the leader chord and every leader action (`launcher = ["l", "enter"]`). Listed in `tetron-wm --help`.
+- `tetron-wm --help` lists commands, every `config.toml` key with its default, and all environment variables. A test keeps the key list in sync with the `Config` struct.
+- Launcher > tetron-wm > Help opens the keyboard-shortcut overlay.
+
+### Fixed
+
+- The shortcut overlay (Ctrl+Space, `?`) is scrollable (arrows, PgUp/PgDn, Home/End, j/k); lower rows were unreachable on short terminals.
+- The Exit / Restart / Shut Down confirm dialog and the forget-system dialog are keyboard-operable: Enter or `y` confirms, Esc or `n` cancels (a hint is shown in the dialog).
+- Spotlight (Ctrl+Space, Space) and tall launcher menu panels now scroll to keep the highlighted row visible; previously rows past the 8th (Spotlight) or past the screen edge (menu) could be selected but never seen.
+
 ## [0.14.5] — 2026-10-08
 
 ### Changed

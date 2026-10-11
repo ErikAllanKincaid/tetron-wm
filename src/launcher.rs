@@ -159,7 +159,8 @@ impl Launcher {
         // no submenu) — opens the user's $SHELL in a new window.
         let mut root: Vec<MenuEntry> = vec![MenuEntry::Launch(shell_entry())];
         root.extend(cats.into_iter().map(|(label, mut apps)| {
-            apps.sort_by_key(|x| x.name.to_lowercase());
+            // "Help" is pinned to the bottom of the tetron-wm section.
+            apps.sort_by_key(|x| (x.command == "@help", x.name.to_lowercase()));
             MenuEntry::Submenu {
                 label,
                 items: apps.into_iter().map(MenuEntry::Launch).collect(),
@@ -381,6 +382,7 @@ impl Launcher {
             rank(&ca)
                 .cmp(&rank(&cb))
                 .then_with(|| ca.cmp(&cb))
+                .then_with(|| (a.command == "@help").cmp(&(b.command == "@help")))
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
         v
@@ -428,7 +430,9 @@ impl Launcher {
         for (k, (entries, sel)) in levels.iter().enumerate() {
             let label_w = entries.iter().map(|e| e.label().chars().count()).max().unwrap_or(6) as i32;
             let pw = (label_w + 4).clamp(12, 30); // +marker/padding/border
-            let ph = entries.len() as i32 + 2; // border top/bottom
+            // Tall lists scroll: show only what fits below the menubar row.
+            let (off, vis) = list_window(entries.len(), *sel, (h - 3).max(1) as usize);
+            let ph = vis as i32 + 2; // border top/bottom
             let px = if k == 0 { 0 } else { x };
             // clamp horizontally on screen
             let px = px.min((w - pw).max(0));
@@ -436,12 +440,16 @@ impl Launcher {
             let py = py.min((h - ph).max(1)).max(1);
             let mut rows = Vec::new();
             for i in 0..entries.len() {
-                rows.push(Rect::new(px + 1, py + 1 + i as i32, pw - 2, 1));
+                if i >= off && i < off + vis {
+                    rows.push(Rect::new(px + 1, py + 1 + (i - off) as i32, pw - 2, 1));
+                } else {
+                    rows.push(Rect::new(0, 0, 0, 0)); // scrolled out of view: unhittable
+                }
             }
             out.push((k, Rect::new(px, py, pw, ph), rows));
             // next panel starts to the right; anchored at this panel's selected row
             x = px + pw;
-            prev_sel_y = py + 1 + (*sel as i32);
+            prev_sel_y = py + 1 + (sel.saturating_sub(off) as i32);
         }
         out
     }
@@ -467,8 +475,12 @@ impl Launcher {
         for ((k, panel, rows), (entries, sel)) in geom.iter().zip(levels.iter()) {
             let mut buf = CellBuffer::new(panel.w, panel.h);
             fill_box(&mut buf, panel.w, panel.h);
+            let (off, vis) = list_window(entries.len(), *sel, (h - 3).max(1) as usize);
             for (i, e) in entries.iter().enumerate() {
-                let y = 1 + i as i32;
+                if i < off || i >= off + vis {
+                    continue;
+                }
+                let y = 1 + (i - off) as i32;
                 if e.is_separator() {
                     // A divider line across the panel's inner width.
                     for x in 1..panel.w - 1 {
@@ -492,6 +504,14 @@ impl Launcher {
                 if let MenuEntry::Launch(a) = e {
                     items.push((a.clone(), rows[i]));
                 }
+            }
+            // Scroll hints on the border when rows are hidden.
+            let hint_cell = |ch: char| Cell { ch, fg: accent(), bg: menu_bg(), attrs: Default::default() };
+            if off > 0 {
+                buf.set(panel.w - 2, 0, hint_cell('\u{25B2}'));
+            }
+            if off + vis < entries.len() {
+                buf.set(panel.w - 2, panel.h - 1, hint_cell('\u{25BC}'));
             }
             layers.push(Layer { z: 5000 + *k as i32, origin: Point::new(panel.x, panel.y), buf, opacity: 1.0, scissor: None });
         }
@@ -556,8 +576,9 @@ impl Launcher {
     }
 
     fn render_spotlight(&self, w: i32, _h: i32) -> Rendered {
-        let mut filtered = self.filtered();
-        filtered.truncate(8);
+        let all = self.filtered();
+        let (off, vis) = list_window(all.len(), self.selected, SPOTLIGHT_ROWS);
+        let filtered: Vec<AppEntry> = all[off..off + vis].to_vec();
         let rows = self.rows(&filtered);
         let box_w = 46.min(w - 4).max(24);
         let inner_w = box_w - 2;
@@ -584,7 +605,7 @@ impl Launcher {
                 Row::Header(c) => draw_header(&mut buf, 1, box_w - 2, y, c),
                 Row::Item(i) => {
                     let e = &filtered[*i];
-                    let style = RowStyle { highlighted: *i == self.selected, marker: true, cli: e.cli.unwrap_or(false) };
+                    let style = RowStyle { highlighted: *i + off == self.selected, marker: true, cli: e.cli.unwrap_or(false) };
                     draw_row(&mut buf, 1, box_w - 2, y, &e.name, style);
                     items.push((e.clone(), Rect::new(origin.x + 1, origin.y + y, inner_w, 1)));
                 }
@@ -597,6 +618,19 @@ impl Launcher {
         }
     }
 }
+
+/// Scroll window for a list of `n` rows with row `sel` highlighted and room for
+/// `max` rows: returns `(first_visible, visible_count)`. Stateless — the
+/// highlight is kept in view by sliding the window — so render and hit-test
+/// agree without extra state.
+fn list_window(n: usize, sel: usize, max: usize) -> (usize, usize) {
+    let vis = n.min(max.max(1));
+    let off = (sel + 1).saturating_sub(vis).min(n - vis);
+    (off, vis)
+}
+
+/// Rows shown at once in the Spotlight result list.
+const SPOTLIGHT_ROWS: usize = 8;
 
 /// A rendered launcher row: a category header or an item (index into `filtered`).
 enum Row {
@@ -796,6 +830,28 @@ mod tests {
         assert_eq!(l.path_for_test(), vec![4]);
         l.move_up(); // skip separator(3) → Tools(2)
         assert_eq!(l.path_for_test(), vec![2]);
+    }
+
+    #[test]
+    fn list_window_keeps_selection_visible() {
+        assert_eq!(list_window(3, 2, 8), (0, 3));
+        assert_eq!(list_window(20, 0, 8), (0, 8));
+        assert_eq!(list_window(20, 7, 8), (0, 8));
+        assert_eq!(list_window(20, 8, 8), (1, 8));
+        assert_eq!(list_window(20, 19, 8), (12, 8));
+    }
+
+    #[test]
+    fn tall_menu_panel_fits_screen_and_hides_offscreen_rows() {
+        let apps: Vec<AppEntry> = (0..60)
+            .map(|i| AppEntry { name: format!("app{i:02}"), command: "true".into(), args: vec![], category: Some("Big".into()), requires_cwd: None, cwd: None, cli: None, warn: None })
+            .collect();
+        let mut l = Launcher::new(apps);
+        l.toggle_menu();
+        let h = 20;
+        for (_, panel, _) in l.panel_geometry(80, h) {
+            assert!(panel.y + panel.h <= h, "panel must fit the screen");
+        }
     }
 
     #[test]

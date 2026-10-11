@@ -270,6 +270,8 @@ fn serve_client(
             dirpicker_open: core.dirpicker_open(),
             dirpicker_creating: core.dirpicker_creating(),
             help_open: core.help_open(),
+            power_dialog: core.power_dialog_open(),
+            no_window: core.focused().is_none(),
             filemanager_focused: core.focused_is_filemanager(),
             filemanager_editing: core.filemanager_editing(),
             filemanager_context: core.filemanager_context(),

@@ -35,7 +35,7 @@ pub fn help_sections() -> &'static [HelpSection] {
             title: "Apps",
             rows: &[
                 ("Space", "spotlight search"),
-                ("a", "app menu"),
+                ("a / l / Enter", "app menu (launcher)"),
                 ("s / ,", "store / settings"),
                 ("A", "activity monitor"),
             ],
@@ -50,14 +50,13 @@ pub fn help_sections() -> &'static [HelpSection] {
     ]
 }
 
-/// Render the help overlay centered on a `w × h` screen.
-pub fn render_help(w: i32, h: i32) -> Vec<Layer> {
-    let t = crate::theme::current();
+#[allow(clippy::vec_init_then_push)]
+fn body_lines() -> Vec<(String, bool)> {
     let sections = help_sections();
-
-    // Build the body lines: a header note, then each section.
     let mut lines: Vec<(String, bool)> = Vec::new(); // (text, is_heading)
     lines.push(("Leader = Ctrl+Space  (press, release, then a key)".into(), false));
+    lines.push(("Remap in config.toml: leader = \"ctrl+b\" and a [keys] table".into(), false));
+    lines.push(("Empty desktop: Enter or Space opens the launcher".into(), false));
     lines.push((String::new(), false));
     for s in sections {
         lines.push((s.title.to_uppercase(), true));
@@ -69,11 +68,34 @@ pub fn render_help(w: i32, h: i32) -> Vec<Layer> {
     lines.push(("In overlays:  ↑↓ move · →← expand · Enter open · Esc cancel".into(), false));
     lines.push(("Menubar:  tetron-wm = launcher · ⊞/▦ = view · ✦ = assistant · host ▾ = power/Systems".into(), false));
     lines.push((String::new(), false));
-    lines.push(("Press any key to close".into(), false));
+    lines.push(("↑↓ PgUp PgDn Home End scroll · any other key closes".into(), false));
+
+    lines
+}
+
+fn box_height(h: i32) -> i32 {
+    (body_lines().len() as i32 + 3).min(h - 1)
+}
+
+/// Body rows that fit inside the box (between title and bottom border).
+fn visible_rows(h: i32) -> usize {
+    (box_height(h) - 2).max(1) as usize
+}
+
+/// Largest useful scroll offset for a screen `h` rows tall (0 when it all fits).
+pub fn max_scroll(h: i32) -> usize {
+    body_lines().len().saturating_sub(visible_rows(h))
+}
+
+/// Render the help overlay centered on a `w × h` screen.
+pub fn render_help(w: i32, h: i32, scroll: usize) -> Vec<Layer> {
+    let t = crate::theme::current();
+    let lines = body_lines();
+    let scroll = scroll.min(max_scroll(h));
 
     let inner_w = lines.iter().map(|(l, _)| l.chars().count()).max().unwrap_or(40) as i32;
     let box_w = (inner_w + 4).clamp(30, w - 2);
-    let box_h = (lines.len() as i32 + 3).min(h - 1);
+    let box_h = box_height(h);
     let origin = Point::new((w - box_w) / 2, ((h - box_h) / 2).max(0));
 
     let mut buf = CellBuffer::new(box_w, box_h);
@@ -94,13 +116,20 @@ pub fn render_help(w: i32, h: i32) -> Vec<Layer> {
     buf.set(0, box_h - 1, b('╰'));
     buf.set(box_w - 1, box_h - 1, b('╯'));
 
-    for (i, (text, heading)) in lines.iter().enumerate() {
+    for (i, (text, heading)) in lines.iter().skip(scroll).enumerate() {
         let y = 1 + i as i32;
         if y >= box_h - 1 {
             break;
         }
         let fg = if *heading { t.accent } else { t.text };
         buf.write_str(2, y, text, fg, t.window_bg);
+    }
+
+    if scroll > 0 {
+        buf.write_str(box_w - 4, 0, " ▲ ", t.title_fg, t.title_focus);
+    }
+    if scroll < max_scroll(h) {
+        buf.write_str(box_w - 12, box_h - 1, " ↓ more ↓ ", t.accent, t.window_bg);
     }
 
     vec![Layer { z: 5500, origin, buf, opacity: 1.0, scissor: None }]

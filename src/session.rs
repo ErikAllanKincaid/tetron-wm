@@ -358,6 +358,8 @@ pub enum ClientMsg {
     ActivityClose,
     /// Toggle the keyboard-shortcut help overlay.
     ToggleHelp,
+    /// Scroll the help overlay by this many rows (negative = up; `i32::MIN`/`MAX` = top/bottom).
+    HelpScroll(i32),
     /// Open an image file in a native image-viewer window.
     OpenImage(String),
     /// Working-directory picker: navigation, expand/collapse, confirm, cancel.
@@ -426,6 +428,10 @@ pub enum ClientMsg {
     PowerFormCommit,
     /// Power-menu form: Esc — back to the Systems submenu.
     PowerFormCancel,
+    /// Keyboard confirm (Enter/y) of the open power confirm/forget dialog.
+    PowerKeyConfirm,
+    /// Keyboard cancel (Esc/n) of the power menu.
+    PowerKeyCancel,
     /// Apply (and persist) a theme by name. Sent by the client on attach when
     /// `TETRON_WM_THEME` is set — how a per-system theme rides over ssh.
     SetTheme(String),
@@ -560,6 +566,8 @@ pub struct SessionCore {
     dirpicker: Option<crate::dirpicker::DirPicker>,
     /// Whether the keyboard-shortcut help overlay is showing.
     help_open: bool,
+    /// First visible body row of the help overlay.
+    help_scroll: usize,
     /// Whether the full-screen "simple" view mode is active.
     simple: bool,
     /// Decoded-image cache for ImageView windows (the native image layer).
@@ -656,6 +664,7 @@ impl SessionCore {
             drag_preview: None,
             dirpicker: None,
             help_open: false,
+            help_scroll: 0,
             simple: false,
             images: crate::imagestore::ImageStore::new(),
             desktop: crate::desktop::DesktopIcons::new(desktop_dir),
@@ -1515,6 +1524,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Files".into(), command: "@files".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Logs".into(), command: "@logs".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Activity".into(), command: "@activity".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
+            AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
         // One remote file browser per saved system (Systems category).
         for sys in systems {
@@ -1591,6 +1601,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Whether the top-right power menu (dropdown or confirm dialog) is open.
     pub fn power_menu_open(&self) -> bool { self.power_menu.is_open() }
+    pub fn power_dialog_open(&self) -> bool { self.power_menu.dialog_open() }
 
     /// Whether the confirm-close dialog is showing (the client routes Enter/Esc
     /// and y/n to it while open).
@@ -2160,7 +2171,14 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                 }
             }
-            ClientMsg::ToggleHelp => self.help_open = !self.help_open,
+            ClientMsg::ToggleHelp => {
+                self.help_open = !self.help_open;
+                self.help_scroll = 0;
+            }
+            ClientMsg::HelpScroll(d) => {
+                let max = crate::help::max_scroll(self.h) as i64;
+                self.help_scroll = (self.help_scroll as i64).saturating_add(d as i64).clamp(0, max) as usize;
+            }
             ClientMsg::OpenImage(p) => self.open_image(p),
             ClientMsg::DirPickerUp => { if let Some(d) = self.dirpicker.as_mut() { d.move_up(); } }
             ClientMsg::DirPickerDown => { if let Some(d) = self.dirpicker.as_mut() { d.move_down(); } }
@@ -2363,6 +2381,12 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::PowerFormCancel => self.power_menu.form_cancel(),
+            ClientMsg::PowerKeyConfirm => {
+                if let PowerClick::Act(outcome) = self.power_menu.key_confirm() {
+                    self.apply_power_outcome(outcome);
+                }
+            }
+            ClientMsg::PowerKeyCancel => self.power_menu.key_cancel(),
             ClientMsg::LogsUp => { if let Some(l) = self.focused_logs_mut() { l.scroll_by(-1); } }
             ClientMsg::LogsDown => { if let Some(l) = self.focused_logs_mut() { l.scroll_by(1); } }
             ClientMsg::LogsPageUp => {
@@ -3172,6 +3196,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             "@activity" => self.open_activity(),
+            "@help" => { self.launcher.close(); self.help_open = true; self.help_scroll = 0; }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the
             // existing power-menu flows (confirm dialog / systems popover).
@@ -4162,7 +4187,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         // The help overlay is the topmost layer of all.
         if self.help_open {
-            layers.extend(crate::help::render_help(self.w, self.h));
+            layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
         }
 
         // The power menu (dropdown + confirm dialog) renders above all chrome.
@@ -4342,7 +4367,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             layers.extend(self.tray.render(self.w, self.h, &st).layers);
         }
         if self.help_open {
-            layers.extend(crate::help::render_help(self.w, self.h));
+            layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
         }
         {
             let online = self.tray_state.read().map(|st| st.remotes_online.clone()).unwrap_or_default();
@@ -4896,6 +4921,32 @@ mod tests {
         core.power_menu.close();
         core.launch_entry(entry("@systems"));
         assert!(core.power_menu.is_open(), "@systems should open the systems popover");
+        core.launch_entry(entry("@help"));
+        assert!(core.help_open, "@help should open the shortcut overlay");
+    }
+
+    #[test]
+    fn help_overlay_scrolls_and_clamps() {
+        let mut core = SessionCore::new(80, 12, crate::config::Config::default());
+        core.apply(ClientMsg::ToggleHelp);
+        assert!(crate::help::max_scroll(12) > 0, "short screen must need scrolling");
+        core.apply(ClientMsg::HelpScroll(i32::MAX));
+        assert_eq!(core.help_scroll, crate::help::max_scroll(12));
+        core.apply(ClientMsg::HelpScroll(i32::MIN));
+        assert_eq!(core.help_scroll, 0);
+        core.apply(ClientMsg::HelpScroll(1));
+        core.apply(ClientMsg::ToggleHelp);
+        assert_eq!(core.help_scroll, 0, "closing resets scroll");
+    }
+
+    #[test]
+    fn help_is_last_in_tetron_wm_launcher_section() {
+        let apps = SessionCore::build_launcher_apps(&crate::config::Config::default(), &[]);
+        let mut l = crate::launcher::Launcher::new(apps);
+        let f = l.filtered();
+        let tw: Vec<&str> = f.iter().filter(|a| a.category.as_deref() == Some("tetron-wm")).map(|a| a.command.as_str()).collect();
+        assert_eq!(tw.last(), Some(&"@help"));
+        l.toggle_menu();
     }
 
     #[test]
