@@ -392,6 +392,7 @@ impl AppInstance {
             alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             app_cursor: mode.contains(TermMode::APP_CURSOR),
+            bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
         }
     }
 

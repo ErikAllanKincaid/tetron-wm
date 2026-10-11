@@ -281,6 +281,7 @@ fn serve_client(
             help_open: core.help_open(),
             power_dialog: core.power_dialog_open(),
             no_window: core.focused().is_none(),
+            clipmenu_open: core.clipmenu_open(),
             filemanager_focused: core.focused_is_filemanager(),
             filemanager_editing: core.filemanager_editing(),
             filemanager_context: core.filemanager_context(),

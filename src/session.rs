@@ -360,6 +360,10 @@ pub enum ClientMsg {
     /// the daemon's control thread, which writes the reply; applying it here is
     /// the in-process equivalent (the reply is dropped).
     Clip(crate::clipboard::ClipCmd),
+    /// Open or close the clipboard history popover.
+    ClipMenuToggle,
+    /// A key for the open clipboard history popover.
+    ClipMenuKey(crate::clipmenu::ClipKey),
     /// Toggle the keyboard-shortcut help overlay.
     ToggleHelp,
     /// Scroll the help overlay by this many rows (negative = up; `i32::MIN`/`MAX` = top/bottom).
@@ -486,6 +490,8 @@ pub struct SessionCore {
     apphost: Box<dyn AppHost>,
     /// Active or last mouse text-selection in an app window (for middle paste).
     selection: Option<TextSel>,
+    /// The clipboard history popover (menubar segment / leader + v).
+    clipmenu: crate::clipmenu::ClipMenu,
     /// Clipboard, primary selection and history, shared with the daemon's
     /// control thread (see `clipboard.rs`).
     clip: crate::clipboard::SharedClip,
@@ -627,6 +633,7 @@ impl SessionCore {
             contents: HashMap::new(),
             apphost,
             selection: None,
+            clipmenu: crate::clipmenu::ClipMenu::default(),
             clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
             store_win: None,
             settings_win: None,
@@ -779,6 +786,70 @@ impl SessionCore {
             }
         }
         s.to_lowercase()
+    }
+
+    /// Whether the clipboard history popover is showing (the client routes keys to it).
+    pub fn clipmenu_open(&self) -> bool { self.clipmenu.is_open() }
+
+    /// Open or close the clipboard history popover, anchored under its menubar
+    /// segment (or the right edge if the segment is hidden).
+    fn toggle_clipmenu(&mut self) {
+        if !self.cfg.clipboard_history {
+            return;
+        }
+        if !self.clipmenu.is_open() {
+            self.launcher.close();
+            self.tray.close();
+            self.power_menu.close();
+        }
+        let anchor = self
+            .tray_segments_now()
+            .iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Clipboard)
+            .map(|s| s.rect.x)
+            .unwrap_or((self.w - 64).max(0));
+        self.clipmenu.toggle(anchor);
+    }
+
+    /// Menubar tray segments including the clipboard indicator.
+    fn clip_badge(&self) -> Option<(usize, bool)> {
+        if !self.cfg.clipboard_history {
+            return None;
+        }
+        let s = crate::clipboard::lock(&self.clip);
+        Some((s.history.len(), s.history.paused()))
+    }
+
+    /// Carry out what the user chose in the clipboard popover.
+    fn apply_clip_action(&mut self, a: crate::clipmenu::ClipAction) {
+        use crate::clipmenu::ClipAction as A;
+        let entry_text = |s: &Self, i: usize| crate::clipboard::lock(&s.clip).history.get(i).map(|e| e.text.clone());
+        match a {
+            A::Paste(i) | A::CopyOnly(i) => {
+                if let Some(text) = entry_text(self, i) {
+                    self.set_clipboard(&text);
+                    self.pending_clipboard = Some(text.clone());
+                    // Re-record so the chosen entry moves to the front.
+                    self.clip_record(&text, crate::clipboard::ClipSource::Copy);
+                    self.clipmenu.close();
+                    if matches!(a, A::Paste(_)) {
+                        self.paste_to_focused(&text);
+                    }
+                }
+            }
+            A::TogglePin(i) => crate::clipboard::lock(&self.clip).history.toggle_pin(i),
+            A::Delete(i) => crate::clipboard::lock(&self.clip).history.delete(i),
+            A::TogglePause => {
+                let mut s = crate::clipboard::lock(&self.clip);
+                let p = !s.history.paused();
+                s.history.set_paused(p);
+            }
+            A::Clear => crate::clipboard::lock(&self.clip).history.clear(),
+            A::Close => self.clipmenu.close(),
+        }
+        let hist = self.clip_history();
+        self.clipmenu.history_changed(&hist);
+        crate::clipboard::lock(&self.clip).save_if_due(false);
     }
 
     /// The mouse-selection buffer (pasted by middle click / Shift+Insert).
@@ -1401,7 +1472,7 @@ impl SessionCore {
     /// The current tray segments, laid out from the live snapshot.
     fn tray_segments_now(&self) -> Vec<crate::tray::Segment> {
         let st = self.tray_state.read().unwrap();
-        crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+        crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
     }
 
     /// Apply a tray control intent: optimistically update the cached snapshot so
@@ -1622,6 +1693,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Files".into(), command: "@files".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Logs".into(), command: "@logs".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Activity".into(), command: "@activity".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
+            AppEntry { name: "Clipboard".into(), command: "@clipboard".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
         // One remote file browser per saved system (Systems category).
@@ -1967,7 +2039,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     // Occlusion-aware so a middle-click on a titlebar does not
                     // paste into a window hidden beneath it.
                     if let Some((_id, aid, _cr)) = self.topmost_app_content_at(p) {
-                        let bytes = primary.into_bytes();
+                        let bytes = self.paste_bytes(aid, &primary);
                         self.apphost.input(aid, &bytes);
                     }
                 }
@@ -2275,6 +2347,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Clip(cmd) => {
                 crate::clipboard::handle_cmd(&self.clip, cmd);
             }
+            ClientMsg::ClipMenuToggle => self.toggle_clipmenu(),
+            ClientMsg::ClipMenuKey(k) => {
+                let hist = self.clip_history();
+                if let Some(a) = self.clipmenu.key(k, &hist) {
+                    self.apply_clip_action(a);
+                }
+            }
             ClientMsg::ToggleHelp => {
                 self.help_open = !self.help_open;
                 self.help_scroll = 0;
@@ -2325,6 +2404,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     || self.compat_dialog
                     || self.rename.is_some()
                     || self.tray.open().is_some()
+                    || self.clipmenu.is_open()
                     || self.desktop.overlay_rect().is_some();
                 if !overlay_open && p.y == 0 {
                     let items = self.dock_items();
@@ -3300,6 +3380,12 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             "@activity" => self.open_activity(),
+            "@clipboard" => {
+                self.launcher.close();
+                if !self.clipmenu.is_open() {
+                    self.toggle_clipmenu();
+                }
+            }
             "@help" => { self.launcher.close(); self.help_open = true; self.help_scroll = 0; }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the
@@ -3424,6 +3510,7 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// `mouse_select` defers to `handle_mouse` when one is open.
     fn overlay_active(&self) -> bool {
         self.help_open
+            || self.clipmenu.is_open()
             || self.compat_dialog
             || self.dock_ctx.is_some()
             || self.dirpicker.is_some()
@@ -3513,8 +3600,25 @@ or a remote-side error — its authorized_keys was left untouched)",
         if let Some(id) = self.wm.focused() {
             if let Some(WinContent::App(aid)) = self.contents.get(&id) {
                 let aid = *aid;
-                self.apphost.input(aid, text.as_bytes());
+                let bytes = self.paste_bytes(aid, text);
+                self.apphost.input(aid, &bytes);
             }
+        }
+    }
+
+    /// The bytes to send for pasting `text` into app `aid`: wrapped in
+    /// bracketed-paste markers when the app asked for them (so a shell or editor
+    /// treats multi-line text as one paste instead of running each line). Any
+    /// embedded end marker is removed so pasted text cannot break out.
+    fn paste_bytes(&self, aid: AppId, text: &str) -> Vec<u8> {
+        if self.apphost.mouse_mode(aid).bracketed_paste {
+            let clean = text.replace("\x1b[201~", "");
+            let mut v = b"\x1b[200~".to_vec();
+            v.extend_from_slice(clean.as_bytes());
+            v.extend_from_slice(b"\x1b[201~");
+            v
+        } else {
+            text.as_bytes().to_vec()
         }
     }
 
@@ -3522,6 +3626,16 @@ or a remote-side error — its authorized_keys was left untouched)",
         // The help overlay is modal: any click dismisses it.
         if kind == MouseKind::Down && self.help_open {
             self.help_open = false;
+            return;
+        }
+
+        // The clipboard history popover is modal while open: a click picks a row
+        // or a button, anywhere else closes it.
+        if kind == MouseKind::Down && self.clipmenu.is_open() {
+            let hist = self.clip_history();
+            if let Some(a) = self.clipmenu.click(p, self.w, self.h, &hist) {
+                self.apply_clip_action(a);
+            }
             return;
         }
 
@@ -3685,6 +3799,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                 return;
             }
             let segs = self.tray_segments_now();
+            if segs.iter().any(|s| s.kind == crate::tray::SegmentKind::Clipboard && s.rect.contains(p)) {
+                self.toggle_clipmenu();
+                return;
+            }
             if self.tray.on_menubar_click(p, &segs) {
                 return;
             }
@@ -4246,7 +4364,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
         layers.extend(self.render_dock_ctx());
@@ -4283,6 +4401,11 @@ or a remote-side error — its authorized_keys was left untouched)",
         {
             let st = self.tray_state.read().unwrap();
             layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            if self.clipmenu.is_open() {
+                let hist = self.clip_history();
+                let paused = hist.paused();
+                layers.extend(self.clipmenu.render(self.w, self.h, &hist, paused));
+            }
         }
 
         // The working-directory picker renders on top of the whole desktop.
@@ -4451,7 +4574,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Chrome: menubar (simple glyph) with the taskbar pills.
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
         layers.extend(self.render_dock_ctx());
@@ -4470,6 +4593,11 @@ or a remote-side error — its authorized_keys was left untouched)",
         {
             let st = self.tray_state.read().unwrap();
             layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            if self.clipmenu.is_open() {
+                let hist = self.clip_history();
+                let paused = hist.paused();
+                layers.extend(self.clipmenu.render(self.w, self.h, &hist, paused));
+            }
         }
         if self.help_open {
             layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
@@ -4594,6 +4722,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // app in the Go launcher (drawn over a focused mouse-app) is swallowed.
         if self.launcher.is_open()
             || self.help_open
+            || self.clipmenu.is_open()
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
             || self.confirm_close.is_open()

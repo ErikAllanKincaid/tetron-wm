@@ -36,6 +36,10 @@ pub struct AppMouse {
     /// Application cursor-key mode (DECCKM). When set, arrow keys must be sent
     /// as `ESC O A..D` rather than `ESC [ A..D` (see `protocol::Flags::app_cursor`).
     pub app_cursor: bool,
+    /// Bracketed-paste mode (DECSET 2004): pasted text must be wrapped in
+    /// `ESC [ 200 ~` ... `ESC [ 201 ~` so a shell/editor treats it as a paste.
+    #[serde(default)]
+    pub bracketed_paste: bool,
 }
 
 impl AppMouse {
@@ -146,8 +150,8 @@ mod tests {
     fn ev(col: i32, row: i32, button: MouseButton, action: MouseAction) -> MouseInput {
         MouseInput { col, row, button, action, mods: MouseMods::default() }
     }
-    fn sgr() -> AppMouse { AppMouse { report_click: true, report_drag: true, report_motion: false, sgr: true, utf8: false, alternate_scroll: false, alt_screen: false, app_cursor: false } }
-    fn legacy() -> AppMouse { AppMouse { report_click: true, report_drag: false, report_motion: false, sgr: false, utf8: false, alternate_scroll: false, alt_screen: false, app_cursor: false } }
+    fn sgr() -> AppMouse { AppMouse { report_click: true, report_drag: true, report_motion: false, sgr: true, utf8: false, alternate_scroll: false, alt_screen: false, app_cursor: false, bracketed_paste: false } }
+    fn legacy() -> AppMouse { AppMouse { report_click: true, report_drag: false, report_motion: false, sgr: false, utf8: false, alternate_scroll: false, alt_screen: false, app_cursor: false, bracketed_paste: false } }
 
     #[test]
     fn sgr_left_press_release() {
@@ -188,7 +192,7 @@ mod tests {
 
     #[test]
     fn alternate_scroll_to_arrows() {
-        let m = AppMouse { report_click: false, report_drag: false, report_motion: false, sgr: false, utf8: false, alternate_scroll: true, alt_screen: true, app_cursor: false };
+        let m = AppMouse { report_click: false, report_drag: false, report_motion: false, sgr: false, utf8: false, alternate_scroll: true, alt_screen: true, app_cursor: false, bracketed_paste: false };
         assert_eq!(encode(&ev(5, 5, MouseButton::None, MouseAction::ScrollUp), &m).unwrap(), b"\x1b[A");
         assert_eq!(encode(&ev(5, 5, MouseButton::None, MouseAction::ScrollDown), &m).unwrap(), b"\x1b[B");
         // a click in such an app is not forwarded

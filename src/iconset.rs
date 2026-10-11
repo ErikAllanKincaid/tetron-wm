@@ -86,6 +86,7 @@ pub enum Status {
     Bluetooth,
     Net,
     Bell,
+    Clipboard,
 }
 
 /// The glyph for a status indicator in a specific `style`.
@@ -104,6 +105,7 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
             Bluetooth => '\u{23FB}',       // ⏻
             Net => '\u{21C4}',             // ⇄
             Bell => '\u{237E}',            // ⍾ bell symbol
+            Clipboard => '\u{2398}',       // ⎘
         },
         // Nerd Font (FontAwesome) glyphs — needs a Nerd Font installed.
         IconStyle::Nerd => match s {
@@ -117,6 +119,7 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
             Bluetooth => '\u{F293}',       //  bluetooth
             Net => '\u{F0EC}',             //  exchange
             Bell => '\u{F0F3}',            //  bell
+            Clipboard => '\u{F0EA}',       //  paste
         },
         IconStyle::Emoji => match s {
             Cpu => '\u{1F5A5}',            // 🖥
@@ -129,6 +132,7 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
             Bluetooth => '\u{23FB}',       // ⏻ (no bluetooth emoji; the "bt" label carries it)
             Net => '\u{1F517}',            // 🔗
             Bell => '\u{1F514}',           // 🔔
+            Clipboard => '\u{1F4CB}',      // 📋
         },
     }
 }

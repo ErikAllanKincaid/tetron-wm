@@ -37,6 +37,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("store", &["s", "S"], "app store"),
     ("settings", &[","], "settings"),
     ("activity", &["A"], "activity monitor"),
+    ("clipboard", &["v"], "clipboard history"),
     ("help", &["?", "h"], "shortcut help"),
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),

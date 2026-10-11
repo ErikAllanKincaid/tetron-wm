@@ -37,6 +37,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("Space", "spotlight search"),
                 ("a / l / Enter", "app menu (launcher)"),
                 ("s / ,", "store / settings"),
+                ("v", "clipboard history"),
                 ("A", "activity monitor"),
             ],
         },

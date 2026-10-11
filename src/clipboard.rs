@@ -369,6 +369,16 @@ fn apply_cmd(s: &mut ClipShared, cmd: ClipCmd) -> ClipReply {
     }
 }
 
+/// One-line preview: newlines shown as `⏎`, cut to `n` characters with `…`.
+pub fn preview(text: &str, n: usize) -> String {
+    let one: String = text.chars().map(|c| if c == '\n' { '\u{23CE}' } else if c == '\t' { ' ' } else { c }).collect();
+    if one.chars().count() > n {
+        format!("{}\u{2026}", one.chars().take(n.saturating_sub(1)).collect::<String>())
+    } else {
+        one
+    }
+}
+
 /// `~/.local/share/tetron-wm/clipboard-history.jsonl` (honours `XDG_DATA_HOME`).
 pub fn history_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
