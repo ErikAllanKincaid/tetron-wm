@@ -981,6 +981,9 @@ impl SessionCore {
                 self.apphost.input(aid, reply.as_bytes());
             }
         }
+        if self.cfg.clipboard_ttl_secs > 0 {
+            crate::clipboard::lock(&self.clip).history.expire(crate::clipboard::now_ms(), self.cfg.clipboard_ttl_secs);
+        }
         // Text set through the `clip` CLI / shims goes out to the host terminal too.
         if let Some(t) = crate::clipboard::lock(&self.clip).host_out.take() {
             self.pending_clipboard = Some(t);

@@ -75,7 +75,7 @@ pub struct ClipHistory {
     revision: u64,
 }
 
-fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -141,6 +141,21 @@ impl ClipHistory {
     }
 
     pub fn get(&self, i: usize) -> Option<&ClipEntry> { self.entries.get(i) }
+
+    /// Drop unpinned entries last copied more than `ttl_secs` before `now_ms`.
+    /// Returns whether anything was removed.
+    pub fn expire(&mut self, now_ms: u64, ttl_secs: u64) -> bool {
+        if ttl_secs == 0 {
+            return false;
+        }
+        let before = self.entries.len();
+        self.entries.retain(|e| e.pinned || now_ms.saturating_sub(e.time_ms) <= ttl_secs * 1000);
+        let removed = self.entries.len() != before;
+        if removed {
+            self.revision += 1;
+        }
+        removed
+    }
 
     /// Newest entry regardless of pinning (what a plain paste would give).
     pub fn latest(&self) -> Option<&ClipEntry> {
@@ -474,6 +489,21 @@ mod tests {
         c.record("x", ClipSource::App);
         assert!(c.get(0).unwrap().pinned);
         assert_eq!(c.latest().unwrap().text, "x");
+    }
+
+    #[test]
+    fn expire_drops_old_unpinned_only() {
+        let mut c = h();
+        c.record("old", ClipSource::Copy);
+        c.record("pinned-old", ClipSource::Copy);
+        c.toggle_pin(0);
+        c.record("fresh", ClipSource::Copy);
+        let t0 = c.entries().iter().map(|e| e.time_ms).max().unwrap();
+        assert!(!c.expire(t0 + 10_000, 0), "ttl 0 never expires");
+        assert!(!c.expire(t0 + 10_000, 60));
+        assert!(c.expire(t0 + 120_000, 60));
+        let left: Vec<&str> = c.entries().iter().map(|e| e.text.as_str()).collect();
+        assert_eq!(left, ["pinned-old"]);
     }
 
     #[test]
