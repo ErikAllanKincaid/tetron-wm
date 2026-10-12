@@ -38,6 +38,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("settings", &[","], "settings"),
     ("activity", &["A"], "activity monitor"),
     ("clipboard", &["v"], "clipboard history"),
+    ("select", &["x"], "select mode: drag selects text even in mouse-capturing apps (one-shot)"),
     ("copy", &["c"], "copy the mouse selection to the clipboard (Ctrl+Shift+C)"),
     ("paste", &["p"], "paste the clipboard into the focused app (Ctrl+Shift+V)"),
     ("help", &["?", "h"], "shortcut help"),

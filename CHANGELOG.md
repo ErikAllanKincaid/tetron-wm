@@ -14,6 +14,7 @@ carry user-visible feature work and the occasional breaking config change.
 - OSC 52 clipboard **reads** are answered (`clipboard_osc52_read`), so apps such as vim's osc52 package can paste. Apphost protocol v3 (additive, no forced restart).
 - `tetron-wm clip copy|paste|list|clear|pin|delete|copy-file|setup-mc`, and `xclip` / `xsel` / `wl-copy` / `wl-paste` shims on the PATH of launched apps when there is no display (`clipboard_shims`).
 - `clipboard_fake_display` (opt-in): a dummy `WAYLAND_DISPLAY` for launched apps on a console so Neovim picks the clipboard shims.
+- **Select mode** (leader `x`): a one-shot mode where the mouse is not passed into apps, so text can be selected out of w3m, carbonyl or vim without relying on Shift (which most desktop terminals intercept). A `SELECT` marker shows in the menubar.
 - GUI clipboard bridge for X11 (`xclip`) and Wayland (`wl-clipboard`): `clipboard_gui_bridge`.
 - Pastes are bracketed when the app enables bracketed paste (multi-line text no longer runs line by line in a shell). Leader `c` / `p` copy and paste on terminals that cannot send Ctrl+Shift+C/V.
 

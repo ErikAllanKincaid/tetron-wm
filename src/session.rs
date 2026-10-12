@@ -362,6 +362,9 @@ pub enum ClientMsg {
     Clip(crate::clipboard::ClipCmd),
     /// Open or close the clipboard history popover.
     ClipMenuToggle,
+    /// Toggle one-shot select mode (mouse drags select text instead of
+    /// reaching the app).
+    ToggleSelectMode,
     /// A key for the open clipboard history popover.
     ClipMenuKey(crate::clipmenu::ClipKey),
     /// Toggle the keyboard-shortcut help overlay.
@@ -493,6 +496,11 @@ pub struct SessionCore {
     /// The history file path the daemon registered (so Settings can switch
     /// persistence on later); `None` in tests, which never touch the real file.
     clip_persist_path: Option<std::path::PathBuf>,
+    /// One-shot "select mode": the mouse is never passed into apps until one
+    /// selection is made, so text can be selected out of mouse-capturing apps
+    /// (w3m, carbonyl, vim) without relying on Shift, which many terminals
+    /// intercept. Toggled by leader + `x`.
+    select_mode: bool,
     /// The clipboard history popover (menubar segment / leader + v).
     clipmenu: crate::clipmenu::ClipMenu,
     /// Clipboard, primary selection and history, shared with the daemon's
@@ -636,6 +644,7 @@ impl SessionCore {
             contents: HashMap::new(),
             apphost,
             selection: None,
+            select_mode: false,
             clipmenu: crate::clipmenu::ClipMenu::default(),
             clip_persist_path: None,
             clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
@@ -814,6 +823,9 @@ impl SessionCore {
             .unwrap_or((self.w - 64).max(0));
         self.clipmenu.toggle(anchor);
     }
+
+    /// Whether one-shot select mode is on (menubar indicator, tests).
+    pub fn select_mode(&self) -> bool { self.select_mode }
 
     /// Menubar tray segments including the clipboard indicator.
     fn clip_badge(&self) -> Option<(usize, bool)> {
@@ -1515,7 +1527,7 @@ impl SessionCore {
     /// The current tray segments, laid out from the live snapshot.
     fn tray_segments_now(&self) -> Vec<crate::tray::Segment> {
         let st = self.tray_state.read().unwrap();
-        crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
+        crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
     }
 
     /// Apply a tray control intent: optimistically update the cached snapshot so
@@ -2391,6 +2403,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 crate::clipboard::handle_cmd(&self.clip, cmd);
             }
             ClientMsg::ClipMenuToggle => self.toggle_clipmenu(),
+            ClientMsg::ToggleSelectMode => self.select_mode = !self.select_mode,
             ClientMsg::ClipMenuKey(k) => {
                 let hist = self.clip_history();
                 if let Some(a) = self.clipmenu.key(k, &hist) {
@@ -3625,6 +3638,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
                 sel.dragging = false;
                 self.selection = Some(sel); // keep the highlight shown after release
+                self.select_mode = false; // one-shot: back to normal mouse routing
                 // Read the selected text from the app's current grid snapshot and
                 // stash it as the primary selection for the next middle click.
                 if let Some(buf) = self.apphost.snapshot(sel.aid) {
@@ -4414,7 +4428,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
         layers.extend(self.render_dock_ctx());
@@ -4624,7 +4638,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Chrome: menubar (simple glyph) with the taskbar pills.
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
         layers.extend(self.render_dock_ctx());
@@ -4770,7 +4784,8 @@ or a remote-side error — its authorized_keys was left untouched)",
         // popover, desktop menu) owns the mouse via the normal chrome path. Never
         // route clicks into the app while one is showing — otherwise clicking an
         // app in the Go launcher (drawn over a focused mouse-app) is swallowed.
-        if self.launcher.is_open()
+        if self.select_mode
+            || self.launcher.is_open()
             || self.help_open
             || self.clipmenu.is_open()
             || self.dirpicker.is_some()

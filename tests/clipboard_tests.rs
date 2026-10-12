@@ -266,3 +266,75 @@ fn settings_toggle_persistence_and_limits_apply_live() {
     core.shutdown();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn mouse_selection_in_an_app_is_recorded() {
+    use tetron_wm::geometry::Point;
+    let mut core = SessionCore::new(100, 30, Config::default());
+    launch(&mut core, "echo hello world; sleep 4");
+    std::thread::sleep(Duration::from_millis(500));
+    let r = core.focused_window_rect_for_test().expect("a window");
+    // Content starts one cell inside the frame; the text is on its first row.
+    let (x0, y0) = (r.x + 1, r.y + 1);
+    core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
+    core.apply(ClientMsg::MouseDrag(Point::new(x0 + 4, y0)));
+    core.apply(ClientMsg::MouseUp(Point::new(x0 + 4, y0)));
+    let hist = core.clip_history();
+    assert_eq!(hist.get(0).map(|e| e.text.as_str()), Some("hello"), "history: {:?}", hist.entries());
+    assert_eq!(hist.get(0).unwrap().source, tetron_wm::clipboard::ClipSource::Selection);
+    core.shutdown();
+}
+
+#[test]
+fn select_mode_stops_mouse_passthrough_until_a_selection_is_made() {
+    use tetron_wm::geometry::Point;
+    let mut core = SessionCore::new(100, 30, Config::default());
+    // An app that turns on mouse reporting (like w3m) and prints some text.
+    launch(&mut core, r"printf '\033[?1000h\033[?1006hhello world\n'; sleep 4");
+    let t0 = Instant::now();
+    while core.app_mouse_area().is_none() && t0.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    assert!(core.app_mouse_area().is_some(), "the app captures the mouse");
+    core.apply(ClientMsg::ToggleSelectMode);
+    assert!(core.select_mode());
+    assert!(core.app_mouse_area().is_none(), "select mode: no passthrough");
+    let r = core.focused_window_rect_for_test().unwrap();
+    let (x0, y0) = (r.x + 1, r.y + 1);
+    core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
+    core.apply(ClientMsg::MouseDrag(Point::new(x0 + 4, y0)));
+    core.apply(ClientMsg::MouseUp(Point::new(x0 + 4, y0)));
+    assert!(!core.select_mode(), "one-shot: cleared after the selection");
+    assert!(core.app_mouse_area().is_some(), "passthrough restored");
+    assert_eq!(core.clip_history().get(0).map(|e| e.text.clone()), Some("hello".to_string()));
+    core.shutdown();
+}
+
+/// Real w3m (skipped when not installed): select-mode drag over its page text
+/// lands in the history.
+#[test]
+fn select_mode_selects_text_out_of_w3m() {
+    use tetron_wm::geometry::Point;
+    if std::process::Command::new("w3m").arg("-version").output().is_err() {
+        eprintln!("w3m not installed; skipping");
+        return;
+    }
+    let page = std::env::temp_dir().join(format!("twm-w3m-{}.html", std::process::id()));
+    std::fs::write(&page, "<html><body><p>Copy this sentence from the web</p></body></html>").unwrap();
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::Launch { name: "w3m".into(), command: "w3m".into(), args: vec![page.display().to_string()] });
+    std::thread::sleep(Duration::from_millis(1500));
+    let mouse_captured = core.app_mouse_area().is_some();
+    core.apply(ClientMsg::ToggleSelectMode);
+    let r = core.focused_window_rect_for_test().unwrap();
+    // The text is on the first content row; select across it.
+    let (x0, y0) = (r.x + 1, r.y + 1);
+    core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
+    core.apply(ClientMsg::MouseDrag(Point::new(x0 + 12, y0)));
+    core.apply(ClientMsg::MouseUp(Point::new(x0 + 12, y0)));
+    let hist = core.clip_history();
+    eprintln!("w3m captures mouse: {mouse_captured}; history: {:?}", hist.entries());
+    assert_eq!(hist.get(0).map(|e| e.text.clone()), Some("Copy this sen".to_string()));
+    let _ = std::fs::remove_file(&page);
+    core.shutdown();
+}

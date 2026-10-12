@@ -39,6 +39,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("s / ,", "store / settings"),
                 ("v", "clipboard history"),
                 ("c / p", "copy selection / paste clipboard"),
+                ("x", "select mode: drag selects text (one-shot)"),
                 ("A", "activity monitor"),
             ],
         },

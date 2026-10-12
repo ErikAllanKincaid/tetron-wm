@@ -278,6 +278,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             (Some("settings"), _) => send(&mut out_stream, &ClientMsg::OpenSettings)?,
                             (Some("activity"), _) => send(&mut out_stream, &ClientMsg::OpenActivity)?,
                             (Some("clipboard"), _) => send(&mut out_stream, &ClientMsg::ClipMenuToggle)?,
+                            (Some("select"), _) => send(&mut out_stream, &ClientMsg::ToggleSelectMode)?,
                             (Some("copy"), _) => send(&mut out_stream, &ClientMsg::CopySelection)?,
                             (Some("paste"), _) => send(&mut out_stream, &ClientMsg::PasteClipboard)?,
                             (Some("help"), _) => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
