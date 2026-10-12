@@ -6,7 +6,7 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
-## [0.14.6] — 2026-10-11
+## [0.14.7] — 2026-10-11
 
 ### Added
 
@@ -17,6 +17,10 @@ carry user-visible feature work and the occasional breaking config change.
 - **Select mode** (leader `x`): a one-shot mode where the mouse is not passed into apps, so text can be selected out of w3m, carbonyl or vim without relying on Shift (which most desktop terminals intercept). A `SELECT` marker shows in the menubar. The Help overlay (and `--help`) has a Clipboard section explaining how to copy text out of w3m, carbonyl or vim.
 - GUI clipboard bridge for X11 (`xclip`) and Wayland (`wl-clipboard`): `clipboard_gui_bridge`.
 - Pastes are bracketed when the app enables bracketed paste (multi-line text no longer runs line by line in a shell). Leader `c` / `p` copy and paste on terminals that cannot send Ctrl+Shift+C/V.
+
+## [0.14.6] — 2026-10-11
+
+### Added
 
 - Suite installer (`contrib/install-tetron-wm-suite.sh`): setup menu and `--profile gui|console|appliance`; the console step is split into `--console`, `--vt N` (default 1), `--autologin` and `--autostart`, each also asked interactively; kmscon defaults off on a desktop machine; idempotent re-runs; `--uninstall` (and `--purge`) and `--dry-run`.
 - Launcher keyboard triggers: leader then `l` or Enter (alongside `a`), and bare Enter or Space on an empty desktop (no window focused). Esc never opens anything.

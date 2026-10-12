@@ -18,7 +18,7 @@ Clippy is currently warning-clean — keep it that way.
 
 ## Versioning & release channels
 
-`Cargo.toml` carries the semver version (currently 0.14.6); update `CHANGELOG.md`
+`Cargo.toml` carries the semver version (currently 0.14.7); update `CHANGELOG.md`
 in the same commit as user-visible changes (roll `[Unreleased]` into a new
 `[x.y.z]` heading).
 
