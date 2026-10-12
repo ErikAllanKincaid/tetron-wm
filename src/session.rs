@@ -3516,6 +3516,12 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// Spawn a new PTY-backed window, starting the child in `cwd` (or the user's
     /// home when `None`).
     fn launch_in(&mut self, name: String, command: String, args: Vec<String>, cwd: Option<std::path::PathBuf>) {
+        // A bare launch of an app that exits without a URL (w3m) gets the start page.
+        let args = if args.is_empty() && !self.cfg.web_home.is_empty() && crate::catalog::needs_url(&command) {
+            vec![self.cfg.web_home.clone()]
+        } else {
+            args
+        };
         crate::dbg_log(&format!("launch_in {} cmd={}", name, command));
         // Cascade new windows with a generous offset so each one is clearly
         // visible (not buried under the previous window), clamped so the whole

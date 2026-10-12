@@ -42,6 +42,11 @@ BIN_OVERRIDES = {
 }
 
 
+# Apps that exit at once when started without a URL (a bare launch gets the
+# configured `web_home`). Emitted as "needs_url": true.
+NEEDS_URL = {"w3m"}
+
+
 def guess_bin(name: str) -> str:
     if name in BIN_OVERRIDES:
         return BIN_OVERRIDES[name]
@@ -70,13 +75,16 @@ def main() -> int:
         if name.lower() in seen:
             continue
         seen.add(name.lower())
-        apps.append({
+        entry = {
             "name": name,
             "bin": guess_bin(name),
             "category": category,
             "description": m.group(3).strip(),
             "homepage": m.group(2).strip(),
-        })
+        }
+        if name.lower() in NEEDS_URL:
+            entry["needs_url"] = True
+        apps.append(entry)
 
     apps.sort(key=lambda a: (a["category"].lower(), a["name"].lower()))
     out.parent.mkdir(parents=True, exist_ok=True)

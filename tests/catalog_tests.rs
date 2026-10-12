@@ -139,3 +139,11 @@ fn bundled_catalog_has_claude_code_skip_permissions_variant() {
     assert_eq!(claude.variants[0].args, vec!["--dangerously-skip-permissions".to_string()]);
     assert!(claude.variants[0].warn.is_some());
 }
+
+#[test]
+fn only_w3m_needs_a_start_url_and_paths_resolve() {
+    assert!(tetron_wm::catalog::needs_url("w3m"));
+    assert!(tetron_wm::catalog::needs_url("/usr/bin/w3m"));
+    assert!(!tetron_wm::catalog::needs_url("lynx"));
+    assert!(!tetron_wm::catalog::needs_url("sh"));
+}

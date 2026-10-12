@@ -29,6 +29,10 @@ pub struct CatalogApp {
     /// catalog JSON means `false` (TUI), so the existing entries don't churn.
     #[serde(default)]
     pub cli: bool,
+    /// The app exits immediately when started without a URL (text browsers such
+    /// as w3m). A bare launch gets the configured `web_home` as its argument.
+    #[serde(default)]
+    pub needs_url: bool,
     /// Alternate launch variants of this app (e.g. a "skip permissions" flavor
     /// of an AI coding agent), each surfaced as its own extra launcher entry
     /// when the app is installed. Empty for most apps.
@@ -147,6 +151,13 @@ pub fn is_cli(name_or_bin: &str) -> bool {
         .find(|c| c.name.eq_ignore_ascii_case(name_or_bin) || c.bin.eq_ignore_ascii_case(name_or_bin))
         .map(|c| c.cli)
         .unwrap_or(false)
+}
+
+/// Whether a bare launch of `command` (a name or a path) must be given a start
+/// URL because the app would otherwise print its usage and exit.
+pub fn needs_url(command: &str) -> bool {
+    let base = command.rsplit('/').next().unwrap_or(command);
+    catalog().iter().any(|c| c.needs_url && c.bin.eq_ignore_ascii_case(base))
 }
 
 /// Cached set of `$PATH` executable names. `None` until first use; replaced by

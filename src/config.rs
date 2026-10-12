@@ -200,6 +200,9 @@ pub struct Config {
     pub clipboard_ignore_apps: Vec<String>,
     /// Expire unpinned entries after this many seconds (0 = never).
     pub clipboard_ttl_secs: u64,
+    /// Start page for text web browsers launched without a URL (w3m exits at
+    /// once without one). Empty = launch them bare.
+    pub web_home: String,
     /// Leader chord, `ctrl+<key>` (default `ctrl+space`). Needs `tetron-wm reload`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader: Option<String>,
@@ -291,6 +294,7 @@ impl Default for Config {
             clipboard_osc52_read: "focused".into(),
             clipboard_ignore_apps: Vec::new(),
             clipboard_ttl_secs: 0,
+            web_home: "https://lite.duckduckgo.com/lite/".into(),
             leader: None,
             keys: std::collections::BTreeMap::new(),
             dock_badges: default_dock_badges(),

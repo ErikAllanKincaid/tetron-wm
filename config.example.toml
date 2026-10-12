@@ -88,6 +88,31 @@
 # Branch the in-app updater tracks: "main" (stable prebuilt) or "dev".
 #update_branch = "main"
 
+## ── Web ───────────────────────────────────────────────────────────────────
+# Start page for text browsers launched without a URL (w3m exits at once
+# without one). Empty = launch them bare.
+#web_home = "https://lite.duckduckgo.com/lite/"
+
+## ── Keys ──────────────────────────────────────────────────────────────────
+# Leader chord, ctrl+<key> (needs `tetron-wm reload`). Default ctrl+space.
+#leader = "ctrl+space"
+# Leader remaps per action: one key or a list. Actions and defaults: tetron-wm --help
+#[keys]
+#launcher = ["a", "l", "enter"]
+
+## ── Clipboard history ─────────────────────────────────────────────────────
+#clipboard_history = true            # record everything copied
+#clipboard_persist = true            # save to ~/.local/share/tetron-wm (mode 0600)
+#clipboard_record_selection = true   # record mouse selections
+#clipboard_history_size = 100
+#clipboard_item_max_kb = 256
+#clipboard_shims = "auto"            # xclip/xsel/wl-copy/wl-paste shims: auto | on | off
+#clipboard_fake_display = false      # dummy WAYLAND_DISPLAY so Neovim uses the shims
+#clipboard_gui_bridge = "auto"       # mirror the X11/Wayland clipboard: auto | on | off
+#clipboard_osc52_read = "focused"    # who may read via OSC 52: focused | always | never
+#clipboard_ignore_apps = []          # do not record while these apps are focused
+#clipboard_ttl_secs = 0              # expire unpinned entries (0 = never)
+
 ## ── Apps, launcher, taskbar ───────────────────────────────────────────────
 # Apps auto-started at launch and shown in the taskbar. Each entry is a table.
 # Fields: name (titlebar/taskbar label), command (executable), args (list),

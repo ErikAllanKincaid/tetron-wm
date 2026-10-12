@@ -314,6 +314,7 @@ assistant_mode = "panel"  # "panel" (right-docked) | "window" (floating)
 
 # In-app updater (Settings → Updates)
 update_branch = "main"    # "main" = fast prebuilt releases; "dev" = build from source
+web_home = "https://lite.duckduckgo.com/lite/"  # start page for w3m when launched with no URL
 
 # Tiling grid (also editable in Settings → Windows)
 grid_rows = 2

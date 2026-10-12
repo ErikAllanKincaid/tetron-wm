@@ -338,3 +338,25 @@ fn select_mode_selects_text_out_of_w3m() {
     let _ = std::fs::remove_file(&page);
     core.shutdown();
 }
+
+#[test]
+fn bare_w3m_launch_gets_the_web_home_page() {
+    if std::process::Command::new("w3m").arg("-version").output().is_err() {
+        eprintln!("w3m not installed; skipping");
+        return;
+    }
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::Launch { name: "w3m".into(), command: "w3m".into(), args: vec![] });
+    let (_cmd, args) = core.focused_app_launch_cmd_for_test().expect("launched");
+    assert_eq!(args, vec!["https://lite.duckduckgo.com/lite/".to_string()]);
+    core.shutdown();
+    // An explicit URL, and an empty web_home, are left alone.
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::Launch { name: "w3m".into(), command: "w3m".into(), args: vec!["file:///x".into()] });
+    assert_eq!(core.focused_app_launch_cmd_for_test().unwrap().1, vec!["file:///x".to_string()]);
+    core.shutdown();
+    let mut core = SessionCore::new(100, 30, Config { web_home: String::new(), ..Config::default() });
+    core.apply(ClientMsg::Launch { name: "w3m".into(), command: "w3m".into(), args: vec![] });
+    assert!(core.focused_app_launch_cmd_for_test().unwrap().1.is_empty());
+    core.shutdown();
+}

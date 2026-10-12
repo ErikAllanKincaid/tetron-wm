@@ -6,6 +6,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+
+- `web_home` config key (default `https://lite.duckduckgo.com/lite/`): the start page for text browsers launched with no URL.
+
+### Fixed
+
+- Launching w3m with no URL (launcher > Web > w3m, or `tetron-wm launch w3m`) opened and closed a window instantly because w3m prints its usage and exits; it now opens `web_home`. Catalog entries can opt in with `"needs_url": true`.
+
 ## [0.14.7] — 2026-10-11
 
 ### Added

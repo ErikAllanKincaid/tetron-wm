@@ -4507,6 +4507,7 @@
  {
   "name": "w3m",
   "bin": "w3m",
+  "needs_url": true,
   "category": "Web",
   "description": "A text-mode WWW browser",
   "homepage": "https://github.com/tats/w3m"
