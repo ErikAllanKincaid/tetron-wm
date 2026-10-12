@@ -124,7 +124,7 @@ impl Settings {
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
             5 => 2,                            // assistant: open-as mode, agent
-            6 => 7,                            // clipboard: history, disk, selections, size, shims, osc52 read, clear
+            6 => 8,                            // clipboard: history, disk, selections, size, shims, osc52 read, fake display, clear
             _ => 0,                            // About
         }
     }
@@ -314,7 +314,8 @@ impl Settings {
             }
             (6, 4) => self.cfg.clipboard_shims = cycle(&["auto", "on", "off"], &self.cfg.clipboard_shims, dir),
             (6, 5) => self.cfg.clipboard_osc52_read = cycle(&["focused", "always", "never"], &self.cfg.clipboard_osc52_read, dir),
-            (6, 6) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
+            (6, 6) => self.cfg.clipboard_fake_display = flip(self.cfg.clipboard_fake_display, dir),
+            (6, 7) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
             (4, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -530,11 +531,12 @@ impl Settings {
                 self.row(&mut buf, cx, 6, 3, "History size", format!("\u{25C2} {} \u{25B8}", c.clipboard_history_size));
                 self.row(&mut buf, cx, 7, 4, "xclip/wl-copy shims", format!("\u{25C2} {} \u{25B8}", c.clipboard_shims));
                 self.row(&mut buf, cx, 8, 5, "OSC 52 reads", format!("\u{25C2} {} \u{25B8}", c.clipboard_osc52_read));
-                self.row(&mut buf, cx, 9, 6, "Clear history", "Enter".into());
-                buf.write_str(cx, 11, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
-                buf.write_str(cx, 12, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "More: clipboard_ignore_apps, clipboard_ttl_secs in config.toml.", pal_dim(), pal_bg());
+                self.row(&mut buf, cx, 9, 6, "Display for Neovim", toggle_val(c.clipboard_fake_display));
+                self.row(&mut buf, cx, 10, 7, "Clear history", "Enter".into());
+                buf.write_str(cx, 12, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "More: clipboard_ignore_apps, clipboard_ttl_secs in config.toml.", pal_dim(), pal_bg());
             }
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
@@ -853,7 +855,7 @@ mod tests {
     fn clipboard_section_edits_config() {
         let mut s = Settings::new(Config::default());
         s.section = SECTIONS.iter().position(|x| *x == "Clipboard").unwrap();
-        assert_eq!(s.item_count(), 7);
+        assert_eq!(s.item_count(), 8);
         s.sel = 0;
         s.toggle();
         assert!(!s.config().clipboard_history);
@@ -876,6 +878,9 @@ mod tests {
         s.toggle();
         assert_eq!(s.config().clipboard_osc52_read, "always");
         s.sel = 6;
+        s.toggle();
+        assert!(s.config().clipboard_fake_display);
+        s.sel = 7;
         s.toggle();
         assert_eq!(s.take_action(), Some(SettingsAction::ClearClipboard));
         let _ = s.render(80, 24); // renders without panicking

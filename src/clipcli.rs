@@ -482,23 +482,36 @@ pub fn ensure_shims(exe: &std::path::Path) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// The shim directory to prepend to an app's `PATH`, if shims are enabled.
-/// Decided once per process (an apphost restart picks up config changes).
-pub fn shim_path_dir() -> Option<PathBuf> {
-    static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-    DIR.get_or_init(|| {
+/// What to add to a launched app's environment for the clipboard shims.
+#[derive(Clone, Debug, Default)]
+pub struct ShimEnv {
+    /// Directory to prepend to `PATH` (shims enabled).
+    pub dir: Option<PathBuf>,
+    /// Also set a dummy `WAYLAND_DISPLAY` (only when the process has no display).
+    pub fake_display: bool,
+}
+
+/// Whether a dummy display variable should be set.
+pub fn fake_display_wanted(enabled: bool, display_present: bool) -> bool {
+    enabled && !display_present
+}
+
+/// The shim environment for apps. Decided once per process (an apphost restart
+/// picks up config changes).
+pub fn shim_env() -> ShimEnv {
+    static ENV: std::sync::OnceLock<ShimEnv> = std::sync::OnceLock::new();
+    ENV.get_or_init(|| {
         let cfg = crate::config::Config::load();
         let display = std::env::var_os("DISPLAY").is_some_and(|v| !v.is_empty())
             || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty());
         if !cfg.clipboard_history || !shims_wanted(&cfg.clipboard_shims, display) {
-            return None;
+            return ShimEnv::default();
         }
-        let exe = std::env::current_exe().ok()?;
-        let dir = ensure_shims(&exe);
+        let dir = std::env::current_exe().ok().and_then(|exe| ensure_shims(&exe));
         if let Some(d) = &dir {
             crate::dbg_log(&format!("clipboard: shims enabled in {}", d.display()));
         }
-        dir
+        ShimEnv { fake_display: dir.is_some() && fake_display_wanted(cfg.clipboard_fake_display, display), dir }
     })
     .clone()
 }
@@ -567,6 +580,13 @@ mod tests {
         assert_eq!(mc_ini_with_clip("[Misc]\nclipboard_store=xclip -i\n", "x"), None, "respects a user setting");
         let spaced = mc_ini_with_clip("", "/opt/my dir/tetron-wm").unwrap();
         assert!(spaced.contains("clipboard_store='/opt/my dir/tetron-wm' clip copy-file"));
+    }
+
+    #[test]
+    fn fake_display_only_without_a_real_one() {
+        assert!(fake_display_wanted(true, false));
+        assert!(!fake_display_wanted(true, true));
+        assert!(!fake_display_wanted(false, false));
     }
 
     #[test]

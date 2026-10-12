@@ -184,6 +184,11 @@ pub struct Config {
     /// Put xclip/xsel/wl-copy/wl-paste shims on the PATH of launched apps so
     /// they use this clipboard: "auto" (only when there is no display), "on", "off".
     pub clipboard_shims: String,
+    /// Give launched apps a dummy `WAYLAND_DISPLAY` when there is no display, so
+    /// tools that only look for a clipboard helper when a display variable is set
+    /// (Neovim) use the shims. Side effect: programs that test for a desktop
+    /// session (xdg-open, GUI toolkits) think one exists, so it is off by default.
+    pub clipboard_fake_display: bool,
     /// Mirror the real X11/Wayland clipboard into the history: "auto" (when a
     /// display exists), "on", "off".
     pub clipboard_gui_bridge: String,
@@ -281,6 +286,7 @@ impl Default for Config {
             clipboard_history_size: 100,
             clipboard_item_max_kb: 256,
             clipboard_shims: "auto".into(),
+            clipboard_fake_display: false,
             clipboard_gui_bridge: "auto".into(),
             clipboard_osc52_read: "focused".into(),
             clipboard_ignore_apps: Vec::new(),

@@ -41,6 +41,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("clipboard_history_size", "100", "maximum unpinned history entries"),
     ("clipboard_item_max_kb", "256", "do not record entries larger than this"),
     ("clipboard_shims", "auto", "xclip/xsel/wl-copy/wl-paste shims for launched apps: auto (no display) | on | off"),
+    ("clipboard_fake_display", "false", "dummy WAYLAND_DISPLAY (no display) so Neovim uses the clipboard shims"),
     ("clipboard_gui_bridge", "auto", "mirror the X11/Wayland clipboard into history: auto | on | off"),
     ("clipboard_osc52_read", "focused", "who may read the clipboard via OSC 52: focused | always | never"),
     ("clipboard_ignore_apps", "[]", "do not record while these apps are focused (e.g. password managers)"),
