@@ -207,8 +207,9 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             _ => {}
                         }
                     } else if f.clipmenu_open {
-                        // Clipboard history popover: typing filters; F2/F3/Delete act.
+                        // Clipboard history popover: typing filters; Alt+C/P/D, Insert, Delete act.
                         use crate::clipmenu::ClipKey as K;
+                        let alt = k.modifiers.contains(KeyModifiers::ALT) && !ctrl;
                         let key = match (k.code, ctrl) {
                             (KeyCode::Up, _) => Some(K::Up),
                             (KeyCode::Down, _) => Some(K::Down),
@@ -220,11 +221,17 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             (KeyCode::Esc, _) => Some(K::Esc),
                             (KeyCode::Backspace, _) => Some(K::Backspace),
                             (KeyCode::Tab, _) => Some(K::Pause),
-                            // Function / editing keys only: Ctrl+C, Ctrl+D, Ctrl+P and
-                            // the other terminal control keys are never reused here.
-                            (KeyCode::F(3), _) => Some(K::Copy),
-                            (KeyCode::F(2) | KeyCode::Insert, _) => Some(K::Pin),
-                            (KeyCode::Delete | KeyCode::F(4), _) => Some(K::Delete),
+                            // Actions use Alt (a second modifier), the Delete key, or
+                            // Insert. Ctrl+C, Ctrl+D, Ctrl+P and the other terminal
+                            // control keys, and F-keys, are never reused here.
+                            (KeyCode::Char(c), false) if alt => match c.to_ascii_lowercase() {
+                                'c' => Some(K::Copy),
+                                'p' => Some(K::Pin),
+                                'd' => Some(K::Delete),
+                                _ => None,
+                            },
+                            (KeyCode::Insert, _) => Some(K::Pin),
+                            (KeyCode::Delete, _) => Some(K::Delete),
                             (KeyCode::Char(c), false) => Some(K::Char(c)),
                             _ => None,
                         };

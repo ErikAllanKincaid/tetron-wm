@@ -11,7 +11,7 @@
 //! │ ☆ app  another entry                ✕ │
 //! │───────────────────────────────────────│
 //! │ preview of the highlighted entry      │
-//! │ [Pause] [Clear]  Enter paste · F3 ...  │
+//! │ [Pause] [Clear]  Enter paste · Alt+C … │
 //! ╰───────────────────────────────────────╯
 //! ```
 
@@ -274,7 +274,7 @@ impl ClipMenu {
         let hint_y = bh - 2;
         buf.write_str(2, hint_y, if paused { "[Resume]" } else { "[Pause] " }, t.accent, t.window_bg);
         buf.write_str(10, hint_y, "[Clear]", t.accent, t.window_bg);
-        buf.write_str(19, hint_y, "Enter paste \u{B7} F3 copy \u{B7} F2 pin \u{B7} Del drop", t.border, t.window_bg);
+        buf.write_str(19, hint_y, "Enter paste \u{B7} Alt+C copy \u{B7} P pin \u{B7} D del", t.border, t.window_bg);
         vec![Layer { z: 5200, origin: Point::new(l.bounds.x, l.bounds.y), buf, opacity: 1.0, scissor: None }]
     }
 }
