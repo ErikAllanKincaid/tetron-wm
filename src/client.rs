@@ -207,7 +207,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             _ => {}
                         }
                     } else if f.clipmenu_open {
-                        // Clipboard history popover: typing filters; Ctrl keys act.
+                        // Clipboard history popover: typing filters; F2/F3/Delete act.
                         use crate::clipmenu::ClipKey as K;
                         let key = match (k.code, ctrl) {
                             (KeyCode::Up, _) => Some(K::Up),
@@ -220,9 +220,11 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             (KeyCode::Esc, _) => Some(K::Esc),
                             (KeyCode::Backspace, _) => Some(K::Backspace),
                             (KeyCode::Tab, _) => Some(K::Pause),
-                            (KeyCode::Char('c'), true) => Some(K::Copy),
-                            (KeyCode::Char('p'), true) => Some(K::Pin),
-                            (KeyCode::Char('d'), true) => Some(K::Delete),
+                            // Function / editing keys only: Ctrl+C, Ctrl+D, Ctrl+P and
+                            // the other terminal control keys are never reused here.
+                            (KeyCode::F(3), _) => Some(K::Copy),
+                            (KeyCode::F(2) | KeyCode::Insert, _) => Some(K::Pin),
+                            (KeyCode::Delete | KeyCode::F(4), _) => Some(K::Delete),
                             (KeyCode::Char(c), false) => Some(K::Char(c)),
                             _ => None,
                         };
