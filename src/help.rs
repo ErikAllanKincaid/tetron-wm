@@ -11,6 +11,8 @@ use crate::geometry::Point;
 pub struct HelpSection {
     pub title: &'static str,
     pub rows: &'static [(&'static str, &'static str)],
+    /// Free-text tips shown under the rows (one line each).
+    pub notes: &'static [&'static str],
 }
 
 /// All shortcut groups shown in the overlay.
@@ -22,6 +24,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("m / n", "maximize / minimize"),
                 ("[ / ]", "snap left / right half"),
             ],
+            notes: &[],
         },
         HelpSection {
             title: "Tiling",
@@ -30,6 +33,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("T", "toggle auto-tile mode"),
                 ("1–9", "send window to cell N"),
             ],
+            notes: &[],
         },
         HelpSection {
             title: "Apps",
@@ -37,10 +41,21 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("Space", "spotlight search"),
                 ("a / l / Enter", "app menu (launcher)"),
                 ("s / ,", "store / settings"),
-                ("v", "clipboard history"),
-                ("c / p", "copy selection / paste clipboard"),
-                ("x", "select mode: drag selects text (one-shot)"),
                 ("A", "activity monitor"),
+            ],
+            notes: &[],
+        },
+        HelpSection {
+            title: "Clipboard",
+            rows: &[
+                ("v", "clipboard history (also the menubar \u{2398} segment)"),
+                ("x", "select mode: the next drag selects text"),
+                ("c / p", "copy selection / paste clipboard"),
+            ],
+            notes: &[
+                "Copying out of w3m, carbonyl or vim (they grab the mouse):",
+                "  Ctrl+Space x, drag over the text, then Ctrl+Space v to pick",
+                "  it, or Ctrl+Space p to paste it into another window.",
             ],
         },
         HelpSection {
@@ -49,6 +64,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("q / Q", "detach / shut down"),
                 ("?", "this help"),
             ],
+            notes: &[],
         },
     ]
 }
@@ -65,6 +81,9 @@ fn body_lines() -> Vec<(String, bool)> {
         lines.push((s.title.to_uppercase(), true));
         for (keys, desc) in s.rows {
             lines.push((format!("  {keys:<8} {desc}"), false));
+        }
+        for note in s.notes {
+            lines.push((format!("  {note}"), false));
         }
     }
     lines.push((String::new(), false));

@@ -77,6 +77,9 @@ fn shortcuts() -> String {
         for (keys, desc) in sec.rows {
             s += &format!("  {keys:<8} {desc}\n");
         }
+        for note in sec.notes {
+            s += &format!("  {note}\n");
+        }
     }
     s
 }
