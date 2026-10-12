@@ -207,7 +207,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             _ => {}
                         }
                     } else if f.clipmenu_open {
-                        // Clipboard history popover: typing filters; Alt+C/P/D, Insert, Delete act.
+                        // Clipboard history popover: typing filters; Alt+c/p/d, Insert, Delete act.
                         use crate::clipmenu::ClipKey as K;
                         let alt = k.modifiers.contains(KeyModifiers::ALT) && !ctrl;
                         let key = match (k.code, ctrl) {
