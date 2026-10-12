@@ -24,6 +24,16 @@ pub enum HostReq {
     Shutdown,
 }
 
+/// An app asked to READ a clipboard through OSC 52 (`ESC ] 52 ; c ; ? ST`).
+/// The frontend answers it by writing an OSC 52 reply to the app's input.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClipReq {
+    /// `c` (clipboard) or `p` (primary selection).
+    pub kind: char,
+    /// The app terminated its query with BEL (else ST); the reply must match.
+    pub bel: bool,
+}
+
 /// A PNG the app transmitted, base64-encoded, sent once per (frontend, app, id).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImgBlob {
@@ -40,8 +50,12 @@ pub struct ImgBlob {
 /// field and the v2 frontend fills `None`; a v1 frontend ignores the unknown
 /// field on a v2 wire payload (serde default is permissive). Do NOT bump
 /// `MIN_COMPAT`.
-pub const PROTO_VERSION: u32 = 2;
+pub const PROTO_VERSION: u32 = 3;
 
+/// v3 — added `clip_reqs` to `HostEvt::Frame`: OSC 52 clipboard READ queries
+/// from the app, so the frontend can answer them. `#[serde(default)]`; an old
+/// apphost simply never reports a query. Do NOT bump `MIN_COMPAT`.
+///
 /// The OLDEST apphost protocol this frontend can safely talk to. Apphosts
 /// predating the `proto` roster field report 0. Bump this to `PROTO_VERSION`
 /// ONLY when a change genuinely breaks older apphosts — doing so arms the
@@ -92,6 +106,9 @@ pub enum HostEvt {
         /// The app's latest OSC-52 clipboard store, forwarded to the host.
         #[serde(default)]
         clip: Option<String>,
+        /// OSC 52 clipboard read queries from the app (default none).
+        #[serde(default)]
+        clip_reqs: Vec<ClipReq>,
     },
     /// The app's child exited.
     Gone { app: u64 },
@@ -251,13 +268,14 @@ mod tests {
             cursor: Some((1, 0)),
             bells: 2,
             clip: Some("copied".into()),
+            clip_reqs: vec![ClipReq { kind: 'c', bel: true }],
         };
         let mut buf: Vec<u8> = Vec::new();
         send(&mut buf, &evt).unwrap();
         let mut r = std::io::BufReader::new(&buf[..]);
         let back: HostEvt = recv(&mut r).unwrap().unwrap();
         match back {
-            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, cursor, bells, clip } => {
+            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, cursor, bells, clip, clip_reqs } => {
                 assert_eq!(app, 5);
                 assert_eq!(g, grid);
                 assert_eq!(placements.len(), 1);
@@ -267,6 +285,7 @@ mod tests {
                 assert_eq!(cursor, Some((1, 0)));
                 assert_eq!(bells, 2);
                 assert_eq!(clip.as_deref(), Some("copied"));
+                assert_eq!(clip_reqs, vec![ClipReq { kind: 'c', bel: true }]);
             }
             _ => panic!("wrong variant"),
         }

@@ -10,6 +10,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Added
 
+- **Clipboard manager.** A history of everything copied (app OSC 52 stores, Ctrl+Shift+C, mouse selections, the CLI, the desktop clipboard), saved to `~/.local/share/tetron-wm/clipboard-history.jsonl` (0600; switch off with `clipboard_persist = false`). Menubar clipboard segment with a popover (filter, paste, copy, pin, delete, pause; mouse and keyboard), leader `v`, launcher entry, Settings → Clipboard.
+- OSC 52 clipboard **reads** are answered (`clipboard_osc52_read`), so apps such as vim's osc52 package can paste. Apphost protocol v3 (additive, no forced restart).
+- `tetron-wm clip copy|paste|list|clear|pin|delete|copy-file|setup-mc`, and `xclip` / `xsel` / `wl-copy` / `wl-paste` shims on the PATH of launched apps when there is no display (`clipboard_shims`).
+- `clipboard_fake_display` (opt-in): a dummy `WAYLAND_DISPLAY` for launched apps on a console so Neovim picks the clipboard shims.
+- **Select mode** (leader `x`): a one-shot mode where the mouse is not passed into apps, so text can be selected out of w3m, carbonyl or vim without relying on Shift (which most desktop terminals intercept). A `SELECT` marker shows in the menubar. The Help overlay (and `--help`) has a Clipboard section explaining how to copy text out of w3m, carbonyl or vim.
+- GUI clipboard bridge for X11 (`xclip`) and Wayland (`wl-clipboard`): `clipboard_gui_bridge`.
+- Pastes are bracketed when the app enables bracketed paste (multi-line text no longer runs line by line in a shell). Leader `c` / `p` copy and paste on terminals that cannot send Ctrl+Shift+C/V.
+
 - Suite installer (`contrib/install-tetron-wm-suite.sh`): setup menu and `--profile gui|console|appliance`; the console step is split into `--console`, `--vt N` (default 1), `--autologin` and `--autostart`, each also asked interactively; kmscon defaults off on a desktop machine; idempotent re-runs; `--uninstall` (and `--purge`) and `--dry-run`.
 - Launcher keyboard triggers: leader then `l` or Enter (alongside `a`), and bare Enter or Space on an empty desktop (no window focused). Esc never opens anything.
 - `leader` and a `[keys]` table in `config.toml` remap the leader chord and every leader action (`launcher = ["l", "enter"]`). Listed in `tetron-wm --help`.

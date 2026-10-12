@@ -169,6 +169,37 @@ pub struct Config {
     /// any other = build that branch from source, e.g. a "dev" test channel).
     #[serde(default = "default_update_branch")]
     pub update_branch: String,
+    /// Keep a history of everything copied (OSC 52 stores, Ctrl+Shift+C, mouse
+    /// selections, the `clip` CLI). Browse it from the menubar clipboard segment.
+    pub clipboard_history: bool,
+    /// Save the history to `~/.local/share/tetron-wm/clipboard-history.jsonl`
+    /// (mode 0600). Turn off for memory-only history.
+    pub clipboard_persist: bool,
+    /// Record mouse text selections in the history (not just explicit copies).
+    pub clipboard_record_selection: bool,
+    /// Maximum unpinned history entries.
+    pub clipboard_history_size: usize,
+    /// Entries larger than this many KB are not recorded.
+    pub clipboard_item_max_kb: usize,
+    /// Put xclip/xsel/wl-copy/wl-paste shims on the PATH of launched apps so
+    /// they use this clipboard: "auto" (only when there is no display), "on", "off".
+    pub clipboard_shims: String,
+    /// Give launched apps a dummy `WAYLAND_DISPLAY` when there is no display, so
+    /// tools that only look for a clipboard helper when a display variable is set
+    /// (Neovim) use the shims. Side effect: programs that test for a desktop
+    /// session (xdg-open, GUI toolkits) think one exists, so it is off by default.
+    pub clipboard_fake_display: bool,
+    /// Mirror the real X11/Wayland clipboard into the history: "auto" (when a
+    /// display exists), "on", "off".
+    pub clipboard_gui_bridge: String,
+    /// Who may READ the clipboard with an OSC 52 query: "focused" (only the
+    /// focused window), "always", "never".
+    pub clipboard_osc52_read: String,
+    /// Do not record copies made while an app whose name or command contains
+    /// one of these (case-insensitive) is focused, e.g. password managers.
+    pub clipboard_ignore_apps: Vec<String>,
+    /// Expire unpinned entries after this many seconds (0 = never).
+    pub clipboard_ttl_secs: u64,
     /// Leader chord, `ctrl+<key>` (default `ctrl+space`). Needs `tetron-wm reload`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader: Option<String>,
@@ -249,6 +280,17 @@ impl Default for Config {
             assistant_args: Vec::new(),
             assistant_mode: default_assistant_mode(),
             update_branch: default_update_branch(),
+            clipboard_history: true,
+            clipboard_persist: true,
+            clipboard_record_selection: true,
+            clipboard_history_size: 100,
+            clipboard_item_max_kb: 256,
+            clipboard_shims: "auto".into(),
+            clipboard_fake_display: false,
+            clipboard_gui_bridge: "auto".into(),
+            clipboard_osc52_read: "focused".into(),
+            clipboard_ignore_apps: Vec::new(),
+            clipboard_ttl_secs: 0,
             leader: None,
             keys: std::collections::BTreeMap::new(),
             dock_badges: default_dock_badges(),

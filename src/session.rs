@@ -356,6 +356,17 @@ pub enum ClientMsg {
     ActivityRefresh,
     /// Activity monitor: close the panel (`Esc` when no kill is pending).
     ActivityClose,
+    /// A clipboard request (`tetron-wm clip`, the xclip/xsel shims). Served by
+    /// the daemon's control thread, which writes the reply; applying it here is
+    /// the in-process equivalent (the reply is dropped).
+    Clip(crate::clipboard::ClipCmd),
+    /// Open or close the clipboard history popover.
+    ClipMenuToggle,
+    /// Toggle one-shot select mode (mouse drags select text instead of
+    /// reaching the app).
+    ToggleSelectMode,
+    /// A key for the open clipboard history popover.
+    ClipMenuKey(crate::clipmenu::ClipKey),
     /// Toggle the keyboard-shortcut help overlay.
     ToggleHelp,
     /// Scroll the help overlay by this many rows (negative = up; `i32::MIN`/`MAX` = top/bottom).
@@ -482,12 +493,19 @@ pub struct SessionCore {
     apphost: Box<dyn AppHost>,
     /// Active or last mouse text-selection in an app window (for middle paste).
     selection: Option<TextSel>,
-    /// Primary selection buffer: the text of the last mouse selection, pasted on
-    /// a middle click. Separate from any OSC-52 clipboard the apps themselves set.
-    primary: String,
-    /// Explicit clipboard buffer: set by Ctrl+Shift+C, pasted by Ctrl+Shift+V.
-    /// Distinct from `primary` (the mouse selection), mirroring the X11 split.
-    clipboard: String,
+    /// The history file path the daemon registered (so Settings can switch
+    /// persistence on later); `None` in tests, which never touch the real file.
+    clip_persist_path: Option<std::path::PathBuf>,
+    /// One-shot "select mode": the mouse is never passed into apps until one
+    /// selection is made, so text can be selected out of mouse-capturing apps
+    /// (w3m, carbonyl, vim) without relying on Shift, which many terminals
+    /// intercept. Toggled by leader + `x`.
+    select_mode: bool,
+    /// The clipboard history popover (menubar segment / leader + v).
+    clipmenu: crate::clipmenu::ClipMenu,
+    /// Clipboard, primary selection and history, shared with the daemon's
+    /// control thread (see `clipboard.rs`).
+    clip: crate::clipboard::SharedClip,
     /// The store window's id, if open (so it can be re-focused, not re-opened).
     store_win: Option<WindowId>,
     /// The settings window's id, if open.
@@ -626,8 +644,10 @@ impl SessionCore {
             contents: HashMap::new(),
             apphost,
             selection: None,
-            primary: String::new(),
-            clipboard: String::new(),
+            select_mode: false,
+            clipmenu: crate::clipmenu::ClipMenu::default(),
+            clip_persist_path: None,
+            clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
             store_win: None,
             settings_win: None,
             filemanager_win: None,
@@ -755,6 +775,176 @@ impl SessionCore {
         self.refresh_fm_thumbnails();
     }
 
+    // ── Clipboard history ───────────────────────────────────────────────────
+
+    fn clip_limits(cfg: &Config) -> crate::clipboard::ClipLimits {
+        crate::clipboard::ClipLimits {
+            max_entries: cfg.clipboard_history_size.max(1),
+            max_item_bytes: cfg.clipboard_item_max_kb.max(1) * 1024,
+            ..Default::default()
+        }
+    }
+
+    /// Lower-cased title + command of the focused app window, for the
+    /// `clipboard_ignore_apps` match.
+    fn focused_app_label(&self) -> String {
+        let Some(id) = self.wm.focused() else { return String::new() };
+        let mut s = self.titles.iter().find(|(w, _)| *w == id).map(|(_, t)| t.clone()).unwrap_or_default();
+        if let Some(WinContent::App(aid)) = self.contents.get(&id) {
+            if let Some((cmd, args)) = self.apphost.launch_cmd(*aid) {
+                s.push(' ');
+                s.push_str(&cmd);
+                s.push(' ');
+                s.push_str(&args.join(" "));
+            }
+        }
+        s.to_lowercase()
+    }
+
+    /// Whether the clipboard history popover is showing (the client routes keys to it).
+    pub fn clipmenu_open(&self) -> bool { self.clipmenu.is_open() }
+
+    /// Open or close the clipboard history popover, anchored under its menubar
+    /// segment (or the right edge if the segment is hidden).
+    fn toggle_clipmenu(&mut self) {
+        if !self.cfg.clipboard_history {
+            return;
+        }
+        if !self.clipmenu.is_open() {
+            self.launcher.close();
+            self.tray.close();
+            self.power_menu.close();
+        }
+        let anchor = self
+            .tray_segments_now()
+            .iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Clipboard)
+            .map(|s| s.rect.x)
+            .unwrap_or((self.w - 64).max(0));
+        self.clipmenu.toggle(anchor);
+    }
+
+    /// Whether one-shot select mode is on (menubar indicator, tests).
+    pub fn select_mode(&self) -> bool { self.select_mode }
+
+    /// Menubar tray segments including the clipboard indicator.
+    fn clip_badge(&self) -> Option<(usize, bool)> {
+        if !self.cfg.clipboard_history {
+            return None;
+        }
+        let s = crate::clipboard::lock(&self.clip);
+        Some((s.history.len(), s.history.paused()))
+    }
+
+    /// Carry out what the user chose in the clipboard popover.
+    fn apply_clip_action(&mut self, a: crate::clipmenu::ClipAction) {
+        use crate::clipmenu::ClipAction as A;
+        let entry_text = |s: &Self, i: usize| crate::clipboard::lock(&s.clip).history.get(i).map(|e| e.text.clone());
+        match a {
+            A::Paste(i) | A::CopyOnly(i) => {
+                if let Some(text) = entry_text(self, i) {
+                    self.set_clipboard(&text);
+                    self.pending_clipboard = Some(text.clone());
+                    // Re-record so the chosen entry moves to the front.
+                    self.clip_record(&text, crate::clipboard::ClipSource::Copy);
+                    self.clipmenu.close();
+                    if matches!(a, A::Paste(_)) {
+                        self.paste_to_focused(&text);
+                    }
+                }
+            }
+            A::TogglePin(i) => crate::clipboard::lock(&self.clip).history.toggle_pin(i),
+            A::Delete(i) => crate::clipboard::lock(&self.clip).history.delete(i),
+            A::TogglePause => {
+                let mut s = crate::clipboard::lock(&self.clip);
+                let p = !s.history.paused();
+                s.history.set_paused(p);
+            }
+            A::Clear => crate::clipboard::lock(&self.clip).history.clear(),
+            A::Close => self.clipmenu.close(),
+        }
+        let hist = self.clip_history();
+        self.clipmenu.history_changed(&hist);
+        crate::clipboard::lock(&self.clip).save_if_due(false);
+    }
+
+    /// The mouse-selection buffer (pasted by middle click / Shift+Insert).
+    fn primary_text(&self) -> String { crate::clipboard::lock(&self.clip).primary.clone() }
+
+    /// The explicit clipboard (set by Ctrl+Shift+C, an app's OSC 52 store or the
+    /// CLI; pasted by Ctrl+Shift+V and answered to OSC 52 reads).
+    fn clipboard_text(&self) -> String { crate::clipboard::lock(&self.clip).clipboard.clone() }
+
+    fn set_primary(&mut self, t: &str) { crate::clipboard::lock(&self.clip).primary = t.to_string(); }
+
+    fn set_clipboard(&mut self, t: &str) { crate::clipboard::lock(&self.clip).clipboard = t.to_string(); }
+
+    /// Record a copy in the history, honouring the config switches. Does not
+    /// touch the live clipboard.
+    fn clip_record(&mut self, text: &str, src: crate::clipboard::ClipSource) {
+        use crate::clipboard::ClipSource;
+        if !self.cfg.clipboard_history || (src == ClipSource::Selection && !self.cfg.clipboard_record_selection) {
+            return;
+        }
+        if !self.cfg.clipboard_ignore_apps.is_empty() {
+            let label = self.focused_app_label();
+            if self.cfg.clipboard_ignore_apps.iter().any(|a| !a.is_empty() && label.contains(&a.to_lowercase())) {
+                return;
+            }
+        }
+        crate::clipboard::lock(&self.clip).history.record(text, src);
+    }
+
+    /// The history (read-only), for the UI and tests.
+    pub fn clip_history(&self) -> crate::clipboard::ClipHistory { crate::clipboard::lock(&self.clip).history.clone() }
+
+    /// A handle to the shared clipboard state, for the daemon's control thread.
+    pub fn clip_handle(&self) -> crate::clipboard::SharedClip { self.clip.clone() }
+
+    /// Turn on disk persistence: load the file now and save changes later.
+    /// Called by the daemon only, so tests never touch the real history file.
+    pub fn enable_clipboard_persistence(&mut self, path: std::path::PathBuf) {
+        self.clip_persist_path = Some(path.clone());
+        if !self.cfg.clipboard_history || !self.cfg.clipboard_persist {
+            return;
+        }
+        self.clip_persist_path = Some(path.clone());
+        crate::clipboard::lock(&self.clip).enable_persistence(path);
+    }
+
+    /// Apply changed `clipboard_*` settings live: limits, the on/off switch, and
+    /// turning disk persistence on (write the history) or off (delete the file).
+    fn apply_clipboard_config(&mut self) {
+        let limits = Self::clip_limits(&self.cfg);
+        let mut s = crate::clipboard::lock(&self.clip);
+        s.enabled = self.cfg.clipboard_history;
+        s.history.set_limits(limits);
+        let want = self.cfg.clipboard_history && self.cfg.clipboard_persist;
+        match (want, s.path.is_some(), self.clip_persist_path.clone()) {
+            (true, false, Some(p)) => s.persist_to(p),
+            (false, true, _) => s.stop_persisting(),
+            _ => {}
+        }
+        s.save_if_due(true);
+        drop(s);
+        if !self.cfg.clipboard_history {
+            self.clipmenu.close();
+        }
+    }
+
+    /// Replace the live config and re-apply the clipboard settings, as the
+    /// Settings panel does on every change (integration tests).
+    #[doc(hidden)]
+    pub fn set_config_for_test(&mut self, cfg: Config) {
+        self.cfg = cfg;
+        self.apply_clipboard_config();
+    }
+
+    /// Flush the history to disk now (daemon exit).
+    pub fn flush_clipboard(&mut self) {
+        crate::clipboard::lock(&self.clip).save_if_due(true);
+    }
+
     /// Drain app events captured by the PTY emulators: bell rings become dock/
     /// tray notifications (for unfocused or minimized windows), and OSC-52
     /// clipboard stores are forwarded to the host terminal. Called once per
@@ -780,9 +970,37 @@ impl SessionCore {
             }
             if let Some(text) = self.apphost.take_clipboard(aid) {
                 crate::dbg_log(&format!("clipboard: forwarding {} bytes from '{title}' (OSC 52)", text.len()));
+                self.set_clipboard(&text);
+                self.clip_record(&text, crate::clipboard::ClipSource::App);
                 self.pending_clipboard = Some(text);
             }
+            // OSC 52 READ queries (`ESC ] 52 ; c ; ? ST`): apps such as Fresh and
+            // vim's osc52 package paste this way. Answer from our clipboard,
+            // subject to `clipboard_osc52_read`.
+            for req in self.apphost.take_clip_requests(aid) {
+                let allowed = match self.cfg.clipboard_osc52_read.as_str() {
+                    "always" => true,
+                    "never" => false,
+                    _ => focused == Some(id),
+                };
+                if !allowed {
+                    crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' denied ({})", self.cfg.clipboard_osc52_read));
+                    continue;
+                }
+                let text = if req.kind == 'p' { self.primary_text() } else { self.clipboard_text() };
+                let reply = crate::clipboard::osc52_reply(req.kind, &text, req.bel);
+                crate::dbg_log(&format!("clipboard: OSC 52 read from '{title}' answered ({} bytes)", text.len()));
+                self.apphost.input(aid, reply.as_bytes());
+            }
         }
+        if self.cfg.clipboard_ttl_secs > 0 {
+            crate::clipboard::lock(&self.clip).history.expire(crate::clipboard::now_ms(), self.cfg.clipboard_ttl_secs);
+        }
+        // Text set through the `clip` CLI / shims goes out to the host terminal too.
+        if let Some(t) = crate::clipboard::lock(&self.clip).host_out.take() {
+            self.pending_clipboard = Some(t);
+        }
+        crate::clipboard::lock(&self.clip).save_if_due(false);
     }
 
     /// Point the desktop at a specific directory and reload (integration tests).
@@ -905,6 +1123,12 @@ impl SessionCore {
     /// the keyboard or the mouse path.
     fn drain_settings_action(&mut self) {
         match self.focused_settings_mut().and_then(|s| s.take_action()) {
+            Some(crate::settings::SettingsAction::ClearClipboard) => {
+                crate::clipboard::lock(&self.clip).history.clear();
+                crate::clipboard::lock(&self.clip).save_if_due(true);
+                let hist = self.clip_history();
+                self.clipmenu.history_changed(&hist);
+            }
             Some(crate::settings::SettingsAction::CheckUpdates) => {
                 let branch = self.cfg.update_branch.clone();
                 let msg = check_for_updates(&branch);
@@ -1303,7 +1527,7 @@ impl SessionCore {
     /// The current tray segments, laid out from the live snapshot.
     fn tray_segments_now(&self) -> Vec<crate::tray::Segment> {
         let st = self.tray_state.read().unwrap();
-        crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+        crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
     }
 
     /// Apply a tray control intent: optimistically update the cached snapshot so
@@ -1524,6 +1748,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Files".into(), command: "@files".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Logs".into(), command: "@logs".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Activity".into(), command: "@activity".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
+            AppEntry { name: "Clipboard".into(), command: "@clipboard".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
         // One remote file browser per saved system (Systems category).
@@ -1864,31 +2089,34 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::MousePaste(p) => {
                 // Middle-click: write the primary selection to the terminal app
                 // under the pointer, via the same PTY-input path as keystrokes.
-                if !self.primary.is_empty() {
+                let primary = self.primary_text();
+                if !primary.is_empty() {
                     // Occlusion-aware so a middle-click on a titlebar does not
                     // paste into a window hidden beneath it.
                     if let Some((_id, aid, _cr)) = self.topmost_app_content_at(p) {
-                        let bytes = self.primary.clone().into_bytes();
+                        let bytes = self.paste_bytes(aid, &primary);
                         self.apphost.input(aid, &bytes);
                     }
                 }
             }
             ClientMsg::PastePrimary => {
                 // Shift+Insert: paste the mouse (primary) selection into focus.
-                let text = self.primary.clone();
+                let text = self.primary_text();
                 self.paste_to_focused(&text);
             }
             ClientMsg::CopySelection => {
                 // Ctrl+Shift+C: promote the current mouse selection to the
                 // clipboard (for Ctrl+Shift+V) and out to the host via OSC 52.
-                if !self.primary.is_empty() {
-                    self.clipboard = self.primary.clone();
-                    self.pending_clipboard = Some(self.primary.clone());
+                let text = self.primary_text();
+                if !text.is_empty() {
+                    self.set_clipboard(&text);
+                    self.pending_clipboard = Some(text.clone());
+                    self.clip_record(&text, crate::clipboard::ClipSource::Copy);
                 }
             }
             ClientMsg::PasteClipboard => {
                 // Ctrl+Shift+V: paste the clipboard into the focused app.
-                let text = self.clipboard.clone();
+                let text = self.clipboard_text();
                 self.paste_to_focused(&text);
             }
             ClientMsg::ScrollFocused(dir) => {
@@ -2171,6 +2399,17 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                 }
             }
+            ClientMsg::Clip(cmd) => {
+                crate::clipboard::handle_cmd(&self.clip, cmd);
+            }
+            ClientMsg::ClipMenuToggle => self.toggle_clipmenu(),
+            ClientMsg::ToggleSelectMode => self.select_mode = !self.select_mode,
+            ClientMsg::ClipMenuKey(k) => {
+                let hist = self.clip_history();
+                if let Some(a) = self.clipmenu.key(k, &hist) {
+                    self.apply_clip_action(a);
+                }
+            }
             ClientMsg::ToggleHelp => {
                 self.help_open = !self.help_open;
                 self.help_scroll = 0;
@@ -2221,6 +2460,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     || self.compat_dialog
                     || self.rename.is_some()
                     || self.tray.open().is_some()
+                    || self.clipmenu.is_open()
                     || self.desktop.overlay_rect().is_some();
                 if !overlay_open && p.y == 0 {
                     let items = self.dock_items();
@@ -2529,6 +2769,10 @@ or a remote-side error — its authorized_keys was left untouched)",
             // Rebuilding the launcher rescans $PATH, so only do it when the
             // custom-app list actually changed (not on every shadow/theme tweak).
             let launcher_changed = cfg.launcher != self.cfg.launcher;
+            let clip_changed = cfg.clipboard_history != self.cfg.clipboard_history
+                || cfg.clipboard_persist != self.cfg.clipboard_persist
+                || cfg.clipboard_history_size != self.cfg.clipboard_history_size
+                || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
             self.cfg = cfg;
@@ -2536,6 +2780,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             let _ = self.cfg.save();
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
+            }
+            if clip_changed {
+                self.apply_clipboard_config();
             }
             if wallpaper_changed {
                 self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
@@ -3196,6 +3443,12 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             "@activity" => self.open_activity(),
+            "@clipboard" => {
+                self.launcher.close();
+                if !self.clipmenu.is_open() {
+                    self.toggle_clipmenu();
+                }
+            }
             "@help" => { self.launcher.close(); self.help_open = true; self.help_scroll = 0; }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the
@@ -3320,6 +3573,7 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// `mouse_select` defers to `handle_mouse` when one is open.
     fn overlay_active(&self) -> bool {
         self.help_open
+            || self.clipmenu.is_open()
             || self.compat_dialog
             || self.dock_ctx.is_some()
             || self.dirpicker.is_some()
@@ -3384,12 +3638,14 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
                 sel.dragging = false;
                 self.selection = Some(sel); // keep the highlight shown after release
+                self.select_mode = false; // one-shot: back to normal mouse routing
                 // Read the selected text from the app's current grid snapshot and
                 // stash it as the primary selection for the next middle click.
                 if let Some(buf) = self.apphost.snapshot(sel.aid) {
                     let text = extract_text(&buf, sel.anchor, sel.head);
                     if !text.is_empty() {
-                        self.primary = text;
+                        self.set_primary(&text);
+                        self.clip_record(&text, crate::clipboard::ClipSource::Selection);
                     }
                 }
                 true
@@ -3408,8 +3664,25 @@ or a remote-side error — its authorized_keys was left untouched)",
         if let Some(id) = self.wm.focused() {
             if let Some(WinContent::App(aid)) = self.contents.get(&id) {
                 let aid = *aid;
-                self.apphost.input(aid, text.as_bytes());
+                let bytes = self.paste_bytes(aid, text);
+                self.apphost.input(aid, &bytes);
             }
+        }
+    }
+
+    /// The bytes to send for pasting `text` into app `aid`: wrapped in
+    /// bracketed-paste markers when the app asked for them (so a shell or editor
+    /// treats multi-line text as one paste instead of running each line). Any
+    /// embedded end marker is removed so pasted text cannot break out.
+    fn paste_bytes(&self, aid: AppId, text: &str) -> Vec<u8> {
+        if self.apphost.mouse_mode(aid).bracketed_paste {
+            let clean = text.replace("\x1b[201~", "");
+            let mut v = b"\x1b[200~".to_vec();
+            v.extend_from_slice(clean.as_bytes());
+            v.extend_from_slice(b"\x1b[201~");
+            v
+        } else {
+            text.as_bytes().to_vec()
         }
     }
 
@@ -3417,6 +3690,16 @@ or a remote-side error — its authorized_keys was left untouched)",
         // The help overlay is modal: any click dismisses it.
         if kind == MouseKind::Down && self.help_open {
             self.help_open = false;
+            return;
+        }
+
+        // The clipboard history popover is modal while open: a click picks a row
+        // or a button, anywhere else closes it.
+        if kind == MouseKind::Down && self.clipmenu.is_open() {
+            let hist = self.clip_history();
+            if let Some(a) = self.clipmenu.click(p, self.w, self.h, &hist) {
+                self.apply_clip_action(a);
+            }
             return;
         }
 
@@ -3580,6 +3863,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                 return;
             }
             let segs = self.tray_segments_now();
+            if segs.iter().any(|s| s.kind == crate::tray::SegmentKind::Clipboard && s.rect.contains(p)) {
+                self.toggle_clipmenu();
+                return;
+            }
             if self.tray.on_menubar_click(p, &segs) {
                 return;
             }
@@ -4141,7 +4428,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
         layers.extend(self.render_dock_ctx());
@@ -4178,6 +4465,11 @@ or a remote-side error — its authorized_keys was left untouched)",
         {
             let st = self.tray_state.read().unwrap();
             layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            if self.clipmenu.is_open() {
+                let hist = self.clip_history();
+                let paused = hist.paused();
+                layers.extend(self.clipmenu.render(self.w, self.h, &hist, paused));
+            }
         }
 
         // The working-directory picker renders on top of the whole desktop.
@@ -4346,7 +4638,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Chrome: menubar (simple glyph) with the taskbar pills.
         let segs = {
             let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments(&st, self.w, 0, self.tray.notif_count())
+            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
         };
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
         layers.extend(self.render_dock_ctx());
@@ -4365,6 +4657,11 @@ or a remote-side error — its authorized_keys was left untouched)",
         {
             let st = self.tray_state.read().unwrap();
             layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            if self.clipmenu.is_open() {
+                let hist = self.clip_history();
+                let paused = hist.paused();
+                layers.extend(self.clipmenu.render(self.w, self.h, &hist, paused));
+            }
         }
         if self.help_open {
             layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
@@ -4487,8 +4784,10 @@ or a remote-side error — its authorized_keys was left untouched)",
         // popover, desktop menu) owns the mouse via the normal chrome path. Never
         // route clicks into the app while one is showing — otherwise clicking an
         // app in the Go launcher (drawn over a focused mouse-app) is swallowed.
-        if self.launcher.is_open()
+        if self.select_mode
+            || self.launcher.is_open()
             || self.help_open
+            || self.clipmenu.is_open()
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
             || self.confirm_close.is_open()

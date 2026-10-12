@@ -206,6 +206,53 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             KeyCode::Char(c) if !ctrl => send(&mut out_stream, &ClientMsg::PowerFormChar(c))?,
                             _ => {}
                         }
+                    } else if f.clipmenu_open {
+                        // Clipboard history popover: typing filters; Alt+c/p/d, Insert, Delete act.
+                        use crate::clipmenu::ClipKey as K;
+                        let alt = k.modifiers.contains(KeyModifiers::ALT) && !ctrl;
+                        // Action letters: Shift+Alt+letter (GUI shortcuts rarely take
+                        // it; plain Alt+letter works too), or the leader then the
+                        // letter, which no GUI ever sees.
+                        let action_letter = |c: char| match c.to_ascii_lowercase() {
+                            'c' => Some(K::Copy),
+                            'p' => Some(K::Pin),
+                            'd' => Some(K::Delete),
+                            _ => None,
+                        };
+                        let key = if leader {
+                            // Leader pending inside the popover: next key is an action.
+                            leader = false;
+                            match k.code {
+                                KeyCode::Char(c) => action_letter(c),
+                                _ => None,
+                            }
+                        } else if is_leader {
+                            leader = true;
+                            None
+                        } else {
+                            // Ctrl+C, Ctrl+D, Ctrl+P and the other terminal control
+                            // keys, and F-keys, are never reused here.
+                            match (k.code, ctrl) {
+                                (KeyCode::Up, _) => Some(K::Up),
+                                (KeyCode::Down, _) => Some(K::Down),
+                                (KeyCode::PageUp, _) => Some(K::PageUp),
+                                (KeyCode::PageDown, _) => Some(K::PageDown),
+                                (KeyCode::Home, _) => Some(K::Home),
+                                (KeyCode::End, _) => Some(K::End),
+                                (KeyCode::Enter, _) => Some(K::Enter),
+                                (KeyCode::Esc, _) => Some(K::Esc),
+                                (KeyCode::Backspace, _) => Some(K::Backspace),
+                                (KeyCode::Tab, _) => Some(K::Pause),
+                                (KeyCode::Insert, _) => Some(K::Pin),
+                                (KeyCode::Delete, _) => Some(K::Delete),
+                                (KeyCode::Char(c), false) if alt => action_letter(c),
+                                (KeyCode::Char(c), false) => Some(K::Char(c)),
+                                _ => None,
+                            }
+                        };
+                        if let Some(key) = key {
+                            send(&mut out_stream, &ClientMsg::ClipMenuKey(key))?;
+                        }
                     } else if f.power_dialog {
                         // Power confirm / forget dialog: Enter/y confirms, Esc/n cancels.
                         leader = false;
@@ -230,6 +277,10 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             (Some("store"), _) => send(&mut out_stream, &ClientMsg::OpenStore)?,
                             (Some("settings"), _) => send(&mut out_stream, &ClientMsg::OpenSettings)?,
                             (Some("activity"), _) => send(&mut out_stream, &ClientMsg::OpenActivity)?,
+                            (Some("clipboard"), _) => send(&mut out_stream, &ClientMsg::ClipMenuToggle)?,
+                            (Some("select"), _) => send(&mut out_stream, &ClientMsg::ToggleSelectMode)?,
+                            (Some("copy"), _) => send(&mut out_stream, &ClientMsg::CopySelection)?,
+                            (Some("paste"), _) => send(&mut out_stream, &ClientMsg::PasteClipboard)?,
                             (Some("help"), _) => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
                             (Some("rename"), _) => send(&mut out_stream, &ClientMsg::RenameFocused)?,
                             (Some("tile"), _) => send(&mut out_stream, &ClientMsg::TileAll)?,

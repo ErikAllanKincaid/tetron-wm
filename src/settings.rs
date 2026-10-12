@@ -19,7 +19,7 @@ fn pal_accent() -> Rgba { crate::theme::current().accent }
 const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
 
 const SIDEBAR_W: i32 = 18;
-const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "About"];
+const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "About"];
 
 /// Roles listed in the Default Apps section (config key, label).
 const DEFAULT_APP_ROLES: &[(&str, &str)] = &[
@@ -45,6 +45,8 @@ pub enum SettingsAction {
     CheckUpdates,
     /// Install the latest version.
     InstallUpdate,
+    /// Empty the clipboard history (memory and disk).
+    ClearClipboard,
 }
 
 /// In-progress custom-app entry shown in the Apps section's add form.
@@ -122,6 +124,7 @@ impl Settings {
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
             5 => 2,                            // assistant: open-as mode, agent
+            6 => 8,                            // clipboard: history, disk, selections, size, shims, osc52 read, fake display, clear
             _ => 0,                            // About
         }
     }
@@ -299,6 +302,20 @@ impl Settings {
                 };
                 self.cfg.assistant_command = Some(agents[next].to_string());
             }
+            // Clipboard section.
+            (6, 0) => self.cfg.clipboard_history = flip(self.cfg.clipboard_history, dir),
+            (6, 1) => self.cfg.clipboard_persist = flip(self.cfg.clipboard_persist, dir),
+            (6, 2) => self.cfg.clipboard_record_selection = flip(self.cfg.clipboard_record_selection, dir),
+            (6, 3) => {
+                const SIZES: [usize; 7] = [10, 25, 50, 100, 250, 500, 1000];
+                let cur = SIZES.iter().position(|s| *s >= self.cfg.clipboard_history_size).unwrap_or(SIZES.len() - 1);
+                let next = match dir { -1 => cur.saturating_sub(1), _ => (cur + 1) % SIZES.len() };
+                self.cfg.clipboard_history_size = SIZES[next];
+            }
+            (6, 4) => self.cfg.clipboard_shims = cycle(&["auto", "on", "off"], &self.cfg.clipboard_shims, dir),
+            (6, 5) => self.cfg.clipboard_osc52_read = cycle(&["focused", "always", "never"], &self.cfg.clipboard_osc52_read, dir),
+            (6, 6) => self.cfg.clipboard_fake_display = flip(self.cfg.clipboard_fake_display, dir),
+            (6, 7) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
             (4, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -506,6 +523,21 @@ impl Settings {
                     self.row(&mut buf, cx, 3 + i as i32, i, label, format!("\u{25C2} {} \u{25B8}", shown));
                 }
             }
+            6 => {
+                let c = &self.cfg;
+                self.row(&mut buf, cx, 3, 0, "Keep history", toggle_val(c.clipboard_history));
+                self.row(&mut buf, cx, 4, 1, "Save to disk", toggle_val(c.clipboard_persist));
+                self.row(&mut buf, cx, 5, 2, "Record selections", toggle_val(c.clipboard_record_selection));
+                self.row(&mut buf, cx, 6, 3, "History size", format!("\u{25C2} {} \u{25B8}", c.clipboard_history_size));
+                self.row(&mut buf, cx, 7, 4, "xclip/wl-copy shims", format!("\u{25C2} {} \u{25B8}", c.clipboard_shims));
+                self.row(&mut buf, cx, 8, 5, "OSC 52 reads", format!("\u{25C2} {} \u{25B8}", c.clipboard_osc52_read));
+                self.row(&mut buf, cx, 9, 6, "Display for Neovim", toggle_val(c.clipboard_fake_display));
+                self.row(&mut buf, cx, 10, 7, "Clear history", "Enter".into());
+                buf.write_str(cx, 12, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "More: clipboard_ignore_apps, clipboard_ttl_secs in config.toml.", pal_dim(), pal_bg());
+            }
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
                 buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", pal_dim(), pal_bg());
@@ -576,6 +608,13 @@ fn role_from_key(key: &str) -> crate::openwith::Role {
         "image" => Image, "video" => Video, "audio" => Audio, "text" => Text,
         "code" => Code, "archive" => Archive, "pdf" => Pdf, _ => Other,
     }
+}
+
+/// Step through `options` (wrapping); unknown current value starts at the first.
+fn cycle(options: &[&str], current: &str, dir: i32) -> String {
+    let cur = options.iter().position(|o| *o == current).unwrap_or(0);
+    let next = if dir == -1 { (cur + options.len() - 1) % options.len() } else { (cur + 1) % options.len() };
+    options[next].to_string()
 }
 
 fn flip(current: bool, dir: i32) -> bool {
@@ -810,6 +849,41 @@ mod tests {
         s.sel = 5; // auto-tile toggle
         s.toggle();
         assert!(s.config().auto_tile);
+    }
+
+    #[test]
+    fn clipboard_section_edits_config() {
+        let mut s = Settings::new(Config::default());
+        s.section = SECTIONS.iter().position(|x| *x == "Clipboard").unwrap();
+        assert_eq!(s.item_count(), 8);
+        s.sel = 0;
+        s.toggle();
+        assert!(!s.config().clipboard_history);
+        s.sel = 1;
+        s.toggle();
+        assert!(!s.config().clipboard_persist);
+        s.sel = 3; // 100 -> 250
+        s.right();
+        assert_eq!(s.config().clipboard_history_size, 250);
+        s.left();
+        s.left();
+        assert_eq!(s.config().clipboard_history_size, 50);
+        s.sel = 4;
+        s.toggle();
+        assert_eq!(s.config().clipboard_shims, "on");
+        s.left();
+        s.left();
+        assert_eq!(s.config().clipboard_shims, "off");
+        s.sel = 5;
+        s.toggle();
+        assert_eq!(s.config().clipboard_osc52_read, "always");
+        s.sel = 6;
+        s.toggle();
+        assert!(s.config().clipboard_fake_display);
+        s.sel = 7;
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::ClearClipboard));
+        let _ = s.render(80, 24); // renders without panicking
     }
 
     #[test]

@@ -124,6 +124,8 @@ pub struct Flags {
     pub power_dialog: bool,
     /// No window is focused (empty desktop): bare Enter/Space open the launcher.
     pub no_window: bool,
+    /// The clipboard history popover is open; the client routes keys to it.
+    pub clipmenu_open: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.
     pub logs_focused: bool,
     /// The activity monitor is the focused window; the client routes

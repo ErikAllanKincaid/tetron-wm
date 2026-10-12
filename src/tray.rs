@@ -25,6 +25,8 @@ pub enum SegmentKind {
     Bluetooth,
     Wifi,
     Tetron,
+    Select,
+    Clipboard,
     Bell,
     Clock,
 }
@@ -46,6 +48,19 @@ const GAP: i32 = 2;
 /// priority segments (CPU, then Memory, then Battery) drop out first when
 /// space is tight; the clock is always kept.
 pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize) -> Vec<Segment> {
+    tray_segments_with(state, width, reserve, bells, None, false)
+}
+
+/// Like [`tray_segments`], plus the clipboard segment when `clip` is
+/// `Some((entries, paused))` (clipboard history enabled).
+pub fn tray_segments_with(
+    state: &SystemState,
+    width: i32,
+    reserve: i32,
+    bells: usize,
+    clip: Option<(usize, bool)>,
+    select_mode: bool,
+) -> Vec<Segment> {
     // Display order, left→right.
     use crate::iconset::{status, Status};
     let mut texts: Vec<(SegmentKind, String)> = Vec::new();
@@ -78,6 +93,13 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
         };
         texts.push((SegmentKind::Tetron, format!("{} {connected} {dot}", status(Status::Net))));
     }
+    if select_mode {
+        texts.push((SegmentKind::Select, "SELECT".to_string()));
+    }
+    if let Some((n, paused)) = clip {
+        let tail = if paused { "\u{2016}".to_string() } else { n.to_string() }; // ‖ when paused
+        texts.push((SegmentKind::Clipboard, format!("{} {tail}", status(Status::Clipboard))));
+    }
     if bells > 0 {
         texts.push((SegmentKind::Bell, format!("{} {bells}", status(Status::Bell))));
     }
@@ -103,6 +125,7 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
         SegmentKind::Mem,
         SegmentKind::Battery,
         SegmentKind::Bell,
+        SegmentKind::Clipboard,
         SegmentKind::Tetron,
         SegmentKind::Wifi,
         SegmentKind::Bluetooth,
@@ -258,6 +281,8 @@ impl Tray {
             SegmentKind::Wifi => self.render_wifi(w, h, anchor_x, state),
             SegmentKind::Bluetooth => self.render_bluetooth(w, h, anchor_x, state),
             SegmentKind::Tetron => self.render_tetron(w, h, anchor_x, state),
+            // The clipboard popover is the session's `ClipMenu` overlay, not a tray popover.
+            SegmentKind::Clipboard | SegmentKind::Select => Rendered::default(),
             SegmentKind::Clock => self.render_calendar(w, h, anchor_x, state),
             SegmentKind::Bell => self.render_bell(w, anchor_x),
             SegmentKind::Cpu => self.render_lines(w, h, anchor_x, "CPU", &[

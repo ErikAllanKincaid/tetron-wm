@@ -1,3 +1,7 @@
+pub mod clipboard;
+pub mod clipbridge;
+pub mod clipcli;
+pub mod clipmenu;
 pub mod keymap;
 pub mod cli_help;
 pub mod geometry;

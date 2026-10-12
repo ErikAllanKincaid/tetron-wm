@@ -22,6 +22,14 @@ use std::time::Duration;
 use tetron_wm::protocol::socket_path;
 
 fn main() -> std::io::Result<()> {
+    // Busybox style: invoked as xclip / xsel / wl-copy / wl-paste (through the
+    // shim symlinks), act as that tool against the tetron-wm clipboard.
+    if let Some(name) = std::env::args().next().as_deref().and_then(|a| std::path::Path::new(a).file_name()).and_then(|n| n.to_str()) {
+        if tetron_wm::clipcli::SHIMS.contains(&name) {
+            let rest: Vec<String> = std::env::args().skip(1).collect();
+            std::process::exit(tetron_wm::clipcli::run_shim(name, &rest));
+        }
+    }
     let mut args = std::env::args().skip(1);
     let cmd = args.next();
     let rest: Vec<String> = args.collect();
@@ -40,6 +48,7 @@ fn main() -> std::io::Result<()> {
         }
         Some("--daemon") => tetron_wm::daemon::run(),
         Some("--apphost") => tetron_wm::apphost::server::run(),
+        Some("clip") => std::process::exit(tetron_wm::clipcli::run_clip(&rest)),
         Some("kill") => kill(),
         Some("kill-app") => kill_app(&rest),
         Some("ps") => ps(),

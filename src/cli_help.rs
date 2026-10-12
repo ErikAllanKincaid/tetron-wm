@@ -35,6 +35,17 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("assistant_args", "[]", "extra arguments for the assistant CLI"),
     ("assistant_mode", "panel", "assistant layout: panel | window"),
     ("update_branch", "main", "updater channel: main (release) | dev (source build)"),
+    ("clipboard_history", "true", "record everything copied; browse from the menubar clipboard segment"),
+    ("clipboard_persist", "true", "save the history to disk (~/.local/share/tetron-wm, mode 0600)"),
+    ("clipboard_record_selection", "true", "record mouse selections, not just explicit copies"),
+    ("clipboard_history_size", "100", "maximum unpinned history entries"),
+    ("clipboard_item_max_kb", "256", "do not record entries larger than this"),
+    ("clipboard_shims", "auto", "xclip/xsel/wl-copy/wl-paste shims for launched apps: auto (no display) | on | off"),
+    ("clipboard_fake_display", "false", "dummy WAYLAND_DISPLAY (no display) so Neovim uses the clipboard shims"),
+    ("clipboard_gui_bridge", "auto", "mirror the X11/Wayland clipboard into history: auto | on | off"),
+    ("clipboard_osc52_read", "focused", "who may read the clipboard via OSC 52: focused | always | never"),
+    ("clipboard_ignore_apps", "[]", "do not record while these apps are focused (e.g. password managers)"),
+    ("clipboard_ttl_secs", "0", "expire unpinned entries after N seconds (0 = never)"),
     ("leader", "ctrl+space", "leader chord, ctrl+<key> (needs reload)"),
     ("keys", "{}", "[keys] leader remaps: action = \"x\" or [\"x\", \"enter\"]"),
     ("dock_badges", "built-in", "[dock_badges] app keyword -> badge color"),
@@ -66,6 +77,9 @@ fn shortcuts() -> String {
         for (keys, desc) in sec.rows {
             s += &format!("  {keys:<8} {desc}\n");
         }
+        for note in sec.notes {
+            s += &format!("  {note}\n");
+        }
     }
     s
 }
@@ -89,6 +103,7 @@ COMMANDS:\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
 \x20                       to edit (e.g. theme --dump nord, then set theme = \"nord\")\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
+\x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
 \x20 service [install|uninstall|status]  per-user apphost service\n\
 \x20 --daemon, --apphost   run the daemon / app host directly\n\
 \x20 -V, --version         print version\n\
