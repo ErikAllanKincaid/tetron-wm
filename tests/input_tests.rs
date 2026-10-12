@@ -32,8 +32,8 @@ fn click_on_bottom_right_corner_starts_resize() {
 fn click_in_content_focuses_and_forwards() {
     let w = win(1, Rect::new(0,1,20,8), 1);
     let act = route_mouse(MouseKind::Down, Point::new(5,4), &[w], None);
-    // content area: raises + forwards local coords (5-1, 4-2) = (4,2)
-    assert_eq!(act, Action::FocusAndForward { id: WindowId(1), local: Point::new(4,2) });
+    // content area: raises + forwards local coords (5-0, 4-2) = (5,2)
+    assert_eq!(act, Action::FocusAndForward { id: WindowId(1), local: Point::new(5,2) });
 }
 
 #[test]

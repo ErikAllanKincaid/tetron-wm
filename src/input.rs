@@ -111,10 +111,10 @@ pub fn route_mouse(kind: MouseKind, p: Point, windows: &[Window], drag: Option<H
     }
     // Rest of the titlebar row → begin move.
     if p.y == r.y { return Action::BeginMove(w.id); }
-    // Right column or bottom row (the window borders) → begin resize.
+    // Right column (the window border, down to the corner) → begin resize.
     // A whole-edge target makes resizing easy to grab, unlike a 1-cell corner.
-    if p.x == r.right() || p.y == r.bottom() { return Action::BeginResize(w.id); }
+    if p.x == r.right() { return Action::BeginResize(w.id); }
     // Content area → focus + forward local coordinates.
-    let local = Point::new(p.x - (r.x + 1), p.y - (r.y + 1));
+    let local = Point::new(p.x - r.x, p.y - (r.y + 1));
     Action::FocusAndForward { id: w.id, local }
 }

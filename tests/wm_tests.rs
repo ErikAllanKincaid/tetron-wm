@@ -99,8 +99,8 @@ fn render_window_draws_title_and_content() {
     let win_layer = layers.last().unwrap();
     let titlerow: String = (0..12).map(|x| win_layer.buf.get(x, 0).unwrap().ch).collect();
     assert!(titlerow.contains("btop"));
-    // content 'h' should appear at inner (1,1)
-    assert_eq!(win_layer.buf.get(1, 1).unwrap().ch, 'h');
+    // content 'h' should appear at inner (0,1): no left border
+    assert_eq!(win_layer.buf.get(0, 1).unwrap().ch, 'h');
 }
 
 #[test]

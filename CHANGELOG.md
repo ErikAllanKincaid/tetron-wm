@@ -10,6 +10,10 @@ carry user-visible feature work and the occasional breaking config change.
 
 - `web_home` config key (default `https://lite.duckduckgo.com/lite/`): the start page for text browsers launched with no URL.
 
+### Changed
+
+- Windows no longer draw a left or bottom border: content now reaches the left edge and the bottom row, reclaiming a column and a row. Resize is by the right edge (including the bottom-right corner) only.
+
 ### Fixed
 
 - Launching w3m with no URL (launcher > Web > w3m, or `tetron-wm launch w3m`) opened and closed a window instantly because w3m prints its usage and exits; it now opens `web_home`. Catalog entries can opt in with `"needs_url": true`.

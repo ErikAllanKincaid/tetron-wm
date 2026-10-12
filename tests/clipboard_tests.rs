@@ -274,8 +274,8 @@ fn mouse_selection_in_an_app_is_recorded() {
     launch(&mut core, "echo hello world; sleep 4");
     std::thread::sleep(Duration::from_millis(500));
     let r = core.focused_window_rect_for_test().expect("a window");
-    // Content starts one cell inside the frame; the text is on its first row.
-    let (x0, y0) = (r.x + 1, r.y + 1);
+    // Content starts at the window left edge (no left border), below the titlebar.
+    let (x0, y0) = (r.x, r.y + 1);
     core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
     core.apply(ClientMsg::MouseDrag(Point::new(x0 + 4, y0)));
     core.apply(ClientMsg::MouseUp(Point::new(x0 + 4, y0)));
@@ -300,7 +300,7 @@ fn select_mode_stops_mouse_passthrough_until_a_selection_is_made() {
     assert!(core.select_mode());
     assert!(core.app_mouse_area().is_none(), "select mode: no passthrough");
     let r = core.focused_window_rect_for_test().unwrap();
-    let (x0, y0) = (r.x + 1, r.y + 1);
+    let (x0, y0) = (r.x, r.y + 1);
     core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
     core.apply(ClientMsg::MouseDrag(Point::new(x0 + 4, y0)));
     core.apply(ClientMsg::MouseUp(Point::new(x0 + 4, y0)));
@@ -328,7 +328,7 @@ fn select_mode_selects_text_out_of_w3m() {
     core.apply(ClientMsg::ToggleSelectMode);
     let r = core.focused_window_rect_for_test().unwrap();
     // The text is on the first content row; select across it.
-    let (x0, y0) = (r.x + 1, r.y + 1);
+    let (x0, y0) = (r.x, r.y + 1);
     core.apply(ClientMsg::MouseDown(Point::new(x0, y0)));
     core.apply(ClientMsg::MouseDrag(Point::new(x0 + 12, y0)));
     core.apply(ClientMsg::MouseUp(Point::new(x0 + 12, y0)));

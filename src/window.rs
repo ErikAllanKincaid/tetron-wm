@@ -54,15 +54,15 @@ pub struct Window {
 }
 
 impl Window {
-    /// Inner content rectangle (excludes the 1-row titlebar and 1-column borders).
+    /// Inner content rectangle (excludes the 1-row titlebar and right border only; no left or bottom border).
     ///
     /// Width and height are clamped to 0 so callers never get a negative size.
     pub fn content_rect(&self) -> Rect {
         Rect::new(
-            self.rect.x + 1,
+            self.rect.x,
             self.rect.y + 1,
-            (self.rect.w - 2).max(0),
-            (self.rect.h - 2).max(0),
+            (self.rect.w - 1).max(0),
+            (self.rect.h - 1).max(0),
         )
     }
 
