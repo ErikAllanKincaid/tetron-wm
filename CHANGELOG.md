@@ -12,6 +12,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Changed
 
+- Menubar tray popovers gain an action row that opens a real tool in a window: CPU offers `htop` (or `top` when htop is absent), Memory offers `free -h` (or `vm_stat` on macOS, held open until Enter), Battery offers `jolt` when installed. With no tool available the popover is unchanged. The WiFi label is truncated to 6 characters.
+- Bluetooth tray glyph in the ascii and emoji icon styles is now ≋ (U+224B) instead of ⏻, which read as the power symbol and is missing from most monospace fonts; DejaVu Sans Mono covers ≋.
 - Windows no longer draw a left or bottom border: content now reaches the left edge and the bottom row, reclaiming a column and a row. Resize is by the right edge (including the bottom-right corner) only.
 
 ### Fixed

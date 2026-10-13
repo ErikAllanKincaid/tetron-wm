@@ -159,3 +159,63 @@ fn calendar_lists_upcoming_events() {
     }
     assert!(found, "event line rendered in the calendar popover");
 }
+
+#[test]
+fn wifi_label_is_truncated_to_six_chars() {
+    let mut st = sample();
+    st.wifi = Some(WifiInfo { ssid: "HomeNetwork5G".into(), signal: 3, enabled: true });
+    let segs = tray_segments(&st, 100, 9, 0);
+    let wifi = segs.iter().find(|s| s.kind == SegmentKind::Wifi).unwrap();
+    assert!(wifi.text.ends_with(" HomeNe"), "label: {:?}", wifi.text);
+    // Multi-byte names truncate on characters, not bytes.
+    st.wifi = Some(WifiInfo { ssid: "café-lounge".into(), signal: 3, enabled: true });
+    let segs = tray_segments(&st, 100, 9, 0);
+    let wifi = segs.iter().find(|s| s.kind == SegmentKind::Wifi).unwrap();
+    assert!(wifi.text.ends_with(" café-l"), "label: {:?}", wifi.text);
+}
+
+#[test]
+fn popover_offers_the_right_tool() {
+    use tetron_wm::tray::segment_app;
+    let none = |_: &str| false;
+    let all = |_: &str| true;
+    // CPU: htop when present, else top.
+    let cpu = segment_app(SegmentKind::Cpu, &all).unwrap();
+    assert_eq!((cpu.command.as_str(), cpu.label.as_str()), ("htop", "Open htop"));
+    assert_eq!(segment_app(SegmentKind::Cpu, &none).unwrap().command, "top");
+    // Memory: free -h (held open), vm_stat without free, no action with neither.
+    let mem = segment_app(SegmentKind::Mem, &all).unwrap();
+    assert_eq!((mem.command.as_str(), mem.label.as_str()), ("sh", "Open free -h"));
+    assert!(mem.args[1].starts_with("free -h;"), "{:?}", mem.args);
+    let only_vm = |b: &str| b == "vm_stat";
+    assert!(segment_app(SegmentKind::Mem, &only_vm).unwrap().args[1].starts_with("vm_stat;"));
+    assert!(segment_app(SegmentKind::Mem, &none).is_none());
+    // Battery: jolt when installed, else no action row.
+    assert_eq!(segment_app(SegmentKind::Battery, &all).unwrap().command, "jolt");
+    assert!(segment_app(SegmentKind::Battery, &none).is_none());
+    // Other segments have no action row.
+    assert!(segment_app(SegmentKind::Wifi, &all).is_none());
+    assert!(segment_app(SegmentKind::Clock, &all).is_none());
+}
+
+#[test]
+fn cpu_popover_has_a_clickable_open_row() {
+    use tetron_wm::system::ControlIntent;
+    use tetron_wm::tray::Tray;
+    let mut tray = Tray::new();
+    tray.force_open(SegmentKind::Cpu);
+    let r = tray.render(100, 30, &sample());
+    // top is always available, htop when installed: either way one OpenTool row.
+    let hit = r.hits.iter().find(|h| matches!(h.intent, ControlIntent::OpenTool { .. }));
+    let hit = hit.expect("CPU popover has an Open row");
+    match &hit.intent {
+        ControlIntent::OpenTool { title, command, .. } => {
+            assert_eq!(title, "CPU");
+            assert!(command == "htop" || command == "top", "{command}");
+        }
+        _ => unreachable!(),
+    }
+    // Clicking that row maps back to the same intent.
+    let p = tetron_wm::geometry::Point::new(hit.rect.x + 1, hit.rect.y);
+    assert!(matches!(tray.on_popover_click(p, &r), Some(ControlIntent::OpenTool { .. })));
+}

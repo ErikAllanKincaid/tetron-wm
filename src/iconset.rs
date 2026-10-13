@@ -102,7 +102,7 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
             VolMute => '\u{2717}',         // ✗
             VolLow => '\u{266A}',          // ♪
             VolHigh => '\u{266B}',         // ♫
-            Bluetooth => '\u{23FB}',       // ⏻
+            Bluetooth => '\u{224B}',       // ≋ (not ⏻, the power symbol)
             Net => '\u{21C4}',             // ⇄
             Bell => '\u{237E}',            // ⍾ bell symbol
             Clipboard => '\u{2398}',       // ⎘
@@ -129,7 +129,7 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
             VolMute => '\u{1F507}',        // 🔇
             VolLow => '\u{1F509}',         // 🔉
             VolHigh => '\u{1F50A}',        // 🔊
-            Bluetooth => '\u{23FB}',       // ⏻ (no bluetooth emoji; the "bt" label carries it)
+            Bluetooth => '\u{224B}',       // ≋ (no bluetooth emoji; the "bt" label carries it)
             Net => '\u{1F517}',            // 🔗
             Bell => '\u{1F514}',           // 🔔
             Clipboard => '\u{1F4CB}',      // 📋

@@ -1577,6 +1577,12 @@ impl SessionCore {
                 }
                 return;
             }
+            I::OpenTool { title, command, args } => {
+                // A popover "Open <tool>" row: run it in a window.
+                self.tray.close();
+                self.launch_in(title, command, args, None);
+                return;
+            }
             I::TetronOpenTerminal => {
                 // Prefer the native tetron-tui panel when installed; otherwise
                 // fall back to showing status and dropping to an interactive

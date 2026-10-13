@@ -31,6 +31,57 @@ pub enum SegmentKind {
     Clock,
 }
 
+/// A tool a tray popover offers to open in a window.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolAction {
+    /// Window title.
+    pub title: String,
+    /// Popover row text, e.g. "Open htop".
+    pub label: String,
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+/// The tool a segment's popover offers, or `None` for no action row. `installed`
+/// answers "is this binary on `$PATH`" so the choice is testable without
+/// touching the host.
+///   - CPU: `htop` when installed, else `top`.
+///   - Memory: `free -h` (held open until Enter, since it exits at once); on a
+///     host without `free` (macOS) `vm_stat` instead.
+///   - Battery: `jolt` when installed.
+pub fn segment_app(kind: SegmentKind, installed: &dyn Fn(&str) -> bool) -> Option<ToolAction> {
+    let hold = "; printf '\\nPress Enter to close. '; read _k";
+    let tool = |title: &str, cmd: &str| ToolAction {
+        title: title.into(),
+        label: format!("Open {cmd}"),
+        command: cmd.into(),
+        args: Vec::new(),
+    };
+    match kind {
+        SegmentKind::Cpu => Some(tool("CPU", if installed("htop") { "htop" } else { "top" })),
+        SegmentKind::Mem => {
+            let show = if installed("free") {
+                "free -h"
+            } else if installed("vm_stat") {
+                "vm_stat"
+            } else {
+                return None;
+            };
+            Some(ToolAction {
+                title: "Memory".into(),
+                label: format!("Open {show}"),
+                command: "sh".into(),
+                args: vec!["-c".into(), format!("{show}{hold}")],
+            })
+        }
+        SegmentKind::Battery if installed("jolt") => Some(tool("Battery", "jolt")),
+        _ => None,
+    }
+}
+
+/// Longest WiFi network name shown in the menubar label (the popover has the full name).
+const WIFI_LABEL_MAX: usize = 6;
+
 /// A laid-out tray segment: its kind, display text, and screen rect (row 0).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
@@ -76,7 +127,7 @@ pub fn tray_segments_with(
         texts.push((SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth))));
     }
     if let Some(w) = &state.wifi {
-        let name = if w.ssid.is_empty() { "wifi".to_string() } else { w.ssid.clone() };
+        let name = if w.ssid.is_empty() { "wifi".to_string() } else { w.ssid.chars().take(WIFI_LABEL_MAX).collect() };
         texts.push((SegmentKind::Wifi, format!("{} {}", bars_glyph(w.signal), name)));
     }
     // tetron: only when the daemon answered (installed + running). `⇄{peers}`
@@ -285,13 +336,13 @@ impl Tray {
             SegmentKind::Clipboard | SegmentKind::Select => Rendered::default(),
             SegmentKind::Clock => self.render_calendar(w, h, anchor_x, state),
             SegmentKind::Bell => self.render_bell(w, anchor_x),
-            SegmentKind::Cpu => self.render_lines(w, h, anchor_x, "CPU", &[
+            SegmentKind::Cpu => self.render_lines(w, h, anchor_x, "CPU", SegmentKind::Cpu, &[
                 format!("{:.0}% load", state.cpu_pct),
             ]),
-            SegmentKind::Mem => self.render_lines(w, h, anchor_x, "Memory", &[
+            SegmentKind::Mem => self.render_lines(w, h, anchor_x, "Memory", SegmentKind::Mem, &[
                 format!("{}% used", mem_pct(state.mem.used, state.mem.total)),
             ]),
-            SegmentKind::Battery => self.render_lines(w, h, anchor_x, "Battery", &[
+            SegmentKind::Battery => self.render_lines(w, h, anchor_x, "Battery", SegmentKind::Battery, &[
                 state.battery.map(|b| format!("{}%{}", b.pct, if b.charging { format!(" {}", crate::iconset::status(crate::iconset::Status::BatteryCharging)) } else { String::new() }))
                     .unwrap_or_else(|| "no battery".into()),
             ]),
@@ -478,7 +529,7 @@ impl Tray {
     fn render_calendar(&self, w: i32, h: i32, anchor_x: i32, st: &St) -> Rendered {
         let c = &st.clock;
         if c.year == 0 {
-            return self.render_lines(w, h, anchor_x, "Clock", &[
+            return self.render_lines(w, h, anchor_x, "Clock", SegmentKind::Clock, &[
                 c.date.clone(),
                 format!("up {}h", c.uptime_secs / 3600),
             ]);
@@ -555,10 +606,11 @@ impl Tray {
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 
-    fn render_lines(&self, w: i32, _h: i32, anchor_x: i32, title: &str, lines: &[String]) -> Rendered {
+    fn render_lines(&self, w: i32, _h: i32, anchor_x: i32, title: &str, kind: SegmentKind, lines: &[String]) -> Rendered {
         let t = crate::theme::current();
         let box_w = 24;
-        let box_h = 2 + lines.len() as i32;
+        let action = segment_app(kind, &crate::catalog::is_installed);
+        let box_h = 2 + lines.len() as i32 + action.is_some() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);
@@ -566,7 +618,17 @@ impl Tray {
         for (i, l) in lines.iter().enumerate() {
             buf.write_str(2, 2 + i as i32, l, t.text, t.window_bg);
         }
-        Rendered { layers: vec![layer(origin, buf)], hits: Vec::new(), bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
+        let mut hits = Vec::new();
+        if let Some(a) = action {
+            // Action row below the readout: click opens the tool in a window.
+            let y = 2 + lines.len() as i32;
+            buf.write_str(2, y, &format!("\u{25B8} {}", a.label), t.accent, t.window_bg);
+            hits.push(PopoverHit {
+                rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
+                intent: ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args },
+            });
+        }
+        Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 }
 

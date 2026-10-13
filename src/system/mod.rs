@@ -152,6 +152,9 @@ pub enum ControlIntent {
     /// shell where the full tetron CLI (invite/join/admin/…) is available.
     /// Handled by the session (launches a shell), not the OS backend.
     TetronOpenTerminal,
+    /// Open `command args` in a new window (a tray popover's "Open <tool>"
+    /// row: htop/top, free -h, jolt). Handled by the session, not the OS backend.
+    OpenTool { title: String, command: String, args: Vec<String> },
     /// Step the menubar calendar popover a month back/forward. Handled by the
     /// session's tray state, not the OS backend.
     CalendarPrev,
