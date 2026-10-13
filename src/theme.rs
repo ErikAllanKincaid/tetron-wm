@@ -384,7 +384,7 @@ fn luminance(c: Rgba) -> f64 {
 }
 
 /// WCAG contrast ratio between two colors (1.0 = identical … 21.0 = black/white).
-fn contrast(a: Rgba, b: Rgba) -> f64 {
+pub fn contrast(a: Rgba, b: Rgba) -> f64 {
     let (la, lb) = (luminance(a), luminance(b));
     let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
     (hi + 0.05) / (lo + 0.05)

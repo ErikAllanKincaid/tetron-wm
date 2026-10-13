@@ -935,6 +935,10 @@ impl SessionCore {
         }
     }
 
+    /// The live config (integration tests).
+    #[doc(hidden)]
+    pub fn config_for_test(&self) -> &Config { &self.cfg }
+
     /// Replace the live config and re-apply the clipboard settings, as the
     /// Settings panel does on every change (integration tests).
     #[doc(hidden)]
@@ -1143,6 +1147,18 @@ impl SessionCore {
                 if let Some(s) = self.focused_settings_mut() {
                     s.set_update_status(msg);
                 }
+            }
+            Some(crate::settings::SettingsAction::PreviewColors) => {
+                let staged = self.focused_settings_mut().map(|s| {
+                    let (bg, fg) = s.staged_colors();
+                    (bg.map(String::from), fg.map(String::from))
+                });
+                if let Some((bg, fg)) = staged {
+                    self.apphost.set_colors(&self.cfg.theme, bg.as_deref(), fg.as_deref());
+                }
+            }
+            Some(crate::settings::SettingsAction::RevertColors) => {
+                self.push_terminal_colors();
             }
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
@@ -2743,6 +2759,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.app_keys.insert(id, "Settings".into());
         let mut panel = Settings::new(self.cfg.clone());
         panel.set_apphost_outdated(self.apphost_outdated);
+        panel.set_colors_live(self.apphost.proto_version() >= 4);
         self.contents.insert(id, WinContent::Settings(Box::new(panel)));
         self.titles.push((id, "Settings".into()));
         self.settings_win = Some(id);
@@ -4273,6 +4290,8 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     fn close(&mut self, id: WindowId) {
+        // Closing Settings with an unsaved color preview puts the saved colors back.
+        let revert_preview = matches!(self.contents.get(&id), Some(WinContent::Settings(s)) if s.previewing());
         // An install window is kept alive (it `exec`s a shell after the install so
         // the output stays readable), so it never trips `reap_dead`; instead we
         // refresh here when the user closes it, so the new app appears immediately.
@@ -4315,6 +4334,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
         self.wm.close(id);
+        if revert_preview {
+            self.push_terminal_colors();
+        }
         if was_install {
             self.refresh_installed_apps();
         }

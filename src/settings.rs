@@ -16,10 +16,11 @@ fn pal_dim() -> Rgba { crate::theme::current().dim }
 fn pal_sel() -> Rgba { crate::theme::current().active_bg }
 fn pal_accent() -> Rgba { crate::theme::current().accent }
 // Semantic success color (e.g. the "on"/checked state); not theme-swapped.
+const RED: Rgba = Rgba { r: 255, g: 107, b: 107, a: 255 };
 const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
 
 const SIDEBAR_W: i32 = 18;
-const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "About"];
+const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "About"];
 
 /// Roles listed in the Default Apps section (config key, label).
 const DEFAULT_APP_ROLES: &[(&str, &str)] = &[
@@ -47,6 +48,43 @@ pub enum SettingsAction {
     InstallUpdate,
     /// Empty the clipboard history (memory and disk).
     ClearClipboard,
+    /// Send the panel's staged terminal colors to the apphost without saving
+    /// (read them with [`Settings::staged_colors`]).
+    PreviewColors,
+    /// Put the saved terminal colors back after a preview.
+    RevertColors,
+}
+
+/// Terminal color presets: (name, background, foreground). `None` = follow the
+/// desktop theme.
+const TERM_PRESETS: &[(&str, Option<&str>, Option<&str>)] = &[
+    ("follow theme", None, None),
+    ("dark", Some("#0d1117"), Some("#c9d1d9")),
+    ("light", Some("#ffffff"), Some("#1a1a1a")),
+    ("black", Some("#000000"), Some("#e6e6e6")),
+    ("solarized dark", Some("#002b36"), Some("#839496")),
+    ("solarized light", Some("#fdf6e3"), Some("#657b83")),
+    ("gruvbox dark", Some("#282828"), Some("#ebdbb2")),
+    ("nord", Some("#2e3440"), Some("#d8dee9")),
+    ("dracula", Some("#282a36"), Some("#f8f8f2")),
+    ("green phosphor", Some("#000000"), Some("#33ff66")),
+    ("amber phosphor", Some("#000000"), Some("#ffb000")),
+];
+
+/// Which setting the single-line text box is editing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TextTarget {
+    Wallpaper,
+    TermBg,
+    TermFg,
+}
+
+/// The open text box: its target, the in-progress text, and whether the last
+/// commit attempt was rejected (invalid color).
+struct TextEdit {
+    target: TextTarget,
+    buf: String,
+    error: bool,
 }
 
 /// In-progress custom-app entry shown in the Apps section's add form.
@@ -69,15 +107,27 @@ pub struct Settings {
     update_status: String,
     /// `Some` while the Apps section's add form is open.
     edit: Option<AppEdit>,
-    /// `Some` while the Appearance → Wallpaper filename box is being typed into;
-    /// holds the in-progress text (committed to `cfg.wallpaper` on Enter).
-    wp_edit: Option<String>,
+    /// `Some` while a single-line text box is open (wallpaper filename, terminal
+    /// background/foreground), committed on Enter.
+    text: Option<TextEdit>,
+    /// Terminal colors being edited in the Terminal section. They stay out of
+    /// `cfg` (the saved values) until Save, so a preview never reaches disk.
+    stage_bg: Option<String>,
+    stage_fg: Option<String>,
+    /// A preview of the staged colors is live in the apphost (unsaved).
+    previewing: bool,
+    /// The apphost can apply colors live (protocol v4+).
+    colors_live: bool,
 }
 
 impl Settings {
     /// Create a settings panel editing a copy of `cfg`.
     pub fn new(cfg: Config) -> Self {
-        Self { apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(), edit: None, wp_edit: None }
+        let (stage_bg, stage_fg) = (cfg.terminal_bg.clone(), cfg.terminal_fg.clone());
+        Self {
+            apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
+            edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
+        }
     }
 
     /// Take a pending action requested by the user (cleared on read).
@@ -96,6 +146,22 @@ impl Settings {
         self.apphost_outdated = outdated;
     }
 
+    /// Whether the running apphost can apply terminal colors live; when it can
+    /// not, the Terminal section says a restart is needed.
+    pub fn set_colors_live(&mut self, live: bool) {
+        self.colors_live = live;
+    }
+
+    /// The terminal colors being edited (background, foreground), unsaved.
+    pub fn staged_colors(&self) -> (Option<&str>, Option<&str>) {
+        (self.stage_bg.as_deref(), self.stage_fg.as_deref())
+    }
+
+    /// A preview of the staged colors is live and unsaved.
+    pub fn previewing(&self) -> bool {
+        self.previewing
+    }
+
     /// Jump to the Updates section (used to reopen there after an update reload).
     pub fn show_updates_section(&mut self) {
         if let Some(i) = SECTIONS.iter().position(|s| *s == "Updates") {
@@ -112,7 +178,7 @@ impl Settings {
     /// Whether the Apps section's text-entry form is currently open (the client
     /// forwards typed characters only in this state).
     pub fn is_editing(&self) -> bool {
-        self.edit.is_some() || self.wp_edit.is_some()
+        self.edit.is_some() || self.text.is_some()
     }
 
     /// Number of interactive rows in the current section.
@@ -125,12 +191,13 @@ impl Settings {
             4 => DEFAULT_APP_ROLES.len(),
             5 => 2,                            // assistant: open-as mode, agent
             6 => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
+            7 => 6,                            // terminal: preset, background, foreground, preview, save, revert
             _ => 0,                            // About
         }
     }
 
     pub fn move_up(&mut self) {
-        if self.wp_edit.is_some() {
+        if self.text.is_some() {
             return; // typing a filename — arrows do nothing
         }
         if let Some(e) = self.edit.as_mut() {
@@ -140,7 +207,7 @@ impl Settings {
         self.sel = self.sel.saturating_sub(1);
     }
     pub fn move_down(&mut self) {
-        if self.wp_edit.is_some() {
+        if self.text.is_some() {
             return;
         }
         if let Some(e) = self.edit.as_mut() {
@@ -152,7 +219,7 @@ impl Settings {
         }
     }
     pub fn prev_section(&mut self) {
-        if self.edit.is_some() || self.wp_edit.is_some() {
+        if self.edit.is_some() || self.text.is_some() {
             return; // don't leave a half-typed form via arrow keys
         }
         if self.section > 0 {
@@ -161,7 +228,7 @@ impl Settings {
         }
     }
     pub fn next_section(&mut self) {
-        if self.edit.is_some() || self.wp_edit.is_some() {
+        if self.edit.is_some() || self.text.is_some() {
             return;
         }
         if self.section + 1 < SECTIONS.len() {
@@ -178,8 +245,9 @@ impl Settings {
                 0 => e.name.push(c),
                 _ => e.command.push(c),
             }
-        } else if let Some(s) = self.wp_edit.as_mut() {
-            s.push(c);
+        } else if let Some(t) = self.text.as_mut() {
+            t.buf.push(c);
+            t.error = false;
         }
     }
 
@@ -190,8 +258,9 @@ impl Settings {
                 0 => { e.name.pop(); }
                 _ => { e.command.pop(); }
             }
-        } else if let Some(s) = self.wp_edit.as_mut() {
-            s.pop();
+        } else if let Some(t) = self.text.as_mut() {
+            t.buf.pop();
+            t.error = false;
         }
     }
 
@@ -199,7 +268,7 @@ impl Settings {
     /// wallpaper filename box).
     pub fn cancel_edit(&mut self) {
         self.edit = None;
-        self.wp_edit = None;
+        self.text = None;
     }
 
     /// Toggle / activate the selected row.
@@ -217,11 +286,11 @@ impl Settings {
 
     /// Apply a change to the selected setting. `dir`: 0 = toggle, -1/+1 = down/up.
     fn adjust(&mut self, dir: i32) {
-        // While the wallpaper filename box is open, Enter (dir 0) commits it and
-        // every other adjust is swallowed so typing cannot change another row.
-        if self.wp_edit.is_some() {
+        // While a text box is open, Enter (dir 0) commits it and every other
+        // adjust is swallowed so typing cannot change another row.
+        if self.text.is_some() {
             if dir == 0 {
-                self.commit_wallpaper();
+                self.commit_text();
             }
             return;
         }
@@ -262,7 +331,7 @@ impl Settings {
             // Wallpaper filename: Enter opens the text box (pre-filled with the
             // current value); ←/→ do nothing (it is free text, not a cycler).
             (1, 3) if dir == 0 => {
-                self.wp_edit = Some(self.cfg.wallpaper.clone().unwrap_or_default());
+                self.text = Some(TextEdit { target: TextTarget::Wallpaper, buf: self.cfg.wallpaper.clone().unwrap_or_default(), error: false });
             }
             // Icon label scrim on/off: "on" keeps the default (or a configured
             // color); "off" stores "none" so labels sit directly on the wallpaper.
@@ -338,6 +407,45 @@ impl Settings {
                 self.cfg.clipboard_item_max_kb = KBS[next];
             }
             (6, 9) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
+            // Terminal section: staged colors; nothing reaches the apphost or disk
+            // until Preview / Save.
+            (7, 0) => {
+                let same = |a: &Option<String>, b: &Option<&str>| a.as_deref().map(str::to_lowercase) == b.map(str::to_string);
+                let cur = TERM_PRESETS.iter().position(|(_, bg, fg)| same(&self.stage_bg, bg) && same(&self.stage_fg, fg));
+                let n = TERM_PRESETS.len();
+                let next = match (cur, dir) {
+                    (Some(c), -1) => (c + n - 1) % n,
+                    (Some(c), _) => (c + 1) % n,
+                    (None, -1) => n - 1,
+                    (None, _) => 0,
+                };
+                let (_, bg, fg) = TERM_PRESETS[next];
+                self.stage_bg = bg.map(String::from);
+                self.stage_fg = fg.map(String::from);
+            }
+            (7, 1) if dir == 0 => {
+                self.text = Some(TextEdit { target: TextTarget::TermBg, buf: self.stage_bg.clone().unwrap_or_default(), error: false });
+            }
+            (7, 2) if dir == 0 => {
+                self.text = Some(TextEdit { target: TextTarget::TermFg, buf: self.stage_fg.clone().unwrap_or_default(), error: false });
+            }
+            (7, 3) if dir == 0 => {
+                self.action = Some(SettingsAction::PreviewColors);
+                self.previewing = true;
+            }
+            (7, 4) if dir == 0 => {
+                self.cfg.terminal_bg = self.stage_bg.clone();
+                self.cfg.terminal_fg = self.stage_fg.clone();
+                self.previewing = false;
+            }
+            (7, 5) if dir == 0 => {
+                self.stage_bg = self.cfg.terminal_bg.clone();
+                self.stage_fg = self.cfg.terminal_fg.clone();
+                if self.previewing {
+                    self.action = Some(SettingsAction::RevertColors);
+                }
+                self.previewing = false;
+            }
             (4, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -413,12 +521,32 @@ impl Settings {
         self.sel = self.cfg.launcher.len(); // park on the "＋ Add app…" row
     }
 
-    /// Save the wallpaper filename box into `cfg.wallpaper` (empty = no
-    /// wallpaper → `None`), then close the box.
-    fn commit_wallpaper(&mut self) {
-        if let Some(s) = self.wp_edit.take() {
-            let s = s.trim();
-            self.cfg.wallpaper = if s.is_empty() { None } else { Some(s.to_string()) };
+    /// Commit the open text box. The wallpaper name is saved into `cfg` (empty =
+    /// none). A terminal color goes to the staged value (empty = follow the
+    /// theme); an invalid color keeps the box open with an error note.
+    fn commit_text(&mut self) {
+        let Some(mut e) = self.text.take() else { return };
+        let s = e.buf.trim().to_string();
+        match e.target {
+            TextTarget::Wallpaper => {
+                self.cfg.wallpaper = if s.is_empty() { None } else { Some(s) };
+            }
+            TextTarget::TermBg | TextTarget::TermFg => {
+                let val = if s.is_empty() {
+                    None
+                } else if crate::badge::parse_color(&s).is_some() {
+                    Some(s)
+                } else {
+                    e.error = true;
+                    self.text = Some(e);
+                    return;
+                };
+                if e.target == TextTarget::TermBg {
+                    self.stage_bg = val;
+                } else {
+                    self.stage_fg = val;
+                }
+            }
         }
     }
 
@@ -431,9 +559,15 @@ impl Settings {
         // confirm) and cancels the multi-field Apps form (a half-typed command
         // should not be saved). Either way this click only dismisses; it does
         // not also action the row under it, so nothing changes by surprise.
-        if self.wp_edit.is_some() {
-            self.commit_wallpaper();
-            return true;
+        if let Some(t) = self.text.as_ref() {
+            // The wallpaper name commits on click-away; a half-typed color is
+            // discarded instead (committing it would stage a wrong color).
+            if t.target == TextTarget::Wallpaper {
+                self.commit_text();
+                return true;
+            }
+            self.text = None;
+            return false;
         }
         if self.edit.is_some() {
             self.edit = None;
@@ -495,8 +629,8 @@ impl Settings {
                 self.row(&mut buf, cx, 5, 2, "Wallpaper", toggle_val(self.cfg.wallpaper_enabled));
                 // Filename text box. While editing, show the live buffer with a
                 // cursor; otherwise the saved value (or a placeholder).
-                let file_val = match &self.wp_edit {
-                    Some(s) => format!("{s}\u{2588}"), // block cursor while typing
+                let file_val = match self.text.as_ref().filter(|t| t.target == TextTarget::Wallpaper) {
+                    Some(t) => format!("{}\u{2588}", t.buf), // block cursor while typing
                     None => match self.cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
                         Some(p) => p.to_string(),
                         None => "(none — press Enter to type)".to_string(),
@@ -566,6 +700,7 @@ impl Settings {
                 buf.write_str(cx, 16, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
                 buf.write_str(cx, 17, "More: clipboard_ignore_apps in config.toml.", pal_dim(), pal_bg());
             }
+            7 => self.render_terminal(&mut buf, cx),
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
                 buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", pal_dim(), pal_bg());
@@ -573,6 +708,57 @@ impl Settings {
             }
         }
         buf
+    }
+
+    /// Render the Terminal section: staged colors with swatches, the
+    /// Preview / Save / Revert rows, and status or warning notes.
+    fn render_terminal(&self, buf: &mut CellBuffer, cx: i32) {
+        let same = |a: &Option<String>, b: &Option<&str>| a.as_deref().map(str::to_lowercase) == b.map(str::to_string);
+        let preset = TERM_PRESETS
+            .iter()
+            .find(|(_, bg, fg)| same(&self.stage_bg, bg) && same(&self.stage_fg, fg))
+            .map(|(n, _, _)| *n)
+            .unwrap_or("custom");
+        self.row(buf, cx, 3, 0, "Colors preset", format!("\u{25C2} {preset} \u{25B8}"));
+        let shown = |target: TextTarget, staged: &Option<String>| match self.text.as_ref().filter(|t| t.target == target) {
+            Some(t) => format!("{}\u{2588}", t.buf),
+            None => staged.clone().unwrap_or_else(|| "(theme)".into()),
+        };
+        let th = crate::theme::current();
+        let bg_val = shown(TextTarget::TermBg, &self.stage_bg);
+        let fg_val = shown(TextTarget::TermFg, &self.stage_fg);
+        self.row(buf, cx, 4, 1, "Background", bg_val.clone());
+        self.row(buf, cx, 5, 2, "Foreground", fg_val.clone());
+        let bg_rgb = self.stage_bg.as_deref().and_then(crate::badge::parse_color);
+        let fg_rgb = self.stage_fg.as_deref().and_then(crate::badge::parse_color);
+        // Swatches: the color itself where set, else the theme default it falls back to.
+        buf.write_str(cx + 30 + bg_val.chars().count() as i32 + 1, 4, "\u{25A0}", bg_rgb.unwrap_or(th.window_bg), pal_bg());
+        buf.write_str(cx + 30 + fg_val.chars().count() as i32 + 1, 5, "\u{25A0}", fg_rgb.unwrap_or(th.text), pal_bg());
+        let dirty = self.stage_bg != self.cfg.terminal_bg || self.stage_fg != self.cfg.terminal_fg;
+        self.row(buf, cx, 6, 3, "Preview (not saved)", "Enter".into());
+        self.row(buf, cx, 7, 4, "Save", if dirty { "Enter (unsaved)".into() } else { "Enter".into() });
+        self.row(buf, cx, 8, 5, "Revert", "Enter".into());
+        let mut y = 10;
+        let mut note = |buf: &mut CellBuffer, text: &str, col: Rgba| {
+            buf.write_str(cx, y, text, col, pal_bg());
+            y += 1;
+        };
+        if self.previewing {
+            note(buf, "Preview is live. Save keeps it, Revert undoes it.", GREEN);
+        } else if dirty {
+            note(buf, "Edited, not applied yet. Preview to see it.", pal_dim());
+        }
+        if crate::theme::contrast(bg_rgb.unwrap_or(th.window_bg), fg_rgb.unwrap_or(th.text)) < 3.0 {
+            note(buf, "Low contrast: terminal text may be hard to read.", RED);
+        }
+        if self.text.as_ref().is_some_and(|t| t.error) {
+            note(buf, "Not a color: use #rrggbb or a color name.", RED);
+        }
+        if !self.colors_live {
+            note(buf, "App server predates live colors: restart it to apply.", pal_dim());
+        }
+        note(buf, "Empty value = follow the desktop theme.", pal_dim());
+        note(buf, "Running terminals repaint on Preview; no restart.", pal_dim());
     }
 
     /// Render the Apps section: either the add form or the custom-app list.
@@ -715,6 +901,140 @@ mod tests {
         while SECTIONS[s.section] != "Apps" {
             s.next_section();
         }
+    }
+
+    fn to_terminal(s: &mut Settings) {
+        s.section = SECTIONS.iter().position(|x| *x == "Terminal").unwrap();
+        s.sel = 0;
+    }
+
+    /// All text on the panel, one string per row, for assertions.
+    fn screen(s: &Settings) -> String {
+        let b = s.render(100, 30);
+        (0..b.height())
+            .map(|y| (0..b.width()).filter_map(|x| b.get(x, y).map(|c| c.ch)).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn type_str(s: &mut Settings, t: &str) {
+        for c in t.chars() {
+            s.type_char(c);
+        }
+    }
+
+    #[test]
+    fn terminal_preset_stages_without_touching_saved_config() {
+        let mut s = Settings::new(Config::default());
+        to_terminal(&mut s);
+        assert_eq!(s.item_count(), 6);
+        s.right(); // follow theme -> dark
+        assert_eq!(s.staged_colors(), (Some("#0d1117"), Some("#c9d1d9")));
+        assert_eq!(s.config().terminal_bg, None, "staging never writes the saved config");
+        assert!(screen(&s).contains("dark"));
+        s.left();
+        assert_eq!(s.staged_colors(), (None, None));
+        s.left(); // wraps to the last preset
+        assert_eq!(s.staged_colors(), (Some("#000000"), Some("#ffb000")));
+    }
+
+    #[test]
+    fn preview_then_save_persists_and_revert_restores() {
+        let mut s = Settings::new(Config::default());
+        to_terminal(&mut s);
+        s.right();
+        s.sel = 3; // Preview
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::PreviewColors));
+        assert!(s.previewing());
+        assert_eq!(s.config().terminal_bg, None, "preview is not saved");
+        assert!(screen(&s).contains("Preview is live"));
+        // Revert: staged goes back to the saved (unset) colors and the apphost is told.
+        s.sel = 5;
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::RevertColors));
+        assert!(!s.previewing());
+        assert_eq!(s.staged_colors(), (None, None));
+        // Stage again and save.
+        s.sel = 0;
+        s.right();
+        s.sel = 4;
+        s.toggle();
+        assert_eq!(s.config().terminal_bg.as_deref(), Some("#0d1117"));
+        assert_eq!(s.config().terminal_fg.as_deref(), Some("#c9d1d9"));
+        assert_eq!(s.take_action(), None, "save does not preview; the session syncs the config");
+        // Revert with nothing previewed asks the session for nothing.
+        s.sel = 5;
+        s.toggle();
+        assert_eq!(s.take_action(), None);
+    }
+
+    #[test]
+    fn hex_entry_validates_and_clears() {
+        let mut s = Settings::new(Config::default());
+        to_terminal(&mut s);
+        s.sel = 1;
+        s.toggle(); // open the Background box
+        assert!(s.is_editing());
+        type_str(&mut s, "zzz");
+        s.toggle(); // Enter on garbage
+        assert!(s.is_editing(), "an invalid color keeps the box open");
+        assert!(screen(&s).contains("Not a color"));
+        s.backspace();
+        s.backspace();
+        s.backspace();
+        type_str(&mut s, "#1a2b3c");
+        s.toggle();
+        assert!(!s.is_editing());
+        assert_eq!(s.staged_colors().0, Some("#1a2b3c"));
+        assert!(screen(&s).contains("custom"), "a hand-typed value matches no preset");
+        // A color name works too.
+        s.sel = 2;
+        s.toggle();
+        type_str(&mut s, "red");
+        s.toggle();
+        assert_eq!(s.staged_colors().1, Some("red"));
+        // Empty clears back to following the theme.
+        s.sel = 1;
+        s.toggle();
+        for _ in 0..7 {
+            s.backspace();
+        }
+        s.toggle();
+        assert_eq!(s.staged_colors().0, None);
+    }
+
+    #[test]
+    fn color_box_discards_on_escape_and_click_away() {
+        let mut s = Settings::new(Config::default());
+        to_terminal(&mut s);
+        s.sel = 1;
+        s.toggle();
+        type_str(&mut s, "#abcdef");
+        s.cancel_edit();
+        assert_eq!(s.staged_colors().0, None, "Esc discards");
+        s.toggle();
+        type_str(&mut s, "#abcdef");
+        assert!(!s.handle_click(Point::new(40, 12), 100, 30), "a click away only dismisses");
+        assert!(!s.is_editing());
+        assert_eq!(s.staged_colors().0, None, "click-away discards a half-typed color");
+    }
+
+    #[test]
+    fn terminal_section_warns_on_low_contrast_and_old_apphost() {
+        let mut s = Settings::new(Config::default());
+        to_terminal(&mut s);
+        s.sel = 1;
+        s.toggle();
+        type_str(&mut s, "#777777");
+        s.toggle();
+        s.sel = 2;
+        s.toggle();
+        type_str(&mut s, "#7a7a7a");
+        s.toggle();
+        assert!(screen(&s).contains("Low contrast"));
+        s.set_colors_live(false);
+        assert!(screen(&s).contains("restart"));
     }
 
     #[test]
