@@ -161,41 +161,80 @@ fn calendar_lists_upcoming_events() {
 }
 
 #[test]
-fn wifi_label_is_truncated_to_six_chars() {
+fn network_label_is_wifi_or_net_without_the_ssid() {
+    use tetron_wm::system::NetInfo;
     let mut st = sample();
     st.wifi = Some(WifiInfo { ssid: "HomeNetwork5G".into(), signal: 3, enabled: true });
-    let segs = tray_segments(&st, 100, 9, 0);
-    let wifi = segs.iter().find(|s| s.kind == SegmentKind::Wifi).unwrap();
-    assert!(wifi.text.ends_with(" HomeNe"), "label: {:?}", wifi.text);
-    // Multi-byte names truncate on characters, not bytes.
-    st.wifi = Some(WifiInfo { ssid: "café-lounge".into(), signal: 3, enabled: true });
-    let segs = tray_segments(&st, 100, 9, 0);
-    let wifi = segs.iter().find(|s| s.kind == SegmentKind::Wifi).unwrap();
-    assert!(wifi.text.ends_with(" café-l"), "label: {:?}", wifi.text);
+    let label = |st: &SystemState| tray_segments(st, 100, 9, 0).into_iter().find(|s| s.kind == SegmentKind::Wifi).map(|s| s.text);
+    let t = label(&st).unwrap();
+    assert!(t.ends_with(" wifi") && !t.contains("Home"), "label: {t:?}");
+    // Wired default route wins over an idle WiFi radio.
+    st.net = Some(NetInfo { iface: "eth0".into(), ip: "10.0.0.5".into(), wifi: false });
+    assert!(label(&st).unwrap().ends_with(" net"));
+    // Wired only, no WiFi hardware.
+    st.wifi = None;
+    assert!(label(&st).unwrap().ends_with(" net"));
+    // No link and no WiFi: segment hidden.
+    st.net = None;
+    assert!(label(&st).is_none());
+}
+
+#[test]
+fn network_popover_shows_ip_and_copies_it() {
+    use tetron_wm::system::{ControlIntent, NetInfo};
+    use tetron_wm::tray::Tray;
+    let mut st = sample();
+    st.net = Some(NetInfo { iface: "wlan0".into(), ip: "192.168.1.42".into(), wifi: true });
+    let mut tray = Tray::new();
+    tray.force_open(SegmentKind::Wifi);
+    let r = tray.render(100, 30, &st);
+    let text: String = r.layers.iter().flat_map(|l| {
+        let b = &l.buf;
+        (0..b.height()).flat_map(move |y| (0..b.width()).filter_map(move |x| b.get(x, y).map(|c| c.ch)).chain(std::iter::once('\n')))
+    }).collect();
+    assert!(text.contains("192.168.1.42 (wlan0)"), "{text}");
+    assert!(text.contains("SSID  wlan"), "{text}");
+    assert!(r.hits.iter().any(|h| h.intent == ControlIntent::CopyText("192.168.1.42".into())));
+    // No link: Offline, no copy row.
+    st.net = None;
+    st.wifi = None;
+    let r = tray.render(100, 30, &st);
+    assert!(r.hits.iter().all(|h| !matches!(h.intent, ControlIntent::CopyText(_))));
 }
 
 #[test]
 fn popover_offers_the_right_tool() {
+    use tetron_wm::traytools::TrayTools;
     use tetron_wm::tray::segment_app;
+    let cfg = TrayTools::new();
     let none = |_: &str| false;
     let all = |_: &str| true;
     // CPU: htop when present, else top.
-    let cpu = segment_app(SegmentKind::Cpu, &all).unwrap();
+    let cpu = segment_app(SegmentKind::Cpu, &cfg, &all).unwrap();
     assert_eq!((cpu.command.as_str(), cpu.label.as_str()), ("htop", "Open htop"));
-    assert_eq!(segment_app(SegmentKind::Cpu, &none).unwrap().command, "top");
+    assert_eq!(segment_app(SegmentKind::Cpu, &cfg, &none).unwrap().command, "top");
     // Memory: free -h (held open), vm_stat without free, no action with neither.
-    let mem = segment_app(SegmentKind::Mem, &all).unwrap();
+    let mem = segment_app(SegmentKind::Mem, &cfg, &all).unwrap();
     assert_eq!((mem.command.as_str(), mem.label.as_str()), ("sh", "Open free -h"));
     assert!(mem.args[1].starts_with("free -h;"), "{:?}", mem.args);
     let only_vm = |b: &str| b == "vm_stat";
-    assert!(segment_app(SegmentKind::Mem, &only_vm).unwrap().args[1].starts_with("vm_stat;"));
-    assert!(segment_app(SegmentKind::Mem, &none).is_none());
-    // Battery: jolt when installed, else no action row.
-    assert_eq!(segment_app(SegmentKind::Battery, &all).unwrap().command, "jolt");
-    assert!(segment_app(SegmentKind::Battery, &none).is_none());
+    assert!(segment_app(SegmentKind::Mem, &cfg, &only_vm).unwrap().args[1].starts_with("vm_stat;"));
+    assert!(segment_app(SegmentKind::Mem, &cfg, &none).is_none());
+    // Battery: jolt, else upower, else pmset, else no row.
+    assert_eq!(segment_app(SegmentKind::Battery, &cfg, &all).unwrap().command, "jolt");
+    let only_up = |b: &str| b == "upower";
+    assert!(segment_app(SegmentKind::Battery, &cfg, &only_up).unwrap().args[1].starts_with("upower -i"));
+    assert!(segment_app(SegmentKind::Battery, &cfg, &none).is_none());
+    // Network: wlctl first, ip as the held fallback.
+    assert_eq!(segment_app(SegmentKind::Wifi, &cfg, &all).unwrap().command, "wlctl");
+    let only_ip = |b: &str| b == "ip";
+    assert!(segment_app(SegmentKind::Wifi, &cfg, &only_ip).unwrap().args[1].starts_with("ip -br addr"));
+    // Bluetooth: bluetuith first, bluetoothctl next.
+    assert_eq!(segment_app(SegmentKind::Bluetooth, &cfg, &all).unwrap().command, "bluetuith");
+    let only_ctl = |b: &str| b == "bluetoothctl";
+    assert_eq!(segment_app(SegmentKind::Bluetooth, &cfg, &only_ctl).unwrap().command, "bluetoothctl");
     // Other segments have no action row.
-    assert!(segment_app(SegmentKind::Wifi, &all).is_none());
-    assert!(segment_app(SegmentKind::Clock, &all).is_none());
+    assert!(segment_app(SegmentKind::Clock, &cfg, &all).is_none());
 }
 
 #[test]

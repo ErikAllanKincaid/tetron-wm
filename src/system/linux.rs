@@ -3,7 +3,7 @@
 
 use super::{
     run_capped, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
-    SystemReadout, VolumeInfo, WifiInfo,
+    NetInfo, SystemReadout, VolumeInfo, WifiInfo,
 };
 
 /// argv for `wpctl set-volume` (level 0..=100 → 0.00..=1.00).
@@ -55,6 +55,7 @@ impl SystemMonitor for LinuxBackend {
         SystemReadout {
             volume: if self.has_wpctl { read_volume() } else { VolumeInfo::default() },
             wifi: if self.has_nmcli { read_wifi() } else { None },
+            net: read_net(),
             known_networks: if self.has_nmcli { read_known() } else { Vec::new() },
             bluetooth: if self.has_bt { read_bt() } else { BluetoothInfo::default() },
         }
@@ -131,6 +132,15 @@ fn read_wifi() -> Option<WifiInfo> {
         }
     }
     Some(WifiInfo { ssid: String::new(), signal: 0, enabled: true })
+}
+
+/// The default-route interface and its source IP; WiFi if the interface has a
+/// `wireless` directory in sysfs.
+fn read_net() -> Option<NetInfo> {
+    let out = run_capped("ip", &["-4", "route", "get", "1.1.1.1"], 2)?;
+    let (iface, ip) = super::parse_ip_route_get(&out)?;
+    let wifi = std::path::Path::new("/sys/class/net").join(&iface).join("wireless").exists();
+    Some(NetInfo { iface, ip, wifi })
 }
 
 fn read_known() -> Vec<String> {

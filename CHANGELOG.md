@@ -8,6 +8,12 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Added
 
+- Default theme is now `newmoon` (built into the binary; a `newmoon.toml` in the themes dir still overrides it). Configs that set `theme` are unchanged.
+- Built-in default wallpaper (70 KB, embedded): used when the default `wallpaper.jpg` is not on disk, so a fresh install has a wallpaper with no setup (still needs `chafa`).
+- Network tray item: the label is `wifi` (with signal bars) on a WiFi link or `net` on any other link, never the SSID. The popover shows the SSID, the IP and interface of the default route (click copies the IP), `Offline` when there is no link, and an `Open` row (`wlctl`, `nmtui`, `iwctl`, else `ip -br addr`; macOS `networksetup`/`ifconfig`). The item now also appears on wired-only hosts.
+- Battery popover shows time left / to full, and its `Open` row falls back from `jolt` to `upower` (first battery device) then `pmset`.
+- Bluetooth popover `Open` row: `bluetuith`, else `bluetoothctl`, else `blueutil --paired` (macOS).
+- `[tray_tools]` config table: override or disable the `Open` command per tray item (`cpu`, `mem`, `battery`, `bluetooth`, `network`); first installed candidate wins, `hold:` keeps one-shot output open.
 - `web_home` config key (default `https://lite.duckduckgo.com/lite/`): the start page for text browsers launched with no URL.
 
 ### Changed

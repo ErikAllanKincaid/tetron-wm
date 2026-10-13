@@ -183,6 +183,11 @@ pub fn refresh_installed() {
 
 /// Whether an executable `bin` is present on `$PATH`.
 pub fn is_installed(bin: &str) -> bool {
+    // Check the cache in place: this runs per candidate per frame while a tray
+    // popover is open, so it must not clone the whole set.
+    if let Some(set) = BINS.read().unwrap().as_ref() {
+        return set.contains(&bin.to_lowercase());
+    }
     path_bins().contains(&bin.to_lowercase())
 }
 

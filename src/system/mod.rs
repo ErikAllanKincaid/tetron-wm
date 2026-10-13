@@ -10,6 +10,8 @@ pub struct SystemState {
     pub mem: MemInfo,
     pub battery: Option<BatteryInfo>,
     pub wifi: Option<WifiInfo>,
+    /// The primary (default-route) network link, WiFi or not.
+    pub net: Option<NetInfo>,
     pub bluetooth: BluetoothInfo,
     pub volume: VolumeInfo,
     pub known_networks: Vec<String>,
@@ -84,6 +86,37 @@ pub struct MemInfo {
 pub struct BatteryInfo {
     pub pct: u8,
     pub charging: bool,
+    /// Minutes to empty (discharging) or to full (charging), when known.
+    pub mins: Option<u32>,
+}
+/// The primary network link: the interface carrying the default route.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NetInfo {
+    pub iface: String,
+    pub ip: String,
+    /// True for a WiFi interface; false for ethernet, tether, VPN, etc.
+    pub wifi: bool,
+}
+
+/// Parse `ip -4 route get <addr>` output (`... dev wlan0 src 192.168.1.42 ...`)
+/// into `(interface, ip)`.
+pub fn parse_ip_route_get(out: &str) -> Option<(String, String)> {
+    let w: Vec<&str> = out.split_whitespace().collect();
+    let after = |key: &str| w.iter().position(|t| *t == key).and_then(|i| w.get(i + 1)).map(|s| s.to_string());
+    Some((after("dev")?, after("src")?))
+}
+
+/// Parse `route -n get default` (macOS) into the interface name.
+pub fn parse_route_n_get(out: &str) -> Option<String> {
+    out.lines()
+        .find_map(|l| l.trim().strip_prefix("interface:"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Format a minutes count as `h:mm`.
+pub fn fmt_mins(m: u32) -> String {
+    format!("{}:{:02}", m / 60, m % 60)
 }
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct WifiInfo {
@@ -163,12 +196,16 @@ pub enum ControlIntent {
     /// Handled by the session, not the OS backend.
     NotifFocus(u64),
     NotifClear,
+    /// Copy text to the clipboard (the network popover's IP row). Handled by
+    /// the session, not the OS backend.
+    CopyText(String),
 }
 
 /// The OS-specific slice of [`SystemState`] produced by a [`SystemMonitor`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SystemReadout {
     pub wifi: Option<WifiInfo>,
+    pub net: Option<NetInfo>,
     pub bluetooth: BluetoothInfo,
     pub volume: VolumeInfo,
     pub known_networks: Vec<String>,
@@ -253,6 +290,31 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
             }
             Err(_) => return None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn route_get_parses_dev_and_src() {
+        let out = "1.1.1.1 via 192.168.1.1 dev wlan0 src 192.168.1.42 uid 1000 \n    cache";
+        assert_eq!(parse_ip_route_get(out), Some(("wlan0".into(), "192.168.1.42".into())));
+        assert_eq!(parse_ip_route_get("RTNETLINK answers: Network is unreachable"), None);
+    }
+
+    #[test]
+    fn macos_route_get_parses_interface() {
+        let out = "   route to: default\n    gateway: 192.168.1.1\n  interface: en0\n";
+        assert_eq!(parse_route_n_get(out).as_deref(), Some("en0"));
+        assert_eq!(parse_route_n_get("route: writing to routing socket: not in table"), None);
+    }
+
+    #[test]
+    fn mins_format() {
+        assert_eq!(fmt_mins(125), "2:05");
+        assert_eq!(fmt_mins(9), "0:09");
     }
 }
 

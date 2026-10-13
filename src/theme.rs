@@ -142,6 +142,28 @@ impl Theme {
         }
     }
 
+    /// New Moon: near-black desktop with cool blue-grey chrome and a sky-blue
+    /// accent. The default theme.
+    pub const fn newmoon() -> Self {
+        Theme {
+            desktop_bg: rgb(0, 0, 0),
+            window_bg: rgb(17, 20, 29),
+            title_focus: rgb(29, 36, 51),
+            title_blur: rgb(20, 24, 34),
+            title_fg: rgb(143, 183, 255),
+            border: rgb(58, 68, 88),
+            shadow: Rgba { r: 0, g: 0, b: 0, a: 110 },
+            ctrl_fg: rgb(150, 165, 190),
+            close_fg: rgb(255, 107, 107),
+            menubar_bg: rgb(22, 27, 39),
+            dock_bg: rgb(22, 27, 39),
+            text: rgb(200, 208, 220),
+            dim: rgb(120, 130, 150),
+            accent: rgb(108, 182, 255),
+            active_bg: rgb(45, 58, 85),
+        }
+    }
+
     /// Resolve a theme by name. A user theme file of the same name (loaded into the
     /// registry) wins over a built-in; otherwise a built-in preset; else `midnight`.
     pub fn named(name: &str) -> Self {
@@ -156,6 +178,7 @@ impl Theme {
     /// This is the base a partial theme file inherits from.
     fn builtin(lname: &str) -> Self {
         match lname {
+            "newmoon" => Self::newmoon(),
             "nord" => Self::nord(),
             "gruvbox" => Self::gruvbox(),
             "dracula" => Self::dracula(),
@@ -170,7 +193,7 @@ impl Theme {
 
 /// The names of the built-in presets (for the Settings cycler). File themes are
 /// appended at runtime by [`preset_names`].
-pub const PRESETS: &[&str] = &["midnight", "nord", "gruvbox", "dracula", "pastoral"];
+pub const PRESETS: &[&str] = &["newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral"];
 
 /// All theme names offered in the UI: the built-in presets, then any file themes
 /// whose name does not shadow a built-in (a same-named file overrides the built-in

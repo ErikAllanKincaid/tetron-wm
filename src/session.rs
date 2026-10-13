@@ -699,6 +699,7 @@ impl SessionCore {
             systems,
             switch_to: None,
         };
+        core.tray.set_tools(core.cfg.tray_tools.clone());
         core.generate_role_icons();
         core.reload_desktop();
         core
@@ -937,6 +938,7 @@ impl SessionCore {
     #[doc(hidden)]
     pub fn set_config_for_test(&mut self, cfg: Config) {
         self.cfg = cfg;
+        self.tray.set_tools(self.cfg.tray_tools.clone());
         self.apply_clipboard_config();
     }
 
@@ -1581,6 +1583,12 @@ impl SessionCore {
                 // A popover "Open <tool>" row: run it in a window.
                 self.tray.close();
                 self.launch_in(title, command, args, None);
+                return;
+            }
+            I::CopyText(text) => {
+                self.tray.close();
+                self.set_clipboard(&text);
+                self.clip_record(&text, crate::clipboard::ClipSource::Copy);
                 return;
             }
             I::TetronOpenTerminal => {
@@ -2782,6 +2790,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
             self.cfg = cfg;
+            self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
             let _ = self.cfg.save();
             if launcher_changed {
@@ -4354,6 +4363,14 @@ or a remote-side error — its authorized_keys was left untouched)",
                 let spec = cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
                 crate::wallpaper::resolve_path(spec)
             }
+        };
+        // The default name with no such file on disk falls back to the built-in image.
+        let is_default = cfg.wallpaper.as_deref().map(str::trim) == Some(crate::wallpaper::DEFAULT_NAME)
+            && std::env::var_os("TETRON_WM_WALLPAPER").is_none_or(|v| v.is_empty());
+        let path = if !path.exists() && is_default {
+            crate::wallpaper::ensure_default().unwrap_or(path)
+        } else {
+            path
         };
         if !path.exists() {
             crate::dbg_log(&format!("wallpaper: file not found: {}", path.display()));

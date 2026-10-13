@@ -90,6 +90,7 @@ fn run(state: Arc<RwLock<SystemState>>) {
             s.battery = battery;
             if let Some((r, caps)) = readout {
                 s.wifi = r.wifi;
+                s.net = r.net;
                 s.bluetooth = r.bluetooth;
                 s.volume = r.volume;
                 s.known_networks = r.known_networks;
@@ -139,7 +140,18 @@ fn read_battery() -> Option<BatteryInfo> {
                 let charging = std::fs::read_to_string(p.join("status"))
                     .map(|s| matches!(s.trim(), "Charging" | "Full"))
                     .unwrap_or(false);
-                return Some(BatteryInfo { pct: pct.min(100), charging });
+                let rd = |f: &str| {
+                    std::fs::read_to_string(p.join(f)).ok().and_then(|s| s.trim().parse::<u64>().ok())
+                };
+                // energy_* (µWh) with power_now (µW), or charge_* (µAh) with current_now (µA).
+                let (now, full, rate) = if rd("energy_now").is_some() {
+                    (rd("energy_now"), rd("energy_full"), rd("power_now"))
+                } else {
+                    (rd("charge_now"), rd("charge_full"), rd("current_now"))
+                };
+                let full_state = std::fs::read_to_string(p.join("status")).map(|s| s.trim() == "Full").unwrap_or(false);
+                let mins = if full_state { None } else { battery_mins(now, full, rate, charging) };
+                return Some(BatteryInfo { pct: pct.min(100), charging, mins });
             }
         }
         None
@@ -153,6 +165,18 @@ fn read_battery() -> Option<BatteryInfo> {
     {
         None
     }
+}
+
+/// Minutes to empty (discharging) or to full (charging) from sysfs counters.
+/// `None` when a counter is missing or the rate is zero.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn battery_mins(now: Option<u64>, full: Option<u64>, rate: Option<u64>, charging: bool) -> Option<u32> {
+    let (now, full, rate) = (now?, full?, rate?);
+    if rate == 0 {
+        return None;
+    }
+    let left = if charging { full.saturating_sub(now) } else { now };
+    Some((left as u128 * 60 / rate as u128).min(u32::MAX as u128) as u32)
 }
 
 /// Probe each saved remote system's ssh port (TCP connect, 400ms cap) so the
@@ -241,7 +265,12 @@ fn parse_pmset_batt(out: &str) -> Option<BatteryInfo> {
         .and_then(|n| n.parse::<u8>().ok())?;
     // "discharging" contains "charging", so match the delimited token.
     let charging = out.contains("AC Power") || out.contains("; charging") || out.contains("; charged");
-    Some(BatteryInfo { pct: pct.min(100), charging })
+    // "3:10 remaining" / "0:42 until full" (absent while "(no estimate)").
+    let mins = out.split_whitespace().find_map(|w| {
+        let (h, m) = w.split_once(':')?;
+        Some(h.parse::<u32>().ok()? * 60 + m.parse::<u32>().ok()?)
+    });
+    Some(BatteryInfo { pct: pct.min(100), charging, mins })
 }
 
 #[cfg(test)]
@@ -260,7 +289,17 @@ mod tests {
         assert_eq!(b.pct, 47);
         assert!(!b.charging, "'discharging' must not read as charging");
 
+        assert_eq!(parse_pmset_batt(charging).unwrap().mins, Some(42));
+        assert_eq!(parse_pmset_batt(discharging).unwrap().mins, Some(190));
         assert!(parse_pmset_batt("Now drawing from 'AC Power'").is_none(), "no battery line → None");
+    }
+
+    #[test]
+    fn battery_minutes_from_counters() {
+        assert_eq!(battery_mins(Some(30_000), Some(50_000), Some(15_000), false), Some(120));
+        assert_eq!(battery_mins(Some(30_000), Some(50_000), Some(20_000), true), Some(60));
+        assert_eq!(battery_mins(Some(1), Some(2), Some(0), false), None);
+        assert_eq!(battery_mins(None, Some(2), Some(1), false), None);
     }
 
     #[test]

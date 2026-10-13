@@ -31,56 +31,30 @@ pub enum SegmentKind {
     Clock,
 }
 
-/// A tool a tray popover offers to open in a window.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ToolAction {
-    /// Window title.
-    pub title: String,
-    /// Popover row text, e.g. "Open htop".
-    pub label: String,
-    pub command: String,
-    pub args: Vec<String>,
-}
+pub use crate::traytools::ToolAction;
 
-/// The tool a segment's popover offers, or `None` for no action row. `installed`
-/// answers "is this binary on `$PATH`" so the choice is testable without
-/// touching the host.
-///   - CPU: `htop` when installed, else `top`.
-///   - Memory: `free -h` (held open until Enter, since it exits at once); on a
-///     host without `free` (macOS) `vm_stat` instead.
-///   - Battery: `jolt` when installed.
-pub fn segment_app(kind: SegmentKind, installed: &dyn Fn(&str) -> bool) -> Option<ToolAction> {
-    let hold = "; printf '\\nPress Enter to close. '; read _k";
-    let tool = |title: &str, cmd: &str| ToolAction {
-        title: title.into(),
-        label: format!("Open {cmd}"),
-        command: cmd.into(),
-        args: Vec::new(),
-    };
+/// The `[tray_tools]` item key for a segment, if its popover has an Open row.
+fn tool_item(kind: SegmentKind) -> Option<&'static str> {
     match kind {
-        SegmentKind::Cpu => Some(tool("CPU", if installed("htop") { "htop" } else { "top" })),
-        SegmentKind::Mem => {
-            let show = if installed("free") {
-                "free -h"
-            } else if installed("vm_stat") {
-                "vm_stat"
-            } else {
-                return None;
-            };
-            Some(ToolAction {
-                title: "Memory".into(),
-                label: format!("Open {show}"),
-                command: "sh".into(),
-                args: vec!["-c".into(), format!("{show}{hold}")],
-            })
-        }
-        SegmentKind::Battery if installed("jolt") => Some(tool("Battery", "jolt")),
+        SegmentKind::Cpu => Some("cpu"),
+        SegmentKind::Mem => Some("mem"),
+        SegmentKind::Battery => Some("battery"),
+        SegmentKind::Wifi => Some("network"),
+        SegmentKind::Bluetooth => Some("bluetooth"),
         _ => None,
     }
 }
 
-/// Longest WiFi network name shown in the menubar label (the popover has the full name).
-const WIFI_LABEL_MAX: usize = 6;
+/// The tool a segment's popover offers, or `None` for no action row. `installed`
+/// answers "is this binary on `$PATH`" so the choice is testable without
+/// touching the host; `cfg` is the user's `[tray_tools]` override.
+pub fn segment_app(
+    kind: SegmentKind,
+    cfg: &crate::traytools::TrayTools,
+    installed: &dyn Fn(&str) -> bool,
+) -> Option<ToolAction> {
+    crate::traytools::pick(tool_item(kind)?, cfg, installed)
+}
 
 /// A laid-out tray segment: its kind, display text, and screen rect (row 0).
 #[derive(Clone, Debug, PartialEq)]
@@ -126,9 +100,16 @@ pub fn tray_segments_with(
     if state.caps.bluetooth || state.bluetooth.enabled {
         texts.push((SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth))));
     }
-    if let Some(w) = &state.wifi {
-        let name = if w.ssid.is_empty() { "wifi".to_string() } else { w.ssid.chars().take(WIFI_LABEL_MAX).collect() };
-        texts.push((SegmentKind::Wifi, format!("{} {}", bars_glyph(w.signal), name)));
+    // Network: `wifi` (with signal bars) when the primary link is WiFi, `net`
+    // for any other link (ethernet, tether, VPN). The SSID lives in the popover.
+    if state.wifi.is_some() || state.net.is_some() {
+        let on_wifi = state.net.as_ref().map(|n| n.wifi).unwrap_or(true);
+        if on_wifi {
+            let sig = state.wifi.as_ref().map(|w| w.signal).unwrap_or(0);
+            texts.push((SegmentKind::Wifi, format!("{} wifi", bars_glyph(sig))));
+        } else {
+            texts.push((SegmentKind::Wifi, format!("{} net", status(Status::Net))));
+        }
     }
     // tetron: only when the daemon answered (installed + running). `⇄{peers}`
     // with a direct(●)/relay(○) dot, or `off` on reachable standby.
@@ -248,11 +229,18 @@ pub struct Tray {
     cal_offset: i32,
     /// Pending bell notifications, newest first.
     notifs: Vec<Notif>,
+    /// `[tray_tools]` overrides for the popovers' Open rows.
+    tools: crate::traytools::TrayTools,
 }
 
 impl Tray {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the `[tray_tools]` config (call on startup and config change).
+    pub fn set_tools(&mut self, tools: crate::traytools::TrayTools) {
+        self.tools = tools;
     }
 
     /// The kind whose popover is currently open, if any.
@@ -342,10 +330,16 @@ impl Tray {
             SegmentKind::Mem => self.render_lines(w, h, anchor_x, "Memory", SegmentKind::Mem, &[
                 format!("{}% used", mem_pct(state.mem.used, state.mem.total)),
             ]),
-            SegmentKind::Battery => self.render_lines(w, h, anchor_x, "Battery", SegmentKind::Battery, &[
-                state.battery.map(|b| format!("{}%{}", b.pct, if b.charging { format!(" {}", crate::iconset::status(crate::iconset::Status::BatteryCharging)) } else { String::new() }))
-                    .unwrap_or_else(|| "no battery".into()),
-            ]),
+            SegmentKind::Battery => {
+                let mut lines = vec![state.battery.map(|b| format!("{}%{}", b.pct, if b.charging { format!(" {}", crate::iconset::status(crate::iconset::Status::BatteryCharging)) } else { String::new() }))
+                    .unwrap_or_else(|| "no battery".into())];
+                if let Some(b) = state.battery {
+                    if let Some(m) = b.mins {
+                        lines.push(format!("{} {}", crate::system::fmt_mins(m), if b.charging { "to full" } else { "left" }));
+                    }
+                }
+                self.render_lines(w, h, anchor_x, "Battery", SegmentKind::Battery, &lines)
+            }
         }
     }
 
@@ -382,28 +376,67 @@ impl Tray {
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 
+    /// Network popover: WiFi toggle + SSID (when WiFi is present), the primary
+    /// link's IP and interface (click copies the IP), known networks, and the
+    /// Open row. With no link at all it reads "Offline".
     fn render_wifi(&self, w: i32, _h: i32, anchor_x: i32, st: &St) -> Rendered {
         let t = crate::theme::current();
-        let enabled = st.wifi.as_ref().map(|x| x.enabled).unwrap_or(false);
-        let cur = st.wifi.as_ref().map(|x| x.ssid.clone()).unwrap_or_default();
-        let nets: Vec<String> = st.known_networks.iter().take(6).cloned().collect();
-        let box_w = 28;
-        let box_h = 3 + nets.len() as i32;
+        let wifi = st.wifi.as_ref();
+        let enabled = wifi.map(|x| x.enabled).unwrap_or(false);
+        let cur = wifi.map(|x| x.ssid.clone()).unwrap_or_default();
+        let nets: Vec<String> = if wifi.is_some() { st.known_networks.iter().take(6).cloned().collect() } else { Vec::new() };
+        let action = segment_app(SegmentKind::Wifi, &self.tools, &crate::catalog::is_installed);
+        let show_ssid = wifi.is_some() && !cur.is_empty() && st.net.as_ref().map(|n| n.wifi).unwrap_or(true);
+        let box_w = 34;
+        let box_h = 3 + show_ssid as i32 + 1 + nets.len() as i32 + action.is_some() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);
-        buf.write_str(2, 1, &format!("Wi-Fi  [{}]", if enabled { "on" } else { "off" }), t.accent, t.window_bg);
-        let mut hits = vec![PopoverHit {
-            rect: Rect::new(origin.x + 9, origin.y + 1, 4, 1),
-            intent: ControlIntent::WifiSetEnabled(!enabled),
-        }];
-        for (i, ssid) in nets.iter().enumerate() {
-            let y = 2 + i as i32;
+        let mut hits = Vec::new();
+        if wifi.is_some() {
+            buf.write_str(2, 1, &format!("Wi-Fi  [{}]", if enabled { "on" } else { "off" }), t.accent, t.window_bg);
+            hits.push(PopoverHit {
+                rect: Rect::new(origin.x + 9, origin.y + 1, 4, 1),
+                intent: ControlIntent::WifiSetEnabled(!enabled),
+            });
+        } else {
+            buf.write_str(2, 1, "Network", t.accent, t.window_bg);
+        }
+        let cap = (box_w - 4) as usize;
+        let mut y = 2;
+        if show_ssid {
+            let line: String = format!("SSID  {cur}").chars().take(cap).collect();
+            buf.write_str(2, y, &line, t.text, t.window_bg);
+            y += 1;
+        }
+        match &st.net {
+            Some(n) if !n.ip.is_empty() => {
+                let line: String = format!("IP    {} ({})", n.ip, n.iface).chars().take(cap).collect();
+                buf.write_str(2, y, &line, t.text, t.window_bg);
+                hits.push(PopoverHit {
+                    rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
+                    intent: ControlIntent::CopyText(n.ip.clone()),
+                });
+            }
+            Some(n) => buf.write_str(2, y, &format!("{} (no IP)", n.iface), t.dim, t.window_bg),
+            None => buf.write_str(2, y, "Offline", t.dim, t.window_bg),
+        }
+        y += 1;
+        for ssid in &nets {
             let mark = if *ssid == cur { "●" } else { " " };
-            buf.write_str(2, y, &format!("{} {}", mark, ssid), t.text, t.window_bg);
+            let line: String = format!("{} {}", mark, ssid).chars().take(cap).collect();
+            buf.write_str(2, y, &line, t.text, t.window_bg);
             hits.push(PopoverHit {
                 rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
                 intent: ControlIntent::WifiConnectKnown(ssid.clone()),
+            });
+            y += 1;
+        }
+        if let Some(a) = action {
+            buf.write_str(2, y, &format!("\u{25B8} {}", a.label), t.accent, t.window_bg);
+            hits.push(PopoverHit {
+                rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
+                intent: ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args },
             });
         }
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
@@ -414,7 +447,8 @@ impl Tray {
         let bt = &st.bluetooth;
         let devs: Vec<_> = bt.devices.iter().take(6).cloned().collect();
         let box_w = 30;
-        let box_h = 3 + devs.len().max(1) as i32;
+        let action = segment_app(SegmentKind::Bluetooth, &self.tools, &crate::catalog::is_installed);
+        let box_h = 3 + devs.len().max(1) as i32 + action.is_some() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);
@@ -435,6 +469,14 @@ impl Tray {
             hits.push(PopoverHit {
                 rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
                 intent: ControlIntent::BtConnect { addr: d.addr.clone(), connect: !d.connected },
+            });
+        }
+        if let Some(a) = action {
+            let y = 2 + devs.len().max(1) as i32;
+            buf.write_str(2, y, &format!("\u{25B8} {}", a.label), t.accent, t.window_bg);
+            hits.push(PopoverHit {
+                rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
+                intent: ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args },
             });
         }
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
@@ -609,7 +651,7 @@ impl Tray {
     fn render_lines(&self, w: i32, _h: i32, anchor_x: i32, title: &str, kind: SegmentKind, lines: &[String]) -> Rendered {
         let t = crate::theme::current();
         let box_w = 24;
-        let action = segment_app(kind, &crate::catalog::is_installed);
+        let action = segment_app(kind, &self.tools, &crate::catalog::is_installed);
         let box_h = 2 + lines.len() as i32 + action.is_some() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);

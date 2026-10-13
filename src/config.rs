@@ -101,8 +101,8 @@ pub struct Config {
     /// is missing or the image fails to load, the desktop falls back to solid.
     /// The `TETRON_WM_WALLPAPER` env var overrides this key (for quick testing).
     /// Defaults to `wallpaper.jpg` (resolved under `~/.config/tetron-wm/wallpapers/`),
-    /// so dropping a `wallpaper.jpg` there is all it takes; absent, the desktop
-    /// stays solid.
+    /// so dropping a `wallpaper.jpg` there is all it takes; absent, the built-in
+    /// default image is used (set `wallpaper_enabled = false` for a solid desktop).
     #[serde(default = "default_wallpaper", skip_serializing_if = "Option::is_none")]
     pub wallpaper: Option<String>,
     /// Master on/off for the wallpaper. When false, the desktop is solid even if
@@ -210,6 +210,12 @@ pub struct Config {
     /// `launcher = ["l", "enter"]`. Actions and defaults: see `tetron-wm --help`.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub keys: std::collections::BTreeMap<String, crate::keymap::KeySpec>,
+    /// `[tray_tools]`: per-item "Open <tool>" candidates for the tray popovers
+    /// (`cpu`, `mem`, `battery`, `network`); the first installed wins. A value
+    /// is a command line or a list of them; a `hold:` prefix keeps the window
+    /// open until Enter; an empty list removes the row.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub tray_tools: crate::traytools::TrayTools,
     /// Per-app dock badge colors: keyword (matched case-insensitively as a
     /// substring of the app name/command) → color (named or `#rrggbb`).
     #[serde(default = "default_dock_badges", skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -259,7 +265,7 @@ impl Default for Config {
             tile_gap: 0,
             auto_tile: false,
             launch_maximized: false,
-            theme: "nord".into(),
+            theme: "newmoon".into(),
             theme_dir: None,
             terminal_bg: None,
             terminal_fg: None,
@@ -297,6 +303,7 @@ impl Default for Config {
             web_home: "https://lite.duckduckgo.com/lite/".into(),
             leader: None,
             keys: std::collections::BTreeMap::new(),
+            tray_tools: std::collections::BTreeMap::new(),
             dock_badges: default_dock_badges(),
         }
     }
@@ -321,7 +328,7 @@ fn default_dock_badges() -> std::collections::BTreeMap<String, String> {
         .iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
-fn default_theme() -> String { "nord".into() }
+fn default_theme() -> String { "newmoon".into() }
 fn default_assistant_mode() -> String { "panel".into() }
 fn default_update_branch() -> String { "main".into() }
 

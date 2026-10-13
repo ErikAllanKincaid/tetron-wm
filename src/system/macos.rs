@@ -4,7 +4,7 @@
 
 use super::{
     run_capped, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
-    SystemReadout, VolumeInfo, WifiInfo,
+    NetInfo, SystemReadout, VolumeInfo, WifiInfo,
 };
 
 const IF: &str = "en0"; // primary Wi-Fi interface on Apple Silicon Macs
@@ -59,6 +59,7 @@ impl SystemMonitor for MacBackend {
         SystemReadout {
             volume: read_volume(),
             wifi: read_wifi(),
+            net: read_net(),
             known_networks: read_known_networks(),
             bluetooth: if self.has_blueutil {
                 read_bluetooth_blueutil()
@@ -123,6 +124,15 @@ fn read_volume() -> VolumeInfo {
         .map(|s| s.trim() == "true")
         .unwrap_or(false);
     VolumeInfo { level, muted }
+}
+
+/// The default-route interface and its IP; WiFi if it is the WiFi interface.
+fn read_net() -> Option<NetInfo> {
+    let out = run_capped("route", &["-n", "get", "default"], 2)?;
+    let iface = super::parse_route_n_get(&out)?;
+    let ip = run_capped("ipconfig", &["getifaddr", &iface], 2)?.trim().to_string();
+    let wifi = iface == IF;
+    Some(NetInfo { iface, ip, wifi })
 }
 
 fn read_wifi() -> Option<WifiInfo> {

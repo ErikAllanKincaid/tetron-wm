@@ -31,10 +31,10 @@
 #tile_gap = 0
 
 ## ── Appearance ────────────────────────────────────────────────────────────
-# Color theme: a built-in ("midnight", "nord", "gruvbox", "dracula", "pastoral";
-# default: nord) or the stem of a theme file in the themes dir (below). A
+# Color theme: a built-in ("newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral";
+# default: newmoon) or the stem of a theme file in the themes dir (below). A
 # file with a built-in's name overrides that built-in.
-#theme = "nord"
+#theme = "newmoon"
 # Directory of *.toml theme files. Unset = <config>/themes/ (i.e.
 # ~/.config/tetron-wm/themes/). Relative paths resolve against the config dir.
 # Create a starter with: tetron-wm theme --dump <name>   (list all: --list)
@@ -146,3 +146,13 @@
 #[dock_badges]
 #claude = "orange"
 #kilo = "yellow"
+
+# Tray popover "Open ..." rows. Per item (cpu, mem, battery, bluetooth, network): a command
+# line or an ordered list; the first whose program is installed wins. A "hold:"
+# prefix runs it via sh -c and keeps the window open until Enter. [] removes the row.
+#[tray_tools]
+#cpu = ["btop", "htop", "top"]
+#battery = ["jolt", "hold:upower -i $(upower -e | grep -m1 -i bat)"]
+#bluetooth = "bluetuith"
+#network = "nmtui"
+#mem = []

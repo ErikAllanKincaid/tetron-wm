@@ -2,7 +2,7 @@
 
 Configuration lives at `~/.config/tetron-wm/config.toml`. Every option has a default, so the file is optional: with no config at all, the defaults below apply. You only add keys you want to change. A ready-to-edit, fully-commented template is `config.example.toml` in the repo root.
 
-Out of the box, snapping and window shadows are off and the default theme is nord.
+Out of the box, snapping and window shadows are off and the default theme is newmoon.
 
 ## Option reference
 
@@ -19,11 +19,11 @@ Each row is the TOML key, its type, the default, and what it does.
 | `grid_rows` | int | `2` | Tiling grid rows (1–6). |
 | `grid_cols` | int | `2` | Tiling grid columns (1–6). |
 | `tile_gap` | int | `0` | Cells of gutter between tiled windows. |
-| `theme` | string | `"nord"` | Color theme: a built-in (`midnight`, `nord`, `gruvbox`, `dracula`, `pastoral`) or the stem of a theme file (see `theme_dir`). A file with a built-in's name overrides it. (`light` is a deprecated alias for `pastoral`.) |
+| `theme` | string | `"newmoon"` | Color theme: a built-in (`newmoon`, `midnight`, `nord`, `gruvbox`, `dracula`, `pastoral`) or the stem of a theme file (see `theme_dir`). A file with a built-in's name overrides it. (`light` is a deprecated alias for `pastoral`.) |
 | `theme_dir` | string | `<config>/themes` | Directory of `*.toml` theme files. Relative paths resolve against the config dir; also overridable via `$TETRON_WM_THEMES_DIR`. A theme file is a flat table of palette fields (`desktop_bg`, `window_bg`, `title_focus`, `title_blur`, `title_fg`, `border`, `shadow`, `ctrl_fg`, `close_fg`, `menubar_bg`, `dock_bg`, `text`, `dim`, `accent`, `active_bg`) → `#rrggbb` / `#rrggbbaa` / named color; optional `name` and `base` (built-in to inherit unset fields from). Create one with `tetron-wm theme --dump <name>`; list all names with `tetron-wm theme --list`. Low-contrast themes are warned about in the debug log, never rejected. |
 | `icon_style` | string | `"ascii"` | File-type icon glyphs where graphical (Kitty) icons can't render (kmscon, bare VT, SSH): `ascii` (BMP shapes, renders everywhere), `nerd` (Nerd Font glyphs, needs one installed — tetron-os ships it), or `emoji`. |
 | `truecolor` | bool | auto-detect | Force 24-bit color on/off. Unset = detect from known truecolor terminals + `COLORTERM`. Set `true` when the terminal supports truecolor but omits `COLORTERM` (common with `TERM=xterm-256color`), else subtle themes quantize to the 256-color cube (nord → teal/navy). `TETRON_WM_TRUECOLOR=1/0` env overrides this. |
-| `wallpaper` | string | `"wallpaper.jpg"` | Desktop wallpaper image, rendered to colored cells via `chafa` (so it works on any terminal incl. a kmscon console) and composited behind the windows. An absolute path, a `~`-path, or a path relative to the config dir (a `wallpapers/` subdir is checked first, then the config root) — so a bare filename means "drop it in `~/.config/tetron-wm/wallpapers/`". Missing file or missing `chafa` → solid desktop (logged). `TETRON_WM_WALLPAPER=<path>` env overrides this. |
+| `wallpaper` | string | `"wallpaper.jpg"` | Desktop wallpaper image, rendered to colored cells via `chafa` (so it works on any terminal incl. a kmscon console) and composited behind the windows. An absolute path, a `~`-path, or a path relative to the config dir (a `wallpapers/` subdir is checked first, then the config root) — so a bare filename means "drop it in `~/.config/tetron-wm/wallpapers/`". If the default `wallpaper.jpg` is not on disk, a built-in default image (70 KB, stamped to `~/.local/share/tetron-wm/default-wallpaper.jpg`) is used; any other missing file, or a missing `chafa` → solid desktop (logged). `TETRON_WM_WALLPAPER=<path>` env overrides this. |
 | `wallpaper_enabled` | bool | `true` | Master on/off for the wallpaper. When `false`, the desktop is solid even if `wallpaper` names an image. (Settings → Appearance toggles this.) |
 | `default_project_dir` | string | home (`~`) | Directory the working-directory picker opens at. |
 | `show_hidden_dirs` | bool | `false` | Show hidden (dot) directories in the picker by default. |
@@ -41,6 +41,7 @@ Each row is the TOML key, its type, the default, and what it does.
 | `launcher` | list of table | `[]` | Apps offered in the launcher/spotlight; falls back to `apps` when empty. |
 | `default_apps` | map string→string | built-in | File-role → handler command map, for "open with". |
 | `dock_badges` | map string→string | claude=orange, kilo=yellow | Per-app badge colors (shown on the taskbar pill): a keyword (case-insensitive substring of the app name or command) mapped to a named color or `#rrggbb`. |
+| `tray_tools` | map string→string or list | built-in | Command for the tray popovers' `▸ Open …` row, per item: `cpu`, `mem`, `battery`, `bluetooth`, `network`. A value is one command line or an ordered list; the first whose program is on `$PATH` wins. Prefix a command with `hold:` to run it through `sh -c` and keep the window open until Enter (for one-shot output). An empty list removes the row. Defaults: cpu `htop`, else `top` (even if not detected); mem `hold:free -h`, `hold:vm_stat`; battery `jolt`, `hold:upower -i $(upower -e \| grep -m1 -i bat)`, `hold:pmset -g batt`; bluetooth `bluetuith`, `bluetoothctl`, `hold:blueutil --paired`; network `wlctl`, `nmtui`, `iwctl`, `hold:ip -br addr`, `hold:networksetup -listallhardwareports`, `hold:ifconfig`. |
 
 ## App entries
 

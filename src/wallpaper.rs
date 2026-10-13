@@ -21,6 +21,31 @@ use std::path::PathBuf;
 ///
 /// Returns the first candidate that exists, or the best-effort candidate when
 /// none exist (so the caller's own "missing file" handling / log still fires).
+/// The built-in default wallpaper (426x240 JPEG, 70 KB), used when the default
+/// `wallpaper.jpg` is not on disk so a fresh install has a wallpaper with no setup.
+const DEFAULT_JPG: &[u8] = include_bytes!("../assets/default-wallpaper.jpg");
+
+/// Config value that means "the default wallpaper".
+pub const DEFAULT_NAME: &str = "wallpaper.jpg";
+
+/// Write the embedded default wallpaper to `<data>/tetron-wm/default-wallpaper.jpg`
+/// (`$XDG_DATA_HOME` aware) if it is missing or a different size, and return its
+/// path. `chafa` needs a real file, hence the stamp.
+pub fn ensure_default() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))?;
+    let dir = base.join("tetron-wm");
+    let path = dir.join("default-wallpaper.jpg");
+    let current = std::fs::metadata(&path).map(|m| m.len() as usize == DEFAULT_JPG.len()).unwrap_or(false);
+    if !current {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, DEFAULT_JPG).ok()?;
+        crate::dbg_log(&format!("wallpaper: stamped built-in default to {}", path.display()));
+    }
+    Some(path)
+}
+
 pub fn resolve_path(path: &str) -> PathBuf {
     let path = path.trim();
     if let Some(rest) = path.strip_prefix("~/") {
@@ -172,6 +197,12 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_default_is_a_small_jpeg() {
+        assert_eq!(&DEFAULT_JPG[..2], &[0xFF, 0xD8], "JPEG magic");
+        assert!(DEFAULT_JPG.len() < 100 * 1024, "keep the embedded wallpaper small");
+    }
 
     #[test]
     fn absolute_path_passes_through() {

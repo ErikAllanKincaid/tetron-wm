@@ -30,6 +30,7 @@ pub mod config;
 pub mod system;
 pub mod poller;
 pub mod tray;
+pub mod traytools;
 pub mod dirpicker;
 pub mod help;
 pub mod imagestore;
