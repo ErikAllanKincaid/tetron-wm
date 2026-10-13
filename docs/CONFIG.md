@@ -43,6 +43,20 @@ Each row is the TOML key, its type, the default, and what it does.
 | `launcher` | list of table | `[]` | Apps offered in the launcher/spotlight; falls back to `apps` when empty. |
 | `default_apps` | map string→string | built-in | File-role → handler command map, for "open with". |
 | `dock_badges` | map string→string | claude=orange, kilo=yellow | Per-app badge colors (shown on the taskbar pill): a keyword (case-insensitive substring of the app name or command) mapped to a named color or `#rrggbb`. |
+| `web_home` | string | `"https://lite.duckduckgo.com/lite/"` | Start page for text web browsers launched with no URL (w3m exits at once without one). Empty launches them bare. |
+| `leader` | string | `"ctrl+space"` | Leader chord, `ctrl+<key>`. Needs `tetron-wm reload`. |
+| `keys` | table of action → key or list | built-in | `[keys]` leader-key overrides per action, e.g. `launcher = "l"` or `launcher = ["l", "enter"]`. Actions and their defaults are listed by `tetron-wm --help`. An entry with no valid key is ignored and logged. |
+| `clipboard_history` | bool | `true` | Keep a history of everything copied (OSC 52 stores, `Ctrl+Shift+C`, mouse selections, the `clip` CLI). Browse it from the menubar clipboard segment. |
+| `clipboard_persist` | bool | `true` | Save the history to `~/.local/share/tetron-wm/clipboard-history.jsonl` (mode 0600). `false` keeps it in memory only. |
+| `clipboard_record_selection` | bool | `true` | Record mouse text selections in the history, not just explicit copies. |
+| `clipboard_history_size` | int | `100` | Maximum unpinned history entries. |
+| `clipboard_item_max_kb` | int | `256` | Entries larger than this many KB are not recorded. |
+| `clipboard_ttl_secs` | int | `0` | Expire unpinned entries after this many seconds; `0` never expires. |
+| `clipboard_ignore_apps` | list of string | `[]` | Do not record copies made while an app whose name or command contains one of these (case-insensitive) is focused, e.g. password managers. |
+| `clipboard_shims` | string | `"auto"` | Put `xclip`/`xsel`/`wl-copy`/`wl-paste` shims on the `PATH` of launched apps so they use this clipboard: `auto` (only when there is no display), `on`, `off`. |
+| `clipboard_fake_display` | bool | `false` | Give launched apps a dummy `WAYLAND_DISPLAY` when there is no display, so tools that only look for a clipboard helper when a display variable is set (Neovim) use the shims. Programs that test for a desktop session (`xdg-open`, GUI toolkits) then think one exists, so it is off by default. |
+| `clipboard_gui_bridge` | string | `"auto"` | Mirror the real X11/Wayland clipboard into the history: `auto` (when a display exists), `on`, `off`. |
+| `clipboard_osc52_read` | string | `"focused"` | Who may READ the clipboard with an OSC 52 query: `focused` (only the focused window), `always`, `never`. |
 | `tray_tools` | map string→string or list | built-in | Command for the tray popovers' `▸ Open …` row, per item: `cpu`, `mem`, `battery`, `bluetooth`, `network`. A value is one command line or an ordered list; the first whose program is on `$PATH` wins. Prefix a command with `hold:` to run it through `sh -c` and keep the window open until Enter (for one-shot output). An empty list removes the row. Defaults: cpu `htop`, else `top` (even if not detected); mem `hold:free -h`, `hold:vm_stat`; battery `jolt`, `hold:upower -i $(upower -e \| grep -m1 -i bat)`, `hold:pmset -g batt`; bluetooth `bluetuith`, `bluetoothctl`, `hold:blueutil --paired`; network `wlctl`, `nmtui`, `iwctl`, `hold:ip -br addr`, `hold:networksetup -listallhardwareports`, `hold:ifconfig`. |
 
 ## App entries
