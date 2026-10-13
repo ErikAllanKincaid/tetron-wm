@@ -1,0 +1,19 @@
+name = "windows"
+appearance = "light"   # white window bodies + silver panels, teal wallpaper
+
+# Windows 3.1 / early-95 desktop palette.
+desktop_bg  = "#008080"     # classic teal wallpaper
+window_bg   = "#ffffff"     # white window body / terminal background
+title_focus = "#000080"     # navy active titlebar
+title_blur  = "#808080"     # gray inactive titlebar
+title_fg    = "#ffffff"     # white titlebar text
+border      = "#808080"     # gray window frame
+shadow      = "#00000026"   # faint (Win3.1 had none); keep subtle
+ctrl_fg     = "#ffffff"     # min/max glyphs on the navy bar
+close_fg    = "#cc0000"     # close glyph + destructive-button fill (DOS red)
+menubar_bg  = "#c0c0c0"     # silver menu bar
+dock_bg     = "#c0c0c0"     # silver taskbar
+text        = "#000000"     # black body / menu text
+dim         = "#808080"     # gray secondary text
+accent      = "#000080"     # navy selection / highlight / affirmative-button fill
+active_bg   = "#c0c0c0"     # silver selection background

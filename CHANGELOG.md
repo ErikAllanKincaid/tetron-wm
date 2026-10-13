@@ -6,6 +6,12 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.9] — 2026-10-13
+
+### Fixed
+
+- Live terminal colors now work with theme files: the daemon sends the resolved background and foreground to the app server instead of a theme name the app server could not look up (it scans the themes dir only once, at start, so a theme file added later silently fell back to midnight). No protocol change; 0.14.8 app servers keep working.
+
 ## [0.14.8] — 2026-10-13
 
 ### Added
