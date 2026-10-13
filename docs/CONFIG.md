@@ -86,4 +86,4 @@ These behaviors are fixed in tetron-wm and do not need configuration:
 ## Notes
 
 - Changes take effect on the next tetron-wm launch (Settings → Appearance can toggle a subset live).
-- The live Settings UI exposes snapping, snap threshold, grid rows/cols, gap, auto-tile, launch-maximized, shadows, theme, wallpaper on/off, wallpaper file, icon-label scrim, assistant, and updates; the remaining keys are file-only or app-managed.
+- The live Settings UI exposes snapping, snap threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll, shadows, theme, wallpaper on/off, wallpaper file, icon-label scrim, icon style, desktop icons, clipboard (including entry expiry and max item size), assistant, and updates; the remaining keys are file-only or app-managed.

@@ -118,13 +118,13 @@ impl Settings {
     /// Number of interactive rows in the current section.
     fn item_count(&self) -> usize {
         match self.section {
-            0 => 7,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized
-            1 => 5,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim
+            0 => 8,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll
+            1 => 7,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
             5 => 2,                            // assistant: open-as mode, agent
-            6 => 8,                            // clipboard: history, disk, selections, size, shims, osc52 read, fake display, clear
+            6 => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
             _ => 0,                            // About
         }
     }
@@ -246,6 +246,7 @@ impl Settings {
             }
             (0, 5) => self.cfg.auto_tile = flip(self.cfg.auto_tile, dir),
             (0, 6) => self.cfg.launch_maximized = flip(self.cfg.launch_maximized, dir),
+            (0, 7) => self.cfg.natural_scroll = flip(self.cfg.natural_scroll, dir),
             (1, 0) => self.cfg.window_shadows = flip(self.cfg.window_shadows, dir),
             (1, 1) => {
                 let presets = crate::theme::preset_names();
@@ -268,6 +269,14 @@ impl Settings {
             (1, 4) => {
                 self.cfg.desktop_scrim = if scrim_on(&self.cfg) { Some("none".into()) } else { None };
             }
+            (1, 5) => {
+                use crate::iconset::IconStyle::*;
+                let all = [Ascii, Nerd, Emoji];
+                let cur = all.iter().position(|x| *x == self.cfg.icon_style).unwrap_or(0);
+                let next = if dir == -1 { (cur + all.len() - 1) % all.len() } else { (cur + 1) % all.len() };
+                self.cfg.icon_style = all[next];
+            }
+            (1, 6) => self.cfg.desktop_enabled = flip(self.cfg.desktop_enabled, dir),
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
             (2, 1) if dir == 0 => self.action = Some(SettingsAction::InstallUpdate),
@@ -315,7 +324,20 @@ impl Settings {
             (6, 4) => self.cfg.clipboard_shims = cycle(&["auto", "on", "off"], &self.cfg.clipboard_shims, dir),
             (6, 5) => self.cfg.clipboard_osc52_read = cycle(&["focused", "always", "never"], &self.cfg.clipboard_osc52_read, dir),
             (6, 6) => self.cfg.clipboard_fake_display = flip(self.cfg.clipboard_fake_display, dir),
-            (6, 7) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
+            (6, 7) => {
+                // 0 = never expire; else drop unpinned entries older than this.
+                const TTLS: [u64; 5] = [0, 3_600, 86_400, 604_800, 2_592_000];
+                let cur = TTLS.iter().position(|t| *t == self.cfg.clipboard_ttl_secs).unwrap_or(0);
+                let next = if dir == -1 { (cur + TTLS.len() - 1) % TTLS.len() } else { (cur + 1) % TTLS.len() };
+                self.cfg.clipboard_ttl_secs = TTLS[next];
+            }
+            (6, 8) => {
+                const KBS: [usize; 5] = [16, 64, 256, 1024, 4096];
+                let cur = KBS.iter().position(|k| *k >= self.cfg.clipboard_item_max_kb).unwrap_or(KBS.len() - 1);
+                let next = match dir { -1 => cur.saturating_sub(1), _ => (cur + 1) % KBS.len() };
+                self.cfg.clipboard_item_max_kb = KBS[next];
+            }
+            (6, 9) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
             (4, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -465,6 +487,7 @@ impl Settings {
                 self.row(&mut buf, cx, 7, 4, "Tile gap (cells)", format!("\u{25C2} {} \u{25B8}", self.cfg.tile_gap));
                 self.row(&mut buf, cx, 8, 5, "Auto-tile windows", toggle_val(self.cfg.auto_tile));
                 self.row(&mut buf, cx, 9, 6, "Launch maximized", toggle_val(self.cfg.launch_maximized));
+                self.row(&mut buf, cx, 10, 7, "Natural scroll", toggle_val(self.cfg.natural_scroll));
             }
             1 => {
                 self.row(&mut buf, cx, 3, 0, "Window shadows", toggle_val(self.cfg.window_shadows));
@@ -481,9 +504,12 @@ impl Settings {
                 };
                 self.row(&mut buf, cx, 6, 3, "Wallpaper file", file_val);
                 self.row(&mut buf, cx, 7, 4, "Icon label scrim", toggle_val(scrim_on(&self.cfg)));
-                buf.write_str(cx, 9, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
-                buf.write_str(cx, 10, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
-                buf.write_str(cx, 11, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
+                self.row(&mut buf, cx, 8, 5, "Icon style", format!("\u{25C2} {} \u{25B8}", icon_style_name(self.cfg.icon_style)));
+                self.row(&mut buf, cx, 9, 6, "Desktop icons", toggle_val(self.cfg.desktop_enabled));
+                buf.write_str(cx, 11, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
+                buf.write_str(cx, 12, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Icon style: ascii | nerd (needs a Nerd Font) | emoji.", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -532,11 +558,13 @@ impl Settings {
                 self.row(&mut buf, cx, 7, 4, "xclip/wl-copy shims", format!("\u{25C2} {} \u{25B8}", c.clipboard_shims));
                 self.row(&mut buf, cx, 8, 5, "OSC 52 reads", format!("\u{25C2} {} \u{25B8}", c.clipboard_osc52_read));
                 self.row(&mut buf, cx, 9, 6, "Display for Neovim", toggle_val(c.clipboard_fake_display));
-                self.row(&mut buf, cx, 10, 7, "Clear history", "Enter".into());
-                buf.write_str(cx, 12, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
-                buf.write_str(cx, 15, "More: clipboard_ignore_apps, clipboard_ttl_secs in config.toml.", pal_dim(), pal_bg());
+                self.row(&mut buf, cx, 10, 7, "Expire entries after", format!("\u{25C2} {} \u{25B8}", ttl_name(c.clipboard_ttl_secs)));
+                self.row(&mut buf, cx, 11, 8, "Max item size", format!("\u{25C2} {} KB \u{25B8}", c.clipboard_item_max_kb));
+                self.row(&mut buf, cx, 12, 9, "Clear history", "Enter".into());
+                buf.write_str(cx, 14, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
+                buf.write_str(cx, 16, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
+                buf.write_str(cx, 17, "More: clipboard_ignore_apps in config.toml.", pal_dim(), pal_bg());
             }
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
@@ -631,6 +659,19 @@ fn step_u8(v: u8, dir: i32, lo: u8, hi: u8) -> u8 {
         -1 => v.saturating_sub(1).max(lo),
         1 => (v + 1).min(hi),
         _ => if v >= hi { lo } else { v + 1 },
+    }
+}
+
+fn icon_style_name(s: crate::iconset::IconStyle) -> &'static str {
+    use crate::iconset::IconStyle::*;
+    match s { Ascii => "ascii", Nerd => "nerd", Emoji => "emoji" }
+}
+
+fn ttl_name(secs: u64) -> String {
+    match secs {
+        0 => "never".into(),
+        s if s % 86_400 == 0 => format!("{} d", s / 86_400),
+        s => format!("{} h", s / 3_600),
     }
 }
 
@@ -852,10 +893,37 @@ mod tests {
     }
 
     #[test]
+    fn newly_surfaced_keys_edit_config() {
+        use crate::iconset::IconStyle;
+        let mut s = Settings::new(Config::default());
+        s.section = 0;
+        assert_eq!(s.item_count(), 8);
+        s.sel = 7;
+        let before = s.config().natural_scroll;
+        s.toggle();
+        assert_eq!(s.config().natural_scroll, !before);
+        s.section = 1;
+        assert_eq!(s.item_count(), 7);
+        s.sel = 5;
+        s.right();
+        assert_eq!(s.config().icon_style, IconStyle::Nerd);
+        s.right();
+        s.right();
+        assert_eq!(s.config().icon_style, IconStyle::Ascii, "wraps");
+        s.sel = 6;
+        s.toggle();
+        assert!(!s.config().desktop_enabled);
+        for sec in 0..SECTIONS.len() {
+            s.section = sec;
+            let _ = s.render(100, 30);
+        }
+    }
+
+    #[test]
     fn clipboard_section_edits_config() {
         let mut s = Settings::new(Config::default());
         s.section = SECTIONS.iter().position(|x| *x == "Clipboard").unwrap();
-        assert_eq!(s.item_count(), 8);
+        assert_eq!(s.item_count(), 10);
         s.sel = 0;
         s.toggle();
         assert!(!s.config().clipboard_history);
@@ -880,7 +948,16 @@ mod tests {
         s.sel = 6;
         s.toggle();
         assert!(s.config().clipboard_fake_display);
-        s.sel = 7;
+        s.sel = 7; // never -> 1 h
+        s.right();
+        assert_eq!(s.config().clipboard_ttl_secs, 3_600);
+        s.left();
+        s.left();
+        assert_eq!(s.config().clipboard_ttl_secs, 2_592_000, "wraps back to 30 d");
+        s.sel = 8; // 256 -> 1024
+        s.right();
+        assert_eq!(s.config().clipboard_item_max_kb, 1024);
+        s.sel = 9;
         s.toggle();
         assert_eq!(s.take_action(), Some(SettingsAction::ClearClipboard));
         let _ = s.render(80, 24); // renders without panicking

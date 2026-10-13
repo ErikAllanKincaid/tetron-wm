@@ -2734,7 +2734,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
         let w = 60.min((self.w - 4).max(40));
-        let h = 16.min((self.h - 4).max(10));
+        let h = 20.min((self.h - 4).max(10));
         let rect = Rect::new((self.w - w) / 2, 3, w, h);
         let id = self.wm.add_window("Settings".into(), rect);
         self.app_keys.insert(id, "Settings".into());
@@ -2792,6 +2792,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             self.cfg = cfg;
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
+            crate::iconset::set(self.cfg.icon_style);
             let _ = self.cfg.save();
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
