@@ -1,0 +1,24 @@
+name = "dawn"
+base = "pastoral"       # unset fields inherit from this built-in
+appearance = "light"
+# Gentle Dawn — a warm sunrise palette (schemecolor.com "Gentle Dawn"):
+#   af88b2 mauve · fecdb4 peach · fda396 light-coral · fc8982 coral
+#   e66075 rose · bf5077 deep-rose. Light theme: pale dawn-mist ground,
+#   warm near-white windows, peach focused titlebar with a coral glow edge,
+#   deep-rose accents. Verified against the loader's 5 contrast invariants.
+
+desktop_bg  = "#efdce0"   # pale dawn mist (mauve-peach wallpaper)
+window_bg   = "#fff7f3"   # warm near-white
+title_focus = "#fecdb4"   # soft peach — focused titlebar
+title_blur  = "#d9c0cb"   # dusty mauve — inactive titlebar (darker than mist)
+title_fg    = "#4a2e3a"   # deep plum — titlebar text
+border      = "#fc8982"   # coral sunrise edge — focused-window highlight
+shadow      = "#6e324628" # warm translucent plum shadow
+ctrl_fg     = "#9a6b7c"   # muted mauve — min/max glyphs
+close_fg    = "#e66075"   # rose — close button / destructive
+menubar_bg  = "#f1d6d8"   # dawn band — menubar / taskbar
+dock_bg     = "#f1d6d8"
+text        = "#3a2530"   # dark plum — body/terminal text, icon labels
+dim         = "#96707e"   # muted mauve — secondary text / hints
+accent      = "#bf5077"   # deep rose — affirmative buttons / highlights
+active_bg   = "#fcdcd6"   # pale peach-rose — selection highlight

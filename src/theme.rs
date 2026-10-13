@@ -338,6 +338,26 @@ fn parse_theme_toml(text: &str) -> Result<(Option<String>, Theme), String> {
     Ok(tf.into_theme())
 }
 
+/// `#rrggbb`, or `#rrggbbaa` when the color carries alpha.
+pub fn to_hex(c: Rgba) -> String {
+    if c.a == 255 {
+        format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
+    } else {
+        format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
+    }
+}
+
+/// The default terminal background and foreground for `theme` with the optional
+/// `terminal_bg`/`terminal_fg` overrides applied, as hex strings. The apphost
+/// only ever uses these two colors, so the daemon resolves them (file themes
+/// included) and sends the result instead of a theme name the apphost might not
+/// be able to look up.
+pub fn resolve_terminal_colors(theme: &str, bg: Option<&str>, fg: Option<&str>) -> (String, String) {
+    let t = Theme::named(theme);
+    let pick = |over: Option<&str>, base: Rgba| to_hex(over.and_then(crate::badge::parse_color).unwrap_or(base));
+    (pick(bg, t.window_bg), pick(fg, t.text))
+}
+
 /// Serialize a palette to theme-file TOML (`--dump` starter). `#rrggbbaa` only
 /// when the color actually carries alpha, else the shorter `#rrggbb`.
 pub fn to_file_toml(t: &Theme, name: &str) -> String {

@@ -1154,7 +1154,7 @@ impl SessionCore {
                     (bg.map(String::from), fg.map(String::from))
                 });
                 if let Some((bg, fg)) = staged {
-                    self.apphost.set_colors(&self.cfg.theme, bg.as_deref(), fg.as_deref());
+                    self.send_terminal_colors(bg.as_deref(), fg.as_deref());
                 }
             }
             Some(crate::settings::SettingsAction::RevertColors) => {
@@ -2835,7 +2835,17 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// Tell the apphost to re-apply the theme and terminal color overrides so
     /// running apps repaint without a restart.
     fn push_terminal_colors(&mut self) {
-        self.apphost.set_colors(&self.cfg.theme, self.cfg.terminal_bg.as_deref(), self.cfg.terminal_fg.as_deref());
+        let (bg, fg) = (self.cfg.terminal_bg.clone(), self.cfg.terminal_fg.clone());
+        self.send_terminal_colors(bg.as_deref(), fg.as_deref());
+    }
+
+    /// Resolve the colors here (the daemon knows every theme file; the apphost
+    /// scanned its themes dir once at start) and send them, so a theme the
+    /// apphost never saw still recolors correctly. An apphost that predates this
+    /// still works: it applies the name, then overrides bg/fg with these values.
+    fn send_terminal_colors(&mut self, bg: Option<&str>, fg: Option<&str>) {
+        let (rbg, rfg) = crate::theme::resolve_terminal_colors(&self.cfg.theme, bg, fg);
+        self.apphost.set_colors(&self.cfg.theme, Some(&rbg), Some(&rfg));
     }
 
     /// Open the store window, or focus it if it's already open.

@@ -24,7 +24,9 @@ pub enum HostReq {
     Shutdown,
     /// Re-apply the desktop theme and the `terminal_bg`/`terminal_fg` overrides
     /// in the running apphost (protocol v4+). Running apps repaint with the new
-    /// default colors on the next frame; `None` means "follow the theme".
+    /// default colors on the next frame. `None` means "follow the theme"; the
+    /// daemon always sends resolved colors, since the apphost may not know a
+    /// theme file that was added after it started.
     SetColors { theme: String, terminal_bg: Option<String>, terminal_fg: Option<String> },
 }
 
