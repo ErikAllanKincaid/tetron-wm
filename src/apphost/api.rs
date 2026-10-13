@@ -94,6 +94,14 @@ pub trait AppHost: Send {
     /// that do not yet relay it); the local host overrides it.
     fn cursor(&self, id: AppId) -> Option<(u16, u16)> { let _ = id; None }
 
+    /// Re-apply the desktop theme and terminal color overrides in the host that
+    /// renders the apps (running apps repaint on the next frame). Default no-op:
+    /// the in-process host shares the daemon's own theme, and a remote host older
+    /// than protocol v4 does not understand the request.
+    fn set_colors(&mut self, theme: &str, terminal_bg: Option<&str>, terminal_fg: Option<&str>) {
+        let _ = (theme, terminal_bg, terminal_fg);
+    }
+
     /// Stop the underlying app host process, if any (default no-op for the
     /// in-process host). The frontend calls this on full shutdown.
     fn shutdown_host(&mut self) {}

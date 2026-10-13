@@ -700,6 +700,8 @@ impl SessionCore {
             switch_to: None,
         };
         core.tray.set_tools(core.cfg.tray_tools.clone());
+        // A long-lived apphost may predate a config edit made while the UI was down.
+        core.push_terminal_colors();
         core.generate_role_icons();
         core.reload_desktop();
         core
@@ -2673,6 +2675,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 crate::dbg_log(&format!("theme: set '{name}' (client attach / TETRON_WM_THEME)"));
                 crate::theme::set(&name);
                 self.cfg.theme = name;
+                self.push_terminal_colors();
                 if let Err(e) = self.cfg.save() {
                     crate::dbg_log(&format!("theme: config save failed: {e}"));
                 }
@@ -2789,6 +2792,9 @@ or a remote-side error — its authorized_keys was left untouched)",
                 || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
+            let colors_changed = cfg.theme != self.cfg.theme
+                || cfg.terminal_bg != self.cfg.terminal_bg
+                || cfg.terminal_fg != self.cfg.terminal_fg;
             self.cfg = cfg;
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
@@ -2803,7 +2809,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             if wallpaper_changed {
                 self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
             }
+            if colors_changed {
+                self.push_terminal_colors();
+            }
         }
+    }
+
+    /// Tell the apphost to re-apply the theme and terminal color overrides so
+    /// running apps repaint without a restart.
+    fn push_terminal_colors(&mut self) {
+        self.apphost.set_colors(&self.cfg.theme, self.cfg.terminal_bg.as_deref(), self.cfg.terminal_fg.as_deref());
     }
 
     /// Open the store window, or focus it if it's already open.

@@ -22,6 +22,10 @@ pub enum HostReq {
     ListApps,
     /// Stop the apphost process entirely (full shutdown / `tetron-wm kill`).
     Shutdown,
+    /// Re-apply the desktop theme and the `terminal_bg`/`terminal_fg` overrides
+    /// in the running apphost (protocol v4+). Running apps repaint with the new
+    /// default colors on the next frame; `None` means "follow the theme".
+    SetColors { theme: String, terminal_bg: Option<String>, terminal_fg: Option<String> },
 }
 
 /// An app asked to READ a clipboard through OSC 52 (`ESC ] 52 ; c ; ? ST`).
@@ -50,7 +54,13 @@ pub struct ImgBlob {
 /// field and the v2 frontend fills `None`; a v1 frontend ignores the unknown
 /// field on a v2 wire payload (serde default is permissive). Do NOT bump
 /// `MIN_COMPAT`.
-pub const PROTO_VERSION: u32 = 3;
+///
+/// v4 — added `HostReq::SetColors` so the daemon can recolor running apps live
+/// (theme switch, terminal_bg/terminal_fg) instead of needing an apphost
+/// restart. A new request variant is unknown to older apphosts, so the frontend
+/// sends it only when the apphost reports proto >= 4 (`RemoteAppHost`). Do NOT
+/// bump `MIN_COMPAT`: an older apphost just keeps its start-up colors.
+pub const PROTO_VERSION: u32 = 4;
 
 /// v3 — added `clip_reqs` to `HostEvt::Frame`: OSC 52 clipboard READ queries
 /// from the app, so the frontend can answer them. `#[serde(default)]`; an old

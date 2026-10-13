@@ -223,6 +223,19 @@ pub fn set(name: &str) {
     *slot().write().unwrap() = Theme::named(name);
 }
 
+/// Set the desktop theme by name, then apply the optional `terminal_bg`/
+/// `terminal_fg` color overrides (hex or named; unparsable values are ignored).
+/// Setting the theme first resets any earlier override, so passing `None` goes
+/// back to following the theme. Used by the apphost, at start-up and on `SetColors`.
+pub fn set_with_terminal(name: &str, bg: Option<&str>, fg: Option<&str>) {
+    set(name);
+    let bg = bg.and_then(crate::badge::parse_color);
+    let fg = fg.and_then(crate::badge::parse_color);
+    if bg.is_some() || fg.is_some() {
+        set_terminal_colors(bg, fg);
+    }
+}
+
 /// Override just the terminal-relevant colors (`window_bg`/`text`) on the current
 /// theme. The apphost uses this so the `terminal_bg`/`terminal_fg` config keys can
 /// decouple terminal colors from the desktop theme: in the apphost process the

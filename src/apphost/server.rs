@@ -20,20 +20,15 @@ pub fn run() -> std::io::Result<()> {
     // `ptyhost` for hosted-app terminal cell colors. Initialize it from the same
     // sources the client/daemon use (TETRON_WM_THEME env, else config.theme) so a
     // light desktop gets black-on-white terminals, then apply the independent
-    // terminal_bg/terminal_fg overrides. Read once at startup; a theme or
-    // terminal-color change takes effect on the next apphost start.
+    // terminal_bg/terminal_fg overrides. Read at startup; later changes arrive
+    // as `HostReq::SetColors` (protocol v4+), no restart needed.
     {
         let cfg = crate::config::Config::load();
         let name = std::env::var("TETRON_WM_THEME")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| cfg.theme.clone());
-        crate::theme::set(&name);
-        let bg = cfg.terminal_bg.as_deref().and_then(crate::badge::parse_color);
-        let fg = cfg.terminal_fg.as_deref().and_then(crate::badge::parse_color);
-        if bg.is_some() || fg.is_some() {
-            crate::theme::set_terminal_colors(bg, fg);
-        }
+        crate::theme::set_with_terminal(&name, cfg.terminal_bg.as_deref(), cfg.terminal_fg.as_deref());
     }
 
     let path = apphost_socket_path();
@@ -157,6 +152,12 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                     if send(&mut writer, &HostEvt::AppList { apps }).is_err() {
                         return;
                     }
+                }
+                Ok(HostReq::SetColors { theme, terminal_bg, terminal_fg }) => {
+                    crate::dbg_log(&format!("apphost: colors -> theme '{theme}' bg {terminal_bg:?} fg {terminal_fg:?}"));
+                    crate::theme::set_with_terminal(&theme, terminal_bg.as_deref(), terminal_fg.as_deref());
+                    // No dirty hook needed: the loop below re-snapshots every app
+                    // each tick and sends a frame whenever the grid differs.
                 }
                 Ok(HostReq::Shutdown) => {
                     *shutdown = true;
