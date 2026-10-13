@@ -223,6 +223,19 @@ pub fn set(name: &str) {
     *slot().write().unwrap() = Theme::named(name);
 }
 
+/// Set the desktop theme by name, then apply the optional `terminal_bg`/
+/// `terminal_fg` color overrides (hex or named; unparsable values are ignored).
+/// Setting the theme first resets any earlier override, so passing `None` goes
+/// back to following the theme. Used by the apphost, at start-up and on `SetColors`.
+pub fn set_with_terminal(name: &str, bg: Option<&str>, fg: Option<&str>) {
+    set(name);
+    let bg = bg.and_then(crate::badge::parse_color);
+    let fg = fg.and_then(crate::badge::parse_color);
+    if bg.is_some() || fg.is_some() {
+        set_terminal_colors(bg, fg);
+    }
+}
+
 /// Override just the terminal-relevant colors (`window_bg`/`text`) on the current
 /// theme. The apphost uses this so the `terminal_bg`/`terminal_fg` config keys can
 /// decouple terminal colors from the desktop theme: in the apphost process the
@@ -371,7 +384,7 @@ fn luminance(c: Rgba) -> f64 {
 }
 
 /// WCAG contrast ratio between two colors (1.0 = identical … 21.0 = black/white).
-fn contrast(a: Rgba, b: Rgba) -> f64 {
+pub fn contrast(a: Rgba, b: Rgba) -> f64 {
     let (la, lb) = (luminance(a), luminance(b));
     let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
     (hi + 0.05) / (lo + 0.05)

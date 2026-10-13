@@ -700,6 +700,8 @@ impl SessionCore {
             switch_to: None,
         };
         core.tray.set_tools(core.cfg.tray_tools.clone());
+        // A long-lived apphost may predate a config edit made while the UI was down.
+        core.push_terminal_colors();
         core.generate_role_icons();
         core.reload_desktop();
         core
@@ -933,6 +935,10 @@ impl SessionCore {
         }
     }
 
+    /// The live config (integration tests).
+    #[doc(hidden)]
+    pub fn config_for_test(&self) -> &Config { &self.cfg }
+
     /// Replace the live config and re-apply the clipboard settings, as the
     /// Settings panel does on every change (integration tests).
     #[doc(hidden)]
@@ -1141,6 +1147,18 @@ impl SessionCore {
                 if let Some(s) = self.focused_settings_mut() {
                     s.set_update_status(msg);
                 }
+            }
+            Some(crate::settings::SettingsAction::PreviewColors) => {
+                let staged = self.focused_settings_mut().map(|s| {
+                    let (bg, fg) = s.staged_colors();
+                    (bg.map(String::from), fg.map(String::from))
+                });
+                if let Some((bg, fg)) = staged {
+                    self.apphost.set_colors(&self.cfg.theme, bg.as_deref(), fg.as_deref());
+                }
+            }
+            Some(crate::settings::SettingsAction::RevertColors) => {
+                self.push_terminal_colors();
             }
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
@@ -2673,6 +2691,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 crate::dbg_log(&format!("theme: set '{name}' (client attach / TETRON_WM_THEME)"));
                 crate::theme::set(&name);
                 self.cfg.theme = name;
+                self.push_terminal_colors();
                 if let Err(e) = self.cfg.save() {
                     crate::dbg_log(&format!("theme: config save failed: {e}"));
                 }
@@ -2734,12 +2753,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
         let w = 60.min((self.w - 4).max(40));
-        let h = 16.min((self.h - 4).max(10));
+        let h = 20.min((self.h - 4).max(10));
         let rect = Rect::new((self.w - w) / 2, 3, w, h);
         let id = self.wm.add_window("Settings".into(), rect);
         self.app_keys.insert(id, "Settings".into());
         let mut panel = Settings::new(self.cfg.clone());
         panel.set_apphost_outdated(self.apphost_outdated);
+        panel.set_colors_live(self.apphost.proto_version() >= 4);
         self.contents.insert(id, WinContent::Settings(Box::new(panel)));
         self.titles.push((id, "Settings".into()));
         self.settings_win = Some(id);
@@ -2789,9 +2809,13 @@ or a remote-side error — its authorized_keys was left untouched)",
                 || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
+            let colors_changed = cfg.theme != self.cfg.theme
+                || cfg.terminal_bg != self.cfg.terminal_bg
+                || cfg.terminal_fg != self.cfg.terminal_fg;
             self.cfg = cfg;
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
+            crate::iconset::set(self.cfg.icon_style);
             let _ = self.cfg.save();
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
@@ -2802,7 +2826,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             if wallpaper_changed {
                 self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
             }
+            if colors_changed {
+                self.push_terminal_colors();
+            }
         }
+    }
+
+    /// Tell the apphost to re-apply the theme and terminal color overrides so
+    /// running apps repaint without a restart.
+    fn push_terminal_colors(&mut self) {
+        self.apphost.set_colors(&self.cfg.theme, self.cfg.terminal_bg.as_deref(), self.cfg.terminal_fg.as_deref());
     }
 
     /// Open the store window, or focus it if it's already open.
@@ -4257,6 +4290,8 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     fn close(&mut self, id: WindowId) {
+        // Closing Settings with an unsaved color preview puts the saved colors back.
+        let revert_preview = matches!(self.contents.get(&id), Some(WinContent::Settings(s)) if s.previewing());
         // An install window is kept alive (it `exec`s a shell after the install so
         // the output stays readable), so it never trips `reap_dead`; instead we
         // refresh here when the user closes it, so the new app appears immediately.
@@ -4299,6 +4334,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
         self.wm.close(id);
+        if revert_preview {
+            self.push_terminal_colors();
+        }
         if was_install {
             self.refresh_installed_apps();
         }

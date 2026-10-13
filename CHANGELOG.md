@@ -6,8 +6,13 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.8] — 2026-10-13
+
 ### Added
 
+- Live terminal colors: `terminal_bg`, `terminal_fg` and the desktop theme now apply to running apps without an app-server restart (new `SetColors` request, apphost protocol v4; older app servers keep their start-up colors, and Settings says so). Switching the theme now recolors terminal contents immediately too.
+- Settings → Terminal: color presets (follow theme, dark, light, black, solarized dark/light, gruvbox dark, nord, dracula, green/amber phosphor), hex or named-color entry for background and foreground, and a Preview / Save / Revert flow (a preview is never written to disk; closing Settings mid-preview reverts it).
+- Settings panel surfaces more keys: Natural scroll (Windows), Icon style and Desktop icons (Appearance), Expire entries after and Max item size (Clipboard). The Settings window is taller to fit.
 - Default theme is now `newmoon` (built into the binary; a `newmoon.toml` in the themes dir still overrides it). Configs that set `theme` are unchanged.
 - Built-in default wallpaper (70 KB, embedded): used when the default `wallpaper.jpg` is not on disk, so a fresh install has a wallpaper with no setup (still needs `chafa`).
 - Network tray item: the label is `wifi` (with signal bars) on a WiFi link or `net` on any other link, never the SSID. The popover shows the SSID, the IP and interface of the default route (click copies the IP), `Offline` when there is no link, and an `Open` row (`wlctl`, `nmtui`, `iwctl`, else `ip -br addr`; macOS `networksetup`/`ifconfig`). The item now also appears on wired-only hosts.
