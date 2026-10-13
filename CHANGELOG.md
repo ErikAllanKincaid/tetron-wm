@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.8] — 2026-10-13
+
 ### Added
 
 - Live terminal colors: `terminal_bg`, `terminal_fg` and the desktop theme now apply to running apps without an app-server restart (new `SetColors` request, apphost protocol v4; older app servers keep their start-up colors, and Settings says so). Switching the theme now recolors terminal contents immediately too.
