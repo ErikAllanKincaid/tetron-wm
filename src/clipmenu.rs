@@ -36,6 +36,9 @@ pub enum ClipAction {
     Delete(usize),
     TogglePause,
     Clear,
+    /// Start select mode (same as Ctrl+Space then x): the next mouse drag
+    /// selects text even in apps that capture the mouse.
+    Select,
     Close,
 }
 
@@ -74,6 +77,7 @@ pub struct Layout {
     pub rows: Vec<(Rect, usize)>,
     pub pause_btn: Rect,
     pub clear_btn: Rect,
+    pub select_btn: Rect,
     /// First filtered position shown.
     pub offset: usize,
     pub total: usize,
@@ -172,6 +176,7 @@ impl ClipMenu {
             rows,
             pause_btn: Rect::new(origin.x + 2, hint_y, 7, 1),
             clear_btn: Rect::new(origin.x + 10, hint_y, 7, 1),
+            select_btn: Rect::new(origin.x + 19, hint_y, 8, 1),
             offset,
             total: m.len(),
         }
@@ -188,6 +193,9 @@ impl ClipMenu {
         }
         if l.clear_btn.contains(p) {
             return Some(ClipAction::Clear);
+        }
+        if l.select_btn.contains(p) {
+            return Some(ClipAction::Select);
         }
         for (r, hi) in &l.rows {
             if r.contains(p) {
@@ -274,7 +282,8 @@ impl ClipMenu {
         let hint_y = bh - 2;
         buf.write_str(2, hint_y, if paused { "[Resume]" } else { "[Pause] " }, t.accent, t.window_bg);
         buf.write_str(10, hint_y, "[Clear]", t.accent, t.window_bg);
-        buf.write_str(19, hint_y, "Shift+Alt: c copy \u{B7} p pin \u{B7} d del", t.border, t.window_bg);
+        buf.write_str(19, hint_y, "[Select]", t.accent, t.window_bg);
+        buf.write_str(28, hint_y, "Shift+Alt: c copy \u{B7} p pin \u{B7} d del", t.border, t.window_bg);
         vec![Layer { z: 5200, origin: Point::new(l.bounds.x, l.bounds.y), buf, opacity: 1.0, scissor: None }]
     }
 }
@@ -366,6 +375,7 @@ mod tests {
         assert_eq!(m.click(Point::new(r.x + r.w - 2, r.y), 100, 40, &h), Some(ClipAction::Delete(hi)));
         assert_eq!(m.click(Point::new(l.pause_btn.x, l.pause_btn.y), 100, 40, &h), Some(ClipAction::TogglePause));
         assert_eq!(m.click(Point::new(l.clear_btn.x, l.clear_btn.y), 100, 40, &h), Some(ClipAction::Clear));
+        assert_eq!(m.click(l.select_btn.center(), 100, 40, &h), Some(ClipAction::Select));
         assert_eq!(m.click(Point::new(0, 30), 100, 40, &h), Some(ClipAction::Close), "outside closes");
     }
 

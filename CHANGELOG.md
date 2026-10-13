@@ -6,6 +6,10 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+
+- Clipboard popover has a **[Select]** button that starts select mode with the mouse (same as `Ctrl+Space x`), and clicking the `SELECT` marker in the menubar cancels it.
+
 ## [0.14.9] — 2026-10-13
 
 ### Fixed

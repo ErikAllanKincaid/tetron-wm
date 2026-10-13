@@ -310,6 +310,37 @@ fn select_mode_stops_mouse_passthrough_until_a_selection_is_made() {
     core.shutdown();
 }
 
+#[test]
+fn clipboard_popover_select_button_starts_select_mode() {
+    use tetron_wm::geometry::Point;
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::ClipMenuToggle);
+    assert!(core.clipmenu_open());
+    assert!(!core.select_mode());
+    let btn = core.clipmenu_select_button_for_test().expect("popover open");
+    core.apply(ClientMsg::MouseDown(btn));
+    assert!(core.select_mode(), "[Select] starts select mode, like Ctrl+Space x");
+    assert!(!core.clipmenu_open(), "popover closes so the drag lands on the app");
+    let _: Point = btn;
+    core.shutdown();
+}
+
+#[test]
+fn clicking_the_select_marker_cancels_select_mode() {
+    use tetron_wm::geometry::Point;
+    use tetron_wm::system::SystemState;
+    use tetron_wm::tray::{tray_segments_with, SegmentKind};
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::ToggleSelectMode);
+    assert!(core.select_mode());
+    // The session lays the tray out from its (default) snapshot; do the same.
+    let segs = tray_segments_with(&SystemState::default(), 100, 0, 0, Some((0, false)), true);
+    let sel = segs.iter().find(|s| s.kind == SegmentKind::Select).expect("SELECT segment");
+    core.apply(ClientMsg::MouseDown(Point::new(sel.rect.x, 0)));
+    assert!(!core.select_mode(), "clicking SELECT cancels it");
+    core.shutdown();
+}
+
 /// Real w3m (skipped when not installed): select-mode drag over its page text
 /// lands in the history.
 #[test]

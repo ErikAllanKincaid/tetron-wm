@@ -830,6 +830,16 @@ impl SessionCore {
     /// Whether one-shot select mode is on (menubar indicator, tests).
     pub fn select_mode(&self) -> bool { self.select_mode }
 
+    /// Centre of the open clipboard popover's [Select] button (integration tests).
+    #[doc(hidden)]
+    pub fn clipmenu_select_button_for_test(&self) -> Option<Point> {
+        if !self.clipmenu.is_open() {
+            return None;
+        }
+        let hist = self.clip_history();
+        Some(self.clipmenu.layout(self.w, self.h, &hist).select_btn.center())
+    }
+
     /// Menubar tray segments including the clipboard indicator.
     fn clip_badge(&self) -> Option<(usize, bool)> {
         if !self.cfg.clipboard_history {
@@ -864,6 +874,11 @@ impl SessionCore {
                 s.history.set_paused(p);
             }
             A::Clear => crate::clipboard::lock(&self.clip).history.clear(),
+            A::Select => {
+                // Same as Ctrl+Space x: close the popover so the drag lands on the app.
+                self.select_mode = true;
+                self.clipmenu.close();
+            }
             A::Close => self.clipmenu.close(),
         }
         let hist = self.clip_history();
@@ -3927,6 +3942,11 @@ or a remote-side error — its authorized_keys was left untouched)",
                 return;
             }
             let segs = self.tray_segments_now();
+            // A click on the SELECT marker cancels select mode.
+            if segs.iter().any(|s| s.kind == crate::tray::SegmentKind::Select && s.rect.contains(p)) {
+                self.select_mode = false;
+                return;
+            }
             if segs.iter().any(|s| s.kind == crate::tray::SegmentKind::Clipboard && s.rect.contains(p)) {
                 self.toggle_clipmenu();
                 return;
