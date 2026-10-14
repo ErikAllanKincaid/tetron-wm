@@ -99,6 +99,7 @@ tetron-wm uses a **leader key** (`Ctrl+Space`) so its shortcuts never collide wi
 | `Ctrl+Space` then `c` / `v` | Copy the mouse selection / paste (`p` also pastes) the clipboard (= Ctrl+Shift+C / V) |
 | `Ctrl+Space` then `s`       | **Screenshot**: save a PNG of the whole screen (launcher → tetron-wm → Screenshot, or `tetron-wm screenshot [file.png]`) |
 | `Ctrl+Space` then `m` / `n` | Maximize / minimize focused window                                 |
+| `Ctrl+Space` then `Esc`     | Close the focused window (app windows ask first)                   |
 | `Ctrl+Space` then `[` / `]` | Snap focused window left / right half                              |
 | `Ctrl+Space` then `t`       | Tile all windows into the grid                                     |
 | `Ctrl+Space` then `T`       | Toggle auto-tile mode                                              |

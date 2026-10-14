@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- Leader `Esc` closes the focused window (keyboard-only close; app windows still ask for confirmation first). Rebind with `close = "..."` in `[keys]`.
+
 ### Fixed
 - The clipboard history popover scrolls with the mouse wheel (the highlight moves, the list follows).
 

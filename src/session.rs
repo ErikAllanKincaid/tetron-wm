@@ -411,6 +411,8 @@ pub enum ClientMsg {
     /// Cancel the window rename without changing the title.
     RenameCancel,
     /// Confirm the close-window dialog (Enter / y): close the pending window.
+    /// Leader + Esc: close the focused window (apps ask first).
+    CloseFocused,
     ConfirmCloseYes,
     /// Dismiss the close-window dialog (Esc / n) without closing.
     ConfirmCloseNo,
@@ -2665,6 +2667,11 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             ClientMsg::RenameCancel => {
                 self.rename = None;
+            }
+            ClientMsg::CloseFocused => {
+                if let Some(id) = self.wm.focused() {
+                    self.request_close(id);
+                }
             }
             ClientMsg::ConfirmCloseYes => {
                 if let Some(id) = self.confirm_close.confirm() {

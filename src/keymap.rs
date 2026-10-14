@@ -32,6 +32,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("launcher", &["l", "enter"], "app menu (launcher)"),
     ("maximize", &["m", "M"], "maximize focused window"),
     ("minimize", &["n", "N"], "minimize focused window"),
+    ("close", &["esc"], "close focused window (asks first for app windows)"),
     ("snap_left", &["[", "left"], "snap left half"),
     ("snap_right", &["]", "right"], "snap right half"),
     ("store", &["S"], "app store"),
@@ -159,7 +160,8 @@ mod tests {
         for c in [KeyCode::Char('l'), KeyCode::Enter] {
             assert_eq!(km.action(c), Some("launcher"));
         }
-        assert_eq!(km.action(KeyCode::Esc), None, "Esc must never open things");
+        assert_ne!(km.action(KeyCode::Esc), Some("launcher"), "Esc must never open things");
+        assert_eq!(km.action(KeyCode::Esc), Some("close"));
     }
 
     #[test]

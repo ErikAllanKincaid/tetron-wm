@@ -22,6 +22,7 @@ pub fn help_sections() -> &'static [HelpSection] {
             title: "Windows",
             rows: &[
                 ("m / n", "maximize / minimize"),
+                ("Esc", "close window (asks first for apps)"),
                 ("[ / ]", "snap left / right half"),
             ],
             notes: &[],

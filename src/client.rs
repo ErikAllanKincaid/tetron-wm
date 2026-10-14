@@ -272,6 +272,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                             (Some("launcher"), _) => send(&mut out_stream, &ClientMsg::ToggleMenu)?,
                             (Some("maximize"), _) => send(&mut out_stream, &ClientMsg::MaximizeFocused)?,
                             (Some("minimize"), _) => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
+                            (Some("close"), _) => send(&mut out_stream, &ClientMsg::CloseFocused)?,
                             (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
                             (Some("store"), _) => send(&mut out_stream, &ClientMsg::OpenStore)?,
