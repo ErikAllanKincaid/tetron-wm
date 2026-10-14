@@ -45,6 +45,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),
     ("auto_tile", &["T"], "toggle auto-tile"),
+    ("screenshot", &["P"], "save a screenshot (PNG) of the whole screen"),
     ("detach", &["q"], "detach (apps keep running)"),
     ("shutdown", &["Q"], "shut down the daemon"),
 ];

@@ -229,6 +229,8 @@ pub enum ClientMsg {
     SnapFocused(SnapZone),
     /// Tile all windows into the configured grid (one-shot).
     TileAll,
+    /// Save a PNG of the next composited frame to this absolute path (daemon-side).
+    Screenshot(String),
     /// Toggle auto-tile mode.
     ToggleAutoTile,
     /// Send the focused window to grid cell N (1-based, row-major).
@@ -536,6 +538,7 @@ pub struct SessionCore {
     /// Text to put on the HOST terminal's clipboard (OSC 52), shipped to the
     /// client in the next frame: log copies and app OSC-52 stores.
     pending_clipboard: Option<String>,
+    pending_screenshot: Option<String>,
     /// Dock-ordered list of (id, display-name) pairs.
     titles: Vec<(WindowId, String)>,
     /// Immutable grouping key per window (set at spawn/open; never mutated).
@@ -664,6 +667,7 @@ impl SessionCore {
             logs_win: None,
             activity_win: None,
             pending_clipboard: None,
+            pending_screenshot: None,
             titles: Vec::new(),
             app_keys: HashMap::new(),
             dock_popup: None,
@@ -1823,6 +1827,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Logs".into(), command: "@logs".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Activity".into(), command: "@activity".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Clipboard".into(), command: "@clipboard".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
+            AppEntry { name: "Screenshot".into(), command: "@screenshot".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
         // One remote file browser per saved system (Systems category).
@@ -2256,6 +2261,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     self.sync_app_size(id);
                 }
             }
+            ClientMsg::Screenshot(path) => self.request_screenshot(path),
             ClientMsg::TileAll => {
                 let grid = self.grid();
                 self.wm.tile_all(grid, self.cfg.tile_gap);
@@ -3095,6 +3101,31 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.pending_clipboard.take()
     }
 
+    /// Queue a screenshot; an empty path means the default timestamped file in
+    /// the configured directory.
+    fn request_screenshot(&mut self, path: String) {
+        let path = if path.is_empty() {
+            let home = dirs::home_dir().unwrap_or_default();
+            let dir = match self.cfg.screenshot_dir.trim() {
+                "" => Some(home.join("Pictures")).filter(|p| p.is_dir()).unwrap_or(home),
+                d => match d.strip_prefix("~/") {
+                    Some(rest) => home.join(rest),
+                    None => std::path::PathBuf::from(d),
+                },
+            };
+            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            dir.join(format!("tetron-wm-screenshot-{ts}.png")).to_string_lossy().into_owned()
+        } else {
+            path
+        };
+        self.pending_screenshot = Some(path);
+    }
+
+    /// Path of a requested screenshot, if any (one-shot; cleared on take).
+    pub fn take_screenshot(&mut self) -> Option<String> {
+        self.pending_screenshot.take()
+    }
+
     fn open_filemanager(&mut self) {
         let root = self.picker_root();
         self.open_filemanager_root(root);
@@ -3558,6 +3589,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     self.toggle_clipmenu();
                 }
             }
+            "@screenshot" => { self.launcher.close(); self.request_screenshot(String::new()); }
             "@help" => { self.launcher.close(); self.help_open = true; self.help_scroll = 0; }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the

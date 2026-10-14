@@ -277,7 +277,14 @@ fn serve_client(
         core.refresh_activity();
         core.poll_desktop_dir();
         let frame = core.build_frame();
-        comp.composite(&frame.layers, frame.cursor);
+        let shot = core.take_screenshot();
+        let composed = comp.composite(&frame.layers, frame.cursor);
+        if let Some(path) = shot {
+            match crate::screenshot::save_png(composed, std::path::Path::new(&path)) {
+                Ok(()) => crate::dbg_log(&format!("screenshot: wrote {path}")),
+                Err(e) => crate::dbg_log(&format!("screenshot: {path}: {e}")),
+            }
+        }
         let changes = comp.diff();
         let flags = Flags {
             launcher_open: core.launcher_open(),

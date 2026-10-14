@@ -97,6 +97,7 @@ tetron-wm uses a **leader key** (`Ctrl+Space`) so its shortcuts never collide wi
 | `Ctrl+Space` then `v`       | **Clipboard history** popover (see [Clipboard](#clipboard))        |
 | `Ctrl+Space` then `x`       | **Select mode**: the next drag selects text even in mouse-capturing apps (w3m, carbonyl, vim) |
 | `Ctrl+Space` then `c` / `p` | Copy the mouse selection / paste the clipboard (= Ctrl+Shift+C / V) |
+| `Ctrl+Space` then `P`       | **Screenshot**: save a PNG of the whole screen (launcher → tetron-wm → Screenshot, or `tetron-wm screenshot [file.png]`) |
 | `Ctrl+Space` then `m` / `n` | Maximize / minimize focused window                                 |
 | `Ctrl+Space` then `[` / `]` | Snap focused window left / right half                              |
 | `Ctrl+Space` then `t`       | Tile all windows into the grid                                     |

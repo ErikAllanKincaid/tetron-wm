@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- `tetron-wm screenshot [path.png]` saves a PNG of the whole composited screen, for kmscon and bare-VT use where no host screenshot tool exists. Needs an attached client. Glyphs come from an installed Terminus PSF console font (`fonts-terminus`); block, quadrant, braille and sextant cells are drawn exactly, icon glyphs the font lacks show as `?`. Also on the leader key `P` and launcher → tetron-wm → Screenshot (saved to `screenshot_dir`, default `~/Pictures` or `$HOME`).
+
 ## [0.14.10] — 2026-10-13
 
 ### Fixed

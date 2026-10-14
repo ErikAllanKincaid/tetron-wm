@@ -73,6 +73,17 @@ fn main() -> std::io::Result<()> {
             let name = command.rsplit('/').next().unwrap_or(&command).to_string();
             ctl(&tetron_wm::session::ClientMsg::Launch { name, command, args })
         }
+        Some("screenshot") => {
+            let path = match std::env::args().nth(2) {
+                Some(p) => std::path::absolute(p)?,
+                None => {
+                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                    std::env::current_dir()?.join(format!("tetron-wm-screenshot-{ts}.png"))
+                }
+            };
+            println!("{}", path.display());
+            ctl(&tetron_wm::session::ClientMsg::Screenshot(path.to_string_lossy().into_owned()))
+        }
         Some("tile") => ctl(&tetron_wm::session::ClientMsg::TileAll),
         Some("theme") => match std::env::args().nth(2).as_deref() {
             // List every theme name (built-ins + file themes).
@@ -115,7 +126,7 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tetron-wm: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, theme, msg, service, --version, --help, --daemon)"
+                "tetron-wm: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
             );
             Ok(())
         }

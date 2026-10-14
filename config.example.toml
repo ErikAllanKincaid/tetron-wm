@@ -93,6 +93,11 @@
 # without one). Empty = launch them bare.
 #web_home = "https://lite.duckduckgo.com/lite/"
 
+## ── Screenshots ───────────────────────────────────────────────────────────
+# Where the leader P / launcher Screenshot PNGs go. Empty = ~/Pictures if it
+# exists, else $HOME.
+#screenshot_dir = ""
+
 ## ── Keys ──────────────────────────────────────────────────────────────────
 # Leader chord, ctrl+<key> (needs `tetron-wm reload`). Default ctrl+space.
 #leader = "ctrl+space"

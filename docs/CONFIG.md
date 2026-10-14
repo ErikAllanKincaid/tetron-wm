@@ -43,6 +43,7 @@ Each row is the TOML key, its type, the default, and what it does.
 | `launcher` | list of table | `[]` | Apps offered in the launcher/spotlight; falls back to `apps` when empty. |
 | `default_apps` | map string→string | built-in | File-role → handler command map, for "open with". |
 | `dock_badges` | map string→string | claude=orange, kilo=yellow | Per-app badge colors (shown on the taskbar pill): a keyword (case-insensitive substring of the app name or command) mapped to a named color or `#rrggbb`. |
+| `screenshot_dir` | string | `""` | Directory for screenshots taken with the leader `P` key or launcher → tetron-wm → Screenshot. Empty uses `~/Pictures` if it exists, else `$HOME`. |
 | `web_home` | string | `"https://lite.duckduckgo.com/lite/"` | Start page for text web browsers launched with no URL (w3m exits at once without one). Empty launches them bare. |
 | `leader` | string | `"ctrl+space"` | Leader chord, `ctrl+<key>`. Needs `tetron-wm reload`. |
 | `keys` | table of action → key or list | built-in | `[keys]` leader-key overrides per action, e.g. `launcher = "l"` or `launcher = ["l", "enter"]`. Actions and their defaults are listed by `tetron-wm --help`. An entry with no valid key is ignored and logged. |
