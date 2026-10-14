@@ -37,7 +37,7 @@ pub struct AppEntry {
 ///
 /// All fields have sensible defaults; missing keys in the TOML file
 /// fall back to [`Default::default`].
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
     /// Whether dragging a window to a screen edge snaps it.
@@ -367,30 +367,41 @@ impl Config {
     pub fn from_toml_str(s: &str) -> Result<Config, toml::de::Error> { toml::from_str(s) }
 
     /// Load from `$XDG_CONFIG_HOME/tetron-wm/config.toml` (or `~/.config/tetron-wm/config.toml`),
-    /// falling back to defaults on any error.
+    /// falling back to defaults on any error. A file that fails to parse is logged
+    /// and left untouched: `save` refuses to overwrite a file that does not parse.
     pub fn load() -> Config {
         let path = config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir());
         if let Some(p) = path {
             if let Ok(text) = std::fs::read_to_string(&p) {
-                if let Ok(cfg) = Config::from_toml_str(&text) { return cfg; }
+                match Config::from_toml_str(&text) {
+                    Ok(cfg) => {
+                        if let Ok(t) = toml::Table::try_from(&cfg) {
+                            crate::configfile::note_loaded(&p, t);
+                        }
+                        return cfg;
+                    }
+                    Err(e) => crate::dbg_log(&format!(
+                        "config: {} failed to parse, using defaults and NOT overwriting it: {e}",
+                        p.display()
+                    )),
+                }
             }
         }
         Config::default()
     }
 
-    /// Write the config back to `$XDG_CONFIG_HOME/tetron-wm/config.toml` (or
+    /// Persist the keys this process changed since it loaded (or last saved) the
+    /// config into `$XDG_CONFIG_HOME/tetron-wm/config.toml` (or
     /// `~/.config/tetron-wm/config.toml`), creating the directory if needed.
     ///
-    /// Note: this serialises the live config, so any hand-written comments in the
-    /// file are not preserved.
+    /// Comments, key order, unknown keys and hand edits to other keys are kept:
+    /// see [`crate::configfile`]. Nothing is written when no key changed, and a
+    /// file that does not parse is never overwritten.
     pub fn save(&self) -> std::io::Result<()> {
         let path = config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir())
             .ok_or_else(|| std::io::Error::other("no config directory"))?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let toml = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(path, toml)
+        let new = toml::Table::try_from(self).map_err(std::io::Error::other)?;
+        crate::configfile::save(&path, new, || toml::Table::try_from(Config::default()).unwrap_or_default())
     }
 }
 

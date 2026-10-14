@@ -2705,10 +2705,14 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::SetTheme(name) => {
                 crate::dbg_log(&format!("theme: set '{name}' (client attach / TETRON_WM_THEME)"));
                 crate::theme::set(&name);
+                // A client sends this on every attach; only a real change is saved.
+                let changed = self.cfg.theme != name;
                 self.cfg.theme = name;
                 self.push_terminal_colors();
-                if let Err(e) = self.cfg.save() {
-                    crate::dbg_log(&format!("theme: config save failed: {e}"));
+                if changed {
+                    if let Err(e) = self.cfg.save() {
+                        crate::dbg_log(&format!("theme: config save failed: {e}"));
+                    }
                 }
             }
         }
@@ -2827,11 +2831,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             let colors_changed = cfg.theme != self.cfg.theme
                 || cfg.terminal_bg != self.cfg.terminal_bg
                 || cfg.terminal_fg != self.cfg.terminal_fg;
+            let changed = cfg != self.cfg;
             self.cfg = cfg;
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
             crate::iconset::set(self.cfg.icon_style);
-            let _ = self.cfg.save();
+            if changed {
+                if let Err(e) = self.cfg.save() {
+                    crate::dbg_log(&format!("config: save failed: {e}"));
+                }
+            }
             if launcher_changed {
                 self.launcher = Launcher::new(Self::build_launcher_apps(&self.cfg, &self.systems));
             }
