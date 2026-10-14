@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- The clipboard history popover scrolls with the mouse wheel (the highlight moves, the list follows).
+
 ### Changed
 - Leader keys follow common conventions. Moved: paste `p` → `v` (`p` still pastes), clipboard history `v` → `C`, screenshot `P` → `s`, store `s` → `S` only. Dropped: launcher `a` (use `l` or `Enter`), screenshot `P`. New: `y` also starts select mode. Beware: a leader `v` that used to open the clipboard history now pastes. Overrides in `[keys]` are by action name and keep working.
 

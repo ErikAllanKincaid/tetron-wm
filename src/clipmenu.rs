@@ -152,6 +152,12 @@ impl ClipMenu {
         None
     }
 
+    /// Mouse wheel: move the highlight by `lines` (negative = up); the view follows.
+    pub fn scroll(&mut self, lines: i32, h: &ClipHistory) {
+        let n = self.matches(h).len().saturating_sub(1) as i64;
+        self.selected = (self.selected as i64 + lines as i64).clamp(0, n) as usize;
+    }
+
     /// After the history changed under the menu (delete, clear).
     pub fn history_changed(&mut self, h: &ClipHistory) { self.clamp(h); }
 
@@ -314,6 +320,19 @@ mod tests {
         m.key(ClipKey::Home, &h);
         m.key(ClipKey::Up, &h);
         assert_eq!(m.selected_index(&h), Some(0));
+    }
+
+    #[test]
+    fn wheel_moves_highlight_and_clamps() {
+        let h = hist(30);
+        let mut m = ClipMenu::default();
+        m.open(0);
+        m.scroll(3, &h);
+        assert_eq!(m.selected, 3);
+        m.scroll(-10, &h);
+        assert_eq!(m.selected, 0);
+        m.scroll(1000, &h);
+        assert_eq!(m.selected, 29);
     }
 
     #[test]

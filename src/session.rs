@@ -2681,6 +2681,11 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Shutdown => self.shutdown = true,
             ClientMsg::Reload => self.reload = true,
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
+            ClientMsg::ScrollAt { p, lines } if self.clipmenu.is_open() => {
+                let _ = p;
+                let hist = self.clip_history();
+                self.clipmenu.scroll(-lines, &hist); // wheel up (+) moves up the list
+            }
             ClientMsg::ScrollAt { p, lines } => {
                 // Wheel over the Volume tray segment adjusts the system volume;
                 // otherwise it scrolls the window under the pointer.
