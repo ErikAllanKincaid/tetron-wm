@@ -1,0 +1,63 @@
+# tetron-wm leader key table
+
+The leader key exists so tetron-wm shortcuts never collide with your terminal, the operating system, or the focused app. Press the leader (default `Ctrl+Space`), release it, then press one key. The key is consumed by tetron-wm and never reaches the app. Source of truth: the `DEFAULTS` table in `src/keymap.rs`; this page is kept in sync with it by hand, so if the two differ the code wins.
+
+## How it works
+
+- Press `Ctrl+Space`, release, then the key. It is a two-step sequence, not a chord, so no modifier needs to be held with the second key.
+- Any key that is not bound after the leader does nothing, and the leader state is cleared.
+- Uppercase keys mean Shift plus the letter after the leader, for example leader then `C` is Shift+c.
+- Rebind the leader with `leader = "ctrl+b"` in `config.toml` (only `ctrl+<key>` chords are accepted; a bare key would steal normal typing). Rebind an action with the `[keys]` table, for example `launcher = "l"` or `launcher = ["l", "enter"]`. A change needs `tetron-wm reload`. Details: `docs/CONFIG.md`.
+- If a key you set is invalid, the default stays and a warning is logged. If two actions claim the same key, the earlier row in the table below keeps it.
+
+## Table
+
+| Key after leader | Action name (for `[keys]`) | What it does |
+| --- | --- | --- |
+| `space` | `spotlight` | Spotlight search overlay: type to filter apps, up and down to move, Enter to launch |
+| `l`, `enter` | `launcher` | Open the app menu (the cascading launcher, the same as clicking the top-left button) |
+| `m`, `M` | `maximize` | Maximize or restore the focused window |
+| `n`, `N` | `minimize` | Minimize the focused window to the taskbar |
+| `esc` | `close` | Close the focused window (app windows ask for confirmation first; built-in panels close at once) |
+| `[`, `left` | `snap_left` | Snap the focused window to the left half of the screen |
+| `]`, `right` | `snap_right` | Snap the focused window to the right half of the screen |
+| `t` | `tile` | Tile all windows into the grid once |
+| `T` | `auto_tile` | Toggle auto-tile mode (new windows re-tile the grid automatically) |
+| `1` to `9` | none (fixed) | Send the focused window to grid cell N (row-major, 1-based) |
+| `r`, `R` | `rename` | Rename the focused window |
+| `S` | `store` | Open the app store |
+| `,` | `settings` | Open Settings |
+| `A` | `activity` | Open the activity monitor |
+| `C` | `clipboard` | Open the clipboard history popover |
+| `x`, `y` | `select` | Select mode: the next mouse drag selects text even in apps that capture the mouse (one shot) |
+| `c` | `copy` | Copy the mouse selection to the clipboard (same as Ctrl+Shift+C where the terminal allows it) |
+| `v`, `p` | `paste` | Paste the clipboard into the focused app (same as Ctrl+Shift+V) |
+| `s` | `screenshot` | Save a PNG screenshot of the whole composited screen to `screenshot_dir` (default `~/Pictures`, else `$HOME`) |
+| `?`, `h` | `help` | Show the shortcut help screen |
+| `q` | `detach` | Detach the client; the daemon and all apps keep running |
+| `Q` | `shutdown` | Shut down the daemon (all apps close) |
+
+## Planned
+
+| Key after leader | Action name | What it will do |
+| --- | --- | --- |
+| `d` | `screen_dump` | Save a cell dump of the screen (`.ansi` and `.cells.json.gz`), see `DO-NOT-COMMIT/PLAN_tetron-wm_screenshot_cell_dump_ansi_and_json.md` |
+
+## Free keys
+
+These keys are unused after the leader and safe to bind in `[keys]` or to claim for new features (defaults only; your own `[keys]` overrides change this).
+
+| Type | Free |
+| --- | --- |
+| lowercase | `a b d e f g i j k o u w z` |
+| uppercase | `B D E F G H I J K L O P U V W X Y Z` |
+| digit | `0` |
+| symbols | `` ` - = ; ' . / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |
+
+`d` is reserved for the planned screen dump above, and `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell; see `DO-NOT-COMMIT/PLAN_tetron-wm_leader_keymap_rework_mnemonic_keys.md`).
+
+## Other rules
+
+- tetron-wm never binds terminal control keys in its own UI: no Ctrl+C, Ctrl+D, Ctrl+P and no function keys. Direct shortcuts use Alt+letter, Insert and Delete, or the leader.
+- Leader then `Esc` closes the focused window, but while a dialog or popover is open it is that dialog's key instead (cancel or close), and it never closes a window then.
+- Dialogs have their own keys while open: Enter or `y` confirms and Esc or `n` cancels (power and forget dialogs); popovers such as the clipboard list document theirs in `README.md`.
