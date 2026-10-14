@@ -399,7 +399,6 @@ impl PowerMenu {
     pub fn form_cancel(&mut self) {
         if self.form.take().is_some() {
             // Back to the Systems submenu so a typo isn't a full restart.
-            self.open = true;
             self.systems_open = true;
         }
     }
@@ -452,7 +451,6 @@ impl PowerMenu {
             if cancel.contains(p) {
                 // Back to the Systems submenu so a mis-click isn't a dead end.
                 self.forget = None;
-                self.open = true;
                 self.systems_open = true;
                 return PowerClick::Consumed;
             }
@@ -474,9 +472,9 @@ impl PowerMenu {
                 };
             }
             if cancel.contains(p) {
-                // Back to the dropdown so the user can pick again.
-                self.confirm = None;
-                self.open = true;
+                // The dropdown no longer exists (actions live in the launcher), so
+                // cancelling just closes; reopening it would pop a stray menu.
+                self.close();
                 return PowerClick::Consumed;
             }
             // A click outside the modal dismisses everything; inside is ignored.
@@ -824,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_returns_to_dropdown() {
+    fn cancel_closes_the_menu() {
         let (w, h) = (120, 40);
         let s = no_systems();
         let mut m = PowerMenu::new();
@@ -833,7 +831,7 @@ mod tests {
         let (cancel, _) = dialog_buttons(w, h);
         m.on_click(center(cancel), w, h, &s);
         assert!(m.confirm.is_none());
-        assert!(m.open);
+        assert!(!m.is_open(), "cancel closes; the dropdown is gone");
     }
 
     #[test]
@@ -855,6 +853,20 @@ mod tests {
         m.on_click(center(item_rect(w, 0)), w, h, &s); // open Exit confirm
         m.on_click(Point::new(1, 1), w, h, &s); // corner, outside the centered dialog
         assert!(!m.is_open());
+    }
+
+    #[test]
+    fn cancel_click_on_launcher_confirm_leaves_nothing_open() {
+        // Shutdown reached via the launcher (no dropdown): Cancel must not
+        // pop the old top-right dropdown.
+        let (w, h) = (120, 40);
+        let s = no_systems();
+        let mut m = PowerMenu::new();
+        m.confirm_action(PowerAction::Shutdown);
+        let (cancel, _) = dialog_buttons(w, h);
+        assert_eq!(m.on_click(center(cancel), w, h, &s), PowerClick::Consumed);
+        assert!(!m.is_open());
+        assert!(m.render(w, h, &s, &[]).is_empty());
     }
 
     #[test]
