@@ -11,8 +11,8 @@ fn help_lists_the_tiling_shortcuts() {
 #[test]
 fn help_explains_select_mode_for_copying_out_of_apps() {
     let sec = help_sections().iter().find(|s| s.title == "Clipboard").expect("a Clipboard section");
-    assert!(sec.rows.iter().any(|(k, d)| *k == "x" && d.contains("select")));
-    assert!(sec.rows.iter().any(|(k, _)| *k == "v"));
+    assert!(sec.rows.iter().any(|(k, d)| *k == "x / y" && d.contains("select")));
+    assert!(sec.rows.iter().any(|(k, _)| *k == "C"));
     let tip = sec.notes.join(" ");
     assert!(tip.contains("w3m") && tip.contains("Ctrl+Space x"), "tip: {tip}");
 }
