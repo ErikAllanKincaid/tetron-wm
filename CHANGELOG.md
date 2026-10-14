@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Changed
+- Leader keys follow common conventions. Moved: paste `p` → `v` (`p` still pastes), clipboard history `v` → `C`, screenshot `P` → `s`, store `s` → `S` only. Dropped: launcher `a` (use `l` or `Enter`), screenshot `P`. New: `y` also starts select mode. Beware: a leader `v` that used to open the clipboard history now pastes. Overrides in `[keys]` are by action name and keep working.
+
 ## [0.14.11] — 2026-10-13
 
 ### Added

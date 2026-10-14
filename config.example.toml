@@ -94,7 +94,7 @@
 #web_home = "https://lite.duckduckgo.com/lite/"
 
 ## ── Screenshots ───────────────────────────────────────────────────────────
-# Where the leader P / launcher Screenshot PNGs go. Empty = ~/Pictures if it
+# Where the leader s / launcher Screenshot PNGs go. Empty = ~/Pictures if it
 # exists, else $HOME.
 #screenshot_dir = ""
 

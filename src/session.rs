@@ -507,7 +507,7 @@ pub struct SessionCore {
     /// `state_path` when the daemon attached one.
     state: crate::state::State,
     state_path: Option<std::path::PathBuf>,
-    /// The clipboard history popover (menubar segment / leader + v).
+    /// The clipboard history popover (menubar segment / leader + C).
     clipmenu: crate::clipmenu::ClipMenu,
     /// Clipboard, primary selection and history, shared with the daemon's
     /// control thread (see `clipboard.rs`).

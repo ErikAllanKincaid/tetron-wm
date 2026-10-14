@@ -1,5 +1,5 @@
 //! The clipboard history popover opened from the menubar clipboard segment (or
-//! leader + `v`). Pure state + rendering + hit-testing: it never touches the
+//! leader + `C`). Pure state + rendering + hit-testing: it never touches the
 //! clipboard itself, it reports a [`ClipAction`] and the session acts on it.
 //!
 //! Layout (render and hit-test share [`layout`]):

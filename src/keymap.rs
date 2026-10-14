@@ -29,23 +29,23 @@ impl KeySpec {
 /// override collides with another action: the earlier action keeps the key.
 pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("spotlight", &["space"], "spotlight search"),
-    ("launcher", &["a", "l", "enter"], "app menu (launcher)"),
+    ("launcher", &["l", "enter"], "app menu (launcher)"),
     ("maximize", &["m", "M"], "maximize focused window"),
     ("minimize", &["n", "N"], "minimize focused window"),
     ("snap_left", &["[", "left"], "snap left half"),
     ("snap_right", &["]", "right"], "snap right half"),
-    ("store", &["s", "S"], "app store"),
+    ("store", &["S"], "app store"),
     ("settings", &[","], "settings"),
     ("activity", &["A"], "activity monitor"),
-    ("clipboard", &["v"], "clipboard history"),
-    ("select", &["x"], "select mode: drag selects text even in mouse-capturing apps (one-shot)"),
+    ("clipboard", &["C"], "clipboard history"),
+    ("select", &["x", "y"], "select mode: drag selects text even in mouse-capturing apps (one-shot)"),
     ("copy", &["c"], "copy the mouse selection to the clipboard (Ctrl+Shift+C)"),
-    ("paste", &["p"], "paste the clipboard into the focused app (Ctrl+Shift+V)"),
+    ("paste", &["v", "p"], "paste the clipboard into the focused app (Ctrl+Shift+V)"),
     ("help", &["?", "h"], "shortcut help"),
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),
     ("auto_tile", &["T"], "toggle auto-tile"),
-    ("screenshot", &["P"], "save a screenshot (PNG) of the whole screen"),
+    ("screenshot", &["s"], "save a screenshot (PNG) of the whole screen"),
     ("detach", &["q"], "detach (apps keep running)"),
     ("shutdown", &["Q"], "shut down the daemon"),
 ];
@@ -156,10 +156,21 @@ mod tests {
     #[test]
     fn default_launcher_keys() {
         let km = Keymap::default();
-        for c in [KeyCode::Char('a'), KeyCode::Char('l'), KeyCode::Enter] {
+        for c in [KeyCode::Char('l'), KeyCode::Enter] {
             assert_eq!(km.action(c), Some("launcher"));
         }
         assert_eq!(km.action(KeyCode::Esc), None, "Esc must never open things");
+    }
+
+    #[test]
+    fn mnemonic_defaults() {
+        let km = Keymap::default();
+        for (c, a) in [('v', "paste"), ('p', "paste"), ('C', "clipboard"), ('s', "screenshot"), ('S', "store"), ('x', "select"), ('y', "select"), ('c', "copy")] {
+            assert_eq!(km.action(KeyCode::Char(c)), Some(a), "{c}");
+        }
+        for c in ['a', 'P'] {
+            assert_eq!(km.action(KeyCode::Char(c)), None, "{c} is freed");
+        }
     }
 
     #[test]
@@ -179,7 +190,7 @@ mod tests {
         keys.insert("bogus".into(), KeySpec::One("x".into()));
         let (km, warns) = Keymap::new(&keys, Some("b"));
         assert_eq!(warns.len(), 3);
-        assert_eq!(km.action(KeyCode::Char('a')), Some("launcher"));
+        assert_eq!(km.action(KeyCode::Char('l')), Some("launcher"));
         assert!(km.is_leader(KeyCode::Char(' '), KeyModifiers::CONTROL));
     }
 

@@ -695,7 +695,7 @@ impl Settings {
                 self.row(&mut buf, cx, 10, 7, "Expire entries after", format!("\u{25C2} {} \u{25B8}", ttl_name(c.clipboard_ttl_secs)));
                 self.row(&mut buf, cx, 11, 8, "Max item size", format!("\u{25C2} {} KB \u{25B8}", c.clipboard_item_max_kb));
                 self.row(&mut buf, cx, 12, 9, "Clear history", "Enter".into());
-                buf.write_str(cx, 14, "Open it from the menubar clipboard segment or leader + v.", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Open it from the menubar clipboard segment or leader + C.", pal_dim(), pal_bg());
                 buf.write_str(cx, 15, "History file: ~/.local/share/tetron-wm/clipboard-history.jsonl", pal_dim(), pal_bg());
                 buf.write_str(cx, 16, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
                 buf.write_str(cx, 17, "More: clipboard_ignore_apps in config.toml.", pal_dim(), pal_bg());

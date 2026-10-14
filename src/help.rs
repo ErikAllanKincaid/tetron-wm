@@ -31,7 +31,7 @@ pub fn help_sections() -> &'static [HelpSection] {
             rows: &[
                 ("t", "tile all into the grid"),
                 ("T", "toggle auto-tile mode"),
-                ("P", "save a screenshot (PNG)"),
+                ("s", "save a screenshot (PNG)"),
                 ("1–9", "send window to cell N"),
             ],
             notes: &[],
@@ -40,8 +40,8 @@ pub fn help_sections() -> &'static [HelpSection] {
             title: "Apps",
             rows: &[
                 ("Space", "spotlight search"),
-                ("a / l / Enter", "app menu (launcher)"),
-                ("s / ,", "store / settings"),
+                ("l / Enter", "app menu (launcher)"),
+                ("S / ,", "store / settings"),
                 ("A", "activity monitor"),
             ],
             notes: &[],
@@ -49,14 +49,14 @@ pub fn help_sections() -> &'static [HelpSection] {
         HelpSection {
             title: "Clipboard",
             rows: &[
-                ("v", "clipboard history (also the menubar \u{2398} segment)"),
-                ("x", "select mode: the next drag selects text"),
-                ("c / p", "copy selection / paste clipboard"),
+                ("C", "clipboard history (also the menubar \u{2398} segment)"),
+                ("x / y", "select mode: the next drag selects text"),
+                ("c / v", "copy selection / paste clipboard (p also pastes)"),
             ],
             notes: &[
                 "Copying out of w3m, carbonyl or vim (they grab the mouse):",
-                "  Ctrl+Space x, drag over the text, then Ctrl+Space v to pick",
-                "  it, or Ctrl+Space p to paste it into another window.",
+                "  Ctrl+Space x, drag over the text, then Ctrl+Space C to pick",
+                "  it, or Ctrl+Space v to paste it into another window.",
             ],
         },
         HelpSection {
