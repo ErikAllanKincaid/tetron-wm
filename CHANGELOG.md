@@ -6,6 +6,18 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.10] — 2026-10-13
+
+### Fixed
+
+- Saving the config no longer wipes your comments or reverts hand edits. The app now writes only the keys it changed into the existing `config.toml`, keeping comments, key order, commented-out blocks and unknown keys, and a hand edit to another key survives even while the daemon is running. Nothing is written when nothing changed (the theme message sent on every client attach and idle Settings clicks used to rewrite the file), the write is atomic, and the previous file is kept once per session as `config.toml.bak`.
+- A `config.toml` with a syntax error is no longer overwritten with defaults at the next save; the error is logged and the file left alone until it parses again.
+
+### Changed
+
+- Desktop icon positions and recent working directories moved from `config.toml` to `~/.local/share/tetron-wm/state.toml`. Old values are migrated once and removed from the config, which is now only what you set. The Settings panel can no longer revert them.
+- `tetron-wm --help` lists the `theme` default as `newmoon`.
+
 ### Added
 
 - Clipboard popover has a **[Select]** button that starts select mode with the mouse (same as `Ctrl+Space x`), and clicking the `SELECT` marker in the menubar cancels it.

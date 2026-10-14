@@ -208,7 +208,7 @@ down** from the bottom of the launcher (click **tetron**), `tetron-wm kill`, or
 UI, apps stay alive, see *live updates* above). The socket lives in a per-user
 `0700` directory (`$XDG_RUNTIME_DIR` or the temp dir).
 
-Configuration lives at `~/.config/tetron-wm/config.toml` (see [example below](#configuration)). On first run with no config, tetron-wm opens your `$SHELL` and auto-detects installed TUIs.
+Configuration lives at `~/.config/tetron-wm/config.toml` (see [example below](#configuration)). On first run with no config, tetron-wm opens your `$SHELL` and auto-detects installed TUIs. The file is yours to edit: the app only rewrites the keys it changes, so your comments and hand edits survive (run `tetron-wm reload` to apply them). Icon positions and recent directories live in `~/.local/share/tetron-wm/state.toml`.
 
 ### Recommended terminal
 

@@ -101,5 +101,8 @@ These behaviors are fixed in tetron-wm and do not need configuration:
 
 ## Notes
 
-- Changes take effect on the next tetron-wm launch (Settings → Appearance can toggle a subset live).
+- Changes take effect on the next tetron-wm launch, or after `tetron-wm reload` (Settings can change a subset live).
+- `config.toml` is yours. Saving from the app (a Settings change, a pin, the theme) rewrites only the keys that changed: your comments, key order, commented-out blocks and unknown keys stay, and a hand edit to any other key is not reverted even while tetron-wm is running (run `tetron-wm reload` to make it take effect). Nothing is written when nothing changed. Two limits: a comment written directly above a key goes with that key if the key is removed, and when a whole `[[launcher]]`, `[[apps]]` or `[[desktop_pins]]` list changes, comments inside that list are not kept.
+- The first time the file is rewritten in a session the old copy is saved as `config.toml.bak`. A file with a syntax error is never overwritten: tetron-wm logs the error (see the Logs viewer), runs on defaults, and saves again once the file parses.
+- App-managed data is not in `config.toml`: desktop icon positions and recent working directories live in `~/.local/share/tetron-wm/state.toml` (`$XDG_DATA_HOME` aware). Old `recent_dirs` and `desktop_positions` keys are moved there once and removed from `config.toml`.
 - The live Settings UI exposes snapping, snap threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll, shadows, theme, wallpaper on/off, wallpaper file, icon-label scrim, icon style, desktop icons, clipboard (including entry expiry and max item size), terminal colors (presets, hex, preview), assistant, and updates; the remaining keys are file-only or app-managed.
