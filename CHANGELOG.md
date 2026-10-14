@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.12] — 2026-10-14
+
 ### Added
 - Leader `Esc` closes the focused window (keyboard-only close; app windows still ask for confirmation first). Rebind with `close = "..."` in `[keys]`.
 
