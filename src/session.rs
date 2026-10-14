@@ -501,6 +501,10 @@ pub struct SessionCore {
     /// (w3m, carbonyl, vim) without relying on Shift, which many terminals
     /// intercept. Toggled by leader + `x`.
     select_mode: bool,
+    /// App-managed state (icon positions, recent directories), persisted to
+    /// `state_path` when the daemon attached one.
+    state: crate::state::State,
+    state_path: Option<std::path::PathBuf>,
     /// The clipboard history popover (menubar segment / leader + v).
     clipmenu: crate::clipmenu::ClipMenu,
     /// Clipboard, primary selection and history, shared with the daemon's
@@ -645,6 +649,8 @@ impl SessionCore {
             apphost,
             selection: None,
             select_mode: false,
+            state: crate::state::State::default(),
+            state_path: None,
             clipmenu: crate::clipmenu::ClipMenu::default(),
             clip_persist_path: None,
             clip: crate::clipboard::new_shared(Self::clip_limits(&cfg), cfg.clipboard_history),
@@ -729,7 +735,7 @@ impl SessionCore {
         // layout() must run first: reload() assigns icons to free grid cells, which
         // needs the real column/row count (else everything piles onto cell (0,0)).
         self.desktop.layout(self.w, self.h);
-        self.desktop.reload(&self.cfg.desktop_pins, &self.cfg.desktop_positions);
+        self.desktop.reload(&self.cfg.desktop_pins, &self.state.desktop_positions);
         crate::dbg_log(&format!("desktop reload: {} icons", self.desktop.icons().len()));
         self.refresh_desktop_thumbnails();
     }
@@ -1351,10 +1357,31 @@ impl SessionCore {
         }
     }
 
-    /// Persist the desktop's current icon positions to the config.
+    /// Attach the app-managed state loaded by the daemon (and where to persist it)
+    /// and rebuild the desktop from its saved icon positions. Sessions without an
+    /// attached state (tests, in-process use) keep it in memory only.
+    pub fn attach_state(&mut self, state: crate::state::State, path: std::path::PathBuf) {
+        self.state = state;
+        self.state_path = Some(path);
+        self.reload_desktop();
+    }
+
+    /// The app-managed state (integration tests).
+    #[doc(hidden)]
+    pub fn state_for_test(&self) -> &crate::state::State { &self.state }
+
+    fn save_state(&self) {
+        if let Some(p) = &self.state_path {
+            if let Err(e) = self.state.save(p) {
+                crate::dbg_log(&format!("state: save failed: {e}"));
+            }
+        }
+    }
+
+    /// Persist the desktop's current icon positions to the state file.
     fn persist_desktop_positions(&mut self) {
-        self.cfg.desktop_positions = self.desktop.positions();
-        let _ = self.cfg.save();
+        self.state.desktop_positions = self.desktop.positions();
+        self.save_state();
     }
 
     /// Open an image file in a new ImageView window.
@@ -2730,10 +2757,10 @@ or a remote-side error — its authorized_keys was left untouched)",
         let (pending, path) = picker.confirm();
         // Record in the MRU (most-recent first, deduped, capped at 10).
         let p = path.to_string_lossy().to_string();
-        self.cfg.recent_dirs.retain(|d| d != &p);
-        self.cfg.recent_dirs.insert(0, p);
-        self.cfg.recent_dirs.truncate(10);
-        let _ = self.cfg.save();
+        self.state.recent_dirs.retain(|d| d != &p);
+        self.state.recent_dirs.insert(0, p);
+        self.state.recent_dirs.truncate(10);
+        self.save_state();
         self.launch_in(pending.name, pending.command, pending.args, Some(path));
     }
 

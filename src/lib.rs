@@ -28,6 +28,7 @@ pub mod input;
 pub mod session;
 pub mod config;
 pub mod configfile;
+pub mod state;
 pub mod system;
 pub mod poller;
 pub mod tray;

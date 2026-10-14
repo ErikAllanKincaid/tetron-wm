@@ -322,8 +322,7 @@ claude = \"orange\"
     fn a_missing_file_is_created_with_only_the_changed_keys() {
         let d = dir("missing");
         let p = d.join("sub").join("config.toml");
-        let mut c = Config::default();
-        c.snap_threshold = 8;
+        let c = Config { snap_threshold: 8, ..Config::default() };
         save(&p, table(&c), || table(&Config::default())).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "snap_threshold = 8\n");
     }

@@ -67,6 +67,10 @@ pub fn run() -> std::io::Result<()> {
     let (w, h) = (100, 30); // provisional until the first client reports its size
     let apphost = ensure_apphost()?;
     let mut core = SessionCore::with_apphost(w, h, cfg.clone(), Box::new(apphost));
+    // App-managed state (icon positions, recent dirs) lives in state.toml, not config.toml.
+    if let Some(p) = crate::state::state_path() {
+        core.attach_state(crate::state::State::load_migrating(&cfg), p);
+    }
     let _ = clip_slot.set(core.clip_handle());
     if cfg.clipboard_history {
         if let Some(b) = crate::clipbridge::detect(&cfg.clipboard_gui_bridge) {

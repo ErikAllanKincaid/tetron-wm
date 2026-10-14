@@ -30,11 +30,11 @@ Each row is the TOML key, its type, the default, and what it does.
 | `default_project_dir` | string | home (`~`) | Directory the working-directory picker opens at. |
 | `show_hidden_dirs` | bool | `false` | Show hidden (dot) directories in the picker by default. |
 | `filemanager_view` | string | `list` | File-manager view: `icon` or `list`. List is the default; this override key round-trips but is not yet applied at startup. |
-| `recent_dirs` | list of string | `[]` | Recently used working directories; maintained by the app, not hand-set. |
+| `recent_dirs` | list of string | `[]` | Legacy. Recently used working directories now live in `~/.local/share/tetron-wm/state.toml`. An old value here is migrated once and then removed from `config.toml`. |
 | `desktop_enabled` | bool | `true` | Show icons on the wallpaper/desktop. |
 | `desktop_scrim` | string | unset (semi-transparent black) | Backing drawn behind desktop icon glyphs and labels **when a wallpaper is shown**, for legibility. A color (`#rrggbb` / `#rrggbbaa` / named); `"none"` or `"off"` removes it so labels sit directly on the wallpaper (white ink). Unset = `#000000c8`. No effect on the solid desktop. (Settings → Appearance → "Icon label scrim" toggles it on/off.) |
 | `desktop_pins` | list of table | none | Pinned desktop shortcuts (see "App entries"); otherwise the desktop shows only real ~/Desktop contents. |
-| `desktop_positions` | map | `{}` | Saved desktop icon positions; maintained by the app. |
+| `desktop_positions` | map | `{}` | Legacy. Saved desktop icon positions now live in `~/.local/share/tetron-wm/state.toml`. An old value here is migrated once and then removed from `config.toml`. |
 | `assistant_command` | string | `opencode` | Agent CLI the ✦ assistant panel runs. |
 | `assistant_args` | list of string | `[]` | Extra arguments passed to the assistant CLI. |
 | `assistant_mode` | string | `"panel"` | How the assistant opens: `panel` (right-docked) or `window` (floating). |

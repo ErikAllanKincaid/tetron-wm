@@ -118,8 +118,10 @@ pub struct Config {
     /// Root directory the working-directory picker opens at (default `~`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_project_dir: Option<String>,
-    /// Recently chosen working directories (most-recent first, capped).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// LEGACY: recently chosen working directories. Now kept in `state.toml`
+    /// (see [`crate::state`]); still read from an old config for one-time
+    /// migration and never written back.
+    #[serde(default, skip_serializing)]
     pub recent_dirs: Vec<String>,
     /// Show hidden (dot) directories in the picker by default.
     #[serde(default)]
@@ -151,8 +153,10 @@ pub struct Config {
     /// Seeded with Files + Store for existing configs that predate this field.
     #[serde(default = "default_desktop_pins", skip_serializing_if = "Vec::is_empty")]
     pub desktop_pins: Vec<AppEntry>,
-    /// Saved grid positions: key (abs path or pin command) → (col, row).
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    /// LEGACY: saved desktop icon grid positions. Now kept in `state.toml`
+    /// (see [`crate::state`]); still read from an old config for one-time
+    /// migration and never written back.
+    #[serde(default, skip_serializing)]
     pub desktop_positions: std::collections::BTreeMap<String, (u16, u16)>,
     /// Agent CLI for the ✦ assistant panel (default: `opencode`). The Assistant
     /// settings switch flips this between the two supported agents (`opencode`
@@ -344,7 +348,7 @@ fn default_grid_cols() -> u8 { 2 }
 /// Note: we deliberately do **not** use `dirs::config_dir()` — on macOS that
 /// returns `~/Library/Application Support`, but tetron-wm standardises on the
 /// XDG-style `~/.config/tetron-wm/config.toml` across all platforms.
-fn config_file_path(
+pub fn config_file_path(
     xdg_config_home: Option<std::ffi::OsString>,
     home: Option<std::path::PathBuf>,
 ) -> Option<std::path::PathBuf> {
