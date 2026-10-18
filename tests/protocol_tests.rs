@@ -9,7 +9,7 @@ fn client_msg_roundtrips_json() {
     for msg in [
         ClientMsg::MouseDown(Point::new(3, 4)),
         ClientMsg::Key(vec![1, 2, 3]),
-        ClientMsg::Resize { w: 80, h: 24 },
+        ClientMsg::Resize { w: 80, h: 24, takeover: false },
         ClientMsg::StoreChar('z'),
         ClientMsg::Shutdown,
     ] {
@@ -28,6 +28,7 @@ fn frame_msg_roundtrips_json() {
         image_data: Vec::new(),
         clear: true,
         clipboard: Some("copied text".into()),
+        notice: None,
         switch_to: Some(tetron_wm::systems::SwitchSpec {
             name: "pi".into(),
             host: "pi@10.0.0.2".into(),
@@ -78,4 +79,31 @@ fn launcher_left_right_roundtrip() {
         let back: ClientMsg = serde_json::from_str(&s).unwrap();
         assert_eq!(serde_json::to_string(&back).unwrap(), s);
     }
+}
+
+#[test]
+fn old_resize_without_takeover_still_parses() {
+    // A pre-`attach -d` client sends Resize with no `takeover` field.
+    let msg: ClientMsg = serde_json::from_str(r#"{"Resize":{"w":80,"h":24}}"#).unwrap();
+    assert!(matches!(msg, ClientMsg::Resize { w: 80, h: 24, takeover: false }));
+}
+
+#[test]
+fn old_frame_without_notice_still_parses() {
+    let f: FrameMsg = serde_json::from_str(r#"{"changes":[],"cursor":null,"flags":{}}"#).unwrap();
+    assert!(f.notice.is_none());
+}
+
+#[test]
+fn session_names_are_validated() {
+    use tetron_wm::protocol::valid_session_name as ok;
+    assert!(ok("work") && ok("a-b_C9") && ok("default"));
+    assert!(!ok("") && !ok("a/b") && !ok("..") && !ok("a b") && !ok(&"x".repeat(33)));
+}
+
+#[test]
+fn default_session_keeps_legacy_dir_named_nests() {
+    use tetron_wm::protocol::{session_dir, socket_root};
+    assert_eq!(session_dir("default"), socket_root());
+    assert_eq!(session_dir("work"), socket_root().join("sessions").join("work"));
 }

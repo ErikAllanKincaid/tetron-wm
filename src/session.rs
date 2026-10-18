@@ -219,8 +219,15 @@ pub enum ClientMsg {
     ScrollFocused(i32),
     /// Raw input bytes to forward to the focused app.
     Key(Vec<u8>),
-    /// Terminal was resized to `w` × `h` cells.
-    Resize { w: i32, h: i32 },
+    /// Terminal was resized to `w` × `h` cells. Also the first message a client
+    /// sends on attach, where `takeover` asks the daemon to evict any client
+    /// already attached (`attach -d`) instead of being refused.
+    Resize {
+        w: i32,
+        h: i32,
+        #[serde(default)]
+        takeover: bool,
+    },
     /// Toggle maximize / restore on the focused window (keyboard command).
     MaximizeFocused,
     /// Minimize the focused window to the dock (keyboard command).
@@ -424,6 +431,9 @@ pub enum ClientMsg {
     Shutdown,
     /// Restart the frontend only, keeping the apphost (and apps) alive.
     Reload,
+    /// Ask the daemon for its [`crate::protocol::StatusReply`] (`tetron-wm ls`).
+    /// Answered by the control thread; never reaches `apply`'s state.
+    Status,
     /// A raw mouse event destined for the focused app's PTY (passthrough).
     MouseInput(crate::mouse::MouseInput),
     /// Scroll the scrollback of the PTY window under `p` by `lines`
@@ -2226,7 +2236,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                 }
             }
-            ClientMsg::Resize { w, h } => {
+            ClientMsg::Resize { w, h, .. } => {
                 self.w = w;
                 self.h = h;
                 self.wm.set_work_area(Rect::new(0, 1, w, h - 1));
@@ -2687,6 +2697,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::LaunchWarnNo => self.launch_warn.cancel(),
             ClientMsg::Shutdown => self.shutdown = true,
             ClientMsg::Reload => self.reload = true,
+            ClientMsg::Status => {} // answered by the daemon's control thread
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
             ClientMsg::ScrollAt { p, lines } if self.clipmenu.is_open() => {
                 let _ = p;

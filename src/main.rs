@@ -30,7 +30,15 @@ fn main() -> std::io::Result<()> {
             std::process::exit(tetron_wm::clipcli::run_shim(name, &rest));
         }
     }
-    let mut args = std::env::args().skip(1);
+    // Global `-s NAME` / `--session NAME` (before the subcommand) selects a named
+    // session; without it `$TETRON_WM_SESSION`, else `default`.
+    let mut args = std::env::args().skip(1).peekable();
+    while matches!(args.peek().map(String::as_str), Some("-s" | "--session")) {
+        args.next();
+        if let Some(name) = parse_session_arg(args.next()) {
+            tetron_wm::protocol::set_session(&name);
+        }
+    }
     let cmd = args.next();
     let rest: Vec<String> = args.collect();
     if cmd.is_some() && rest.iter().any(|a| a == "--help" || a == "-h") && cmd.as_deref() != Some("launch") {
@@ -52,7 +60,26 @@ fn main() -> std::io::Result<()> {
         Some("kill") => kill(),
         Some("kill-app") => kill_app(&rest),
         Some("ps") => ps(),
-        Some("attach") => attach(false),
+        Some("attach") => {
+            let mut takeover = false;
+            let mut it = rest.iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "-d" | "--detach" => takeover = true,
+                    "-s" | "--session" => {
+                        if let Some(name) = parse_session_arg(it.next().cloned()) {
+                            tetron_wm::protocol::set_session(&name);
+                        }
+                    }
+                    other => {
+                        eprintln!("tetron-wm attach: unknown option '{other}' (try: -d, -s NAME)");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            attach(false, takeover)
+        }
+        Some("ls") => ls(),
         Some("reload") => reload(),
         Some("service") => match rest.first().map(String::as_str) {
             Some("install") => tetron_wm::service::install(),
@@ -126,11 +153,11 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tetron-wm: unknown command '{other}' (try: attach, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
+                "tetron-wm: unknown command '{other}' (try: attach, ls, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
             );
             Ok(())
         }
-        None => attach(true),
+        None => attach(true, false),
     }
 }
 
@@ -148,12 +175,16 @@ fn ctl(msg: &tetron_wm::session::ClientMsg) -> std::io::Result<()> {
 /// Connect to the daemon and run a client. If `spawn_if_missing`, start a daemon
 /// first when none is running. On a `ClientExit::Reload`, waits for the old
 /// daemon socket to drop, then loops to spawn/connect a fresh daemon.
-fn attach(spawn_if_missing: bool) -> std::io::Result<()> {
+/// `takeover` (`attach -d`) evicts any client already attached to the session.
+fn attach(spawn_if_missing: bool, takeover: bool) -> std::io::Result<()> {
     loop {
         let path = socket_path();
         if UnixStream::connect(&path).is_err() {
             if !spawn_if_missing {
-                eprintln!("tetron-wm: no daemon running (start it with `tetron-wm`)");
+                eprintln!(
+                    "tetron-wm: no daemon running in session '{}' (start it with `tetron-wm`)",
+                    tetron_wm::protocol::session_name()
+                );
                 return Ok(());
             }
             spawn_daemon()?;
@@ -168,7 +199,7 @@ fn attach(spawn_if_missing: bool) -> std::io::Result<()> {
             }
         }
         let stream = UnixStream::connect(&path)?;
-        match tetron_wm::client::run(stream)? {
+        match tetron_wm::client::run(stream, takeover)? {
             tetron_wm::client::ClientExit::Detached => return Ok(()),
             tetron_wm::client::ClientExit::Switch(spec) => {
                 // Run ssh (and any first-time setup) in the real terminal; when
@@ -249,6 +280,7 @@ fn spawn_daemon() -> std::io::Result<()> {
     tetron_wm::dbg_log(&format!("daemon: spawning {} --daemon", exe.display()));
     std::process::Command::new(exe)
         .arg("--daemon")
+        .env("TETRON_WM_SESSION", tetron_wm::protocol::session_name())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -304,6 +336,75 @@ fn send_control(msg: &tetron_wm::session::ClientMsg) -> std::io::Result<bool> {
         reached = true;
     }
     Ok(reached)
+}
+
+/// Validate the NAME of `-s NAME`; exits with status 2 on a missing or invalid one.
+fn parse_session_arg(name: Option<String>) -> Option<String> {
+    match name {
+        Some(n) if tetron_wm::protocol::valid_session_name(&n) => Some(n),
+        Some(n) => {
+            eprintln!("tetron-wm: invalid session name '{n}' (1-32 chars of A-Z a-z 0-9 _ -)");
+            std::process::exit(2);
+        }
+        None => {
+            eprintln!("tetron-wm: -s needs a session name");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// What `tetron-wm ls` found for one session.
+enum SessionState {
+    /// Daemon answers: attached or not, with its window count (`None` for an
+    /// older daemon that does not report status).
+    Running(Option<tetron_wm::protocol::StatusReply>),
+    /// Daemon is down but the apphost answers: apps are alive and the next
+    /// `tetron-wm` restores their windows.
+    Recoverable,
+    /// Sockets left on disk, nothing answers (crash / reboot).
+    Stale,
+}
+
+/// Probe session `name`. The control socket is used for the daemon (a bare
+/// connect/close is ignored; the main socket would count as a poke).
+fn probe_session(name: &str) -> SessionState {
+    use std::io::BufRead;
+    use tetron_wm::protocol::{session_dir, StatusReply};
+    let dir = session_dir(name);
+    if let Ok(mut s) = UnixStream::connect(dir.join("daemon-ctl.sock")) {
+        let _ = s.set_read_timeout(Some(Duration::from_secs(1)));
+        let mut buf = serde_json::to_vec(&tetron_wm::session::ClientMsg::Status).unwrap_or_default();
+        buf.push(b'\n');
+        let _ = s.write_all(&buf);
+        let _ = s.shutdown(std::net::Shutdown::Write);
+        let mut line = String::new();
+        let reply = std::io::BufReader::new(s).read_line(&mut line).ok().filter(|n| *n > 0);
+        return SessionState::Running(reply.and_then(|_| serde_json::from_str::<StatusReply>(line.trim()).ok()));
+    }
+    if UnixStream::connect(dir.join("apphost.sock")).is_ok() {
+        return SessionState::Recoverable;
+    }
+    SessionState::Stale
+}
+
+/// `tetron-wm ls` — list sessions with their state and window count.
+fn ls() -> std::io::Result<()> {
+    let sessions = tetron_wm::protocol::list_sessions();
+    if sessions.is_empty() {
+        println!("(no sessions)");
+        return Ok(());
+    }
+    println!("{:<32}  {:<11}  WINDOWS", "SESSION", "STATE");
+    for name in sessions {
+        let (state, windows) = match probe_session(&name) {
+            SessionState::Running(Some(st)) => (if st.attached { "attached" } else { "detached" }, st.windows.to_string()),
+            SessionState::Running(None) => ("running", "-".into()),
+            SessionState::Recoverable => ("recoverable", "-".into()),
+            SessionState::Stale => ("stale", "-".into()),
+        };
+        println!("{name:<32}  {state:<11}  {windows}");
+    }
+    Ok(())
 }
 
 /// Tell a running daemon to reload its frontend (apps keep running via the

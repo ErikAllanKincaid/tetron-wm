@@ -4,7 +4,7 @@
 
 use crate::compositor::Compositor;
 use crate::config::Config;
-use crate::protocol::{daemon_ctl_path, socket_dir, socket_path, Flags, FrameMsg};
+use crate::protocol::{daemon_ctl_path, socket_path, DaemonStatus, Flags, FrameMsg};
 use crate::session::{ClientMsg, SessionCore};
 use std::fs::Permissions;
 use std::io::{BufRead, BufReader, Write};
@@ -32,9 +32,8 @@ pub fn run() -> std::io::Result<()> {
     // Confine the socket to a per-user 0700 directory so other local users
     // cannot connect to (and thus drive/observe) the session. Creating the
     // restrictive directory first avoids any window where the socket is exposed.
-    let dir = socket_dir();
-    std::fs::create_dir_all(&dir)?;
-    std::fs::set_permissions(&dir, Permissions::from_mode(0o700))?;
+    crate::protocol::ensure_socket_dir()?;
+    crate::dbg_log(&format!("daemon: session '{}'", crate::protocol::session_name()));
 
     let path = socket_path();
     let _ = std::fs::remove_file(&path);
@@ -53,12 +52,15 @@ pub fn run() -> std::io::Result<()> {
     // The clipboard state is created with the session below; the control thread
     // reads it through this slot (`tetron-wm clip`, the xclip/xsel shims).
     let clip_slot: Arc<std::sync::OnceLock<crate::clipboard::SharedClip>> = Arc::new(std::sync::OnceLock::new());
+    // Published by the render loop for `tetron-wm ls` (answered on the control thread).
+    let status = Arc::new(DaemonStatus::default());
     if let Ok(ctl_listener) = UnixListener::bind(&ctl_path) {
         let _ = std::fs::set_permissions(&ctl_path, Permissions::from_mode(0o600));
         let ctl_flag = Arc::clone(&ctl);
         let queue = Arc::clone(&ctl_queue);
         let slot = Arc::clone(&clip_slot);
-        std::thread::spawn(move || serve_control(ctl_listener, ctl_flag, queue, slot));
+        let status = Arc::clone(&status);
+        std::thread::spawn(move || serve_control(ctl_listener, ctl_flag, queue, slot, status));
     }
 
     let cfg = Config::load();
@@ -118,19 +120,32 @@ pub fn run() -> std::io::Result<()> {
     // Honour a one-shot UI reopen hint (e.g. reopen Settings → Updates after an
     // in-app update reloaded the frontend).
     core.reopen_ui_from_hint();
+    status.windows.store(core.window_count(), std::sync::atomic::Ordering::Relaxed);
     let mut comp = Compositor::new(w, h);
 
-    // While unattached, the loop blocks in `accept()`; a control message can't be
-    // seen until a client connects. So `tetron-wm kill`/`reload` ALSO poke the main
-    // socket (a no-op connection) to wake this accept — see `main.rs`. Either way
-    // we re-check the control flag on each wake.
+    // Connections are accepted on a thread and handed over as events, so a new
+    // `attach` is seen even while a client is being served (refused, or it takes
+    // over with `attach -d`). While unattached the loop blocks on the channel;
+    // `tetron-wm kill`/`reload` also poke the main socket, which arrives here as
+    // `Conn::Poke` so the control flag is re-checked either way.
+    let conns = spawn_acceptor(listener);
     let mut reloading = false;
-    for stream in listener.incoming() {
+    let mut pending: Option<Conn> = None;
+    loop {
+        let conn = match pending.take() {
+            Some(c) => c,
+            None => match conns.recv() {
+                Ok(c) => c,
+                Err(_) => break,
+            },
+        };
         if apply_ctl(&ctl, &ctl_queue, &mut core) {
-            // A control message arrived while unattached; this stream is the wake
-            // poke. Don't serve it as a client.
-        } else if let Ok(stream) = stream {
-            serve_client(&mut core, &mut comp, stream, &ctl, &ctl_queue);
+            // A control message arrived while unattached; this connection is the
+            // wake poke. Don't serve it as a client.
+        } else if let Conn::Client(client) = conn {
+            if let Some(next) = serve_client(&mut core, &mut comp, client, &ctl, &ctl_queue, &conns, &status) {
+                pending = Some(Conn::Client(next));
+            }
         }
         core.clear_quit();
         if core.shutdown_requested() {
@@ -154,6 +169,80 @@ pub fn run() -> std::io::Result<()> {
     Ok(())
 }
 
+/// A connection to the main socket, after its handshake.
+enum Conn {
+    /// No client: a wake-up poke from `tetron-wm kill`/`reload` (they write a
+    /// control message and close), a stalled or garbage connection.
+    Poke,
+    Client(ClientConn),
+}
+
+/// An attaching client: its first message (always `Resize`) already read.
+struct ClientConn {
+    reader: BufReader<UnixStream>,
+    writer: UnixStream,
+    first: ClientMsg,
+}
+
+impl ClientConn {
+    /// `attach -d`: the client asked to evict whoever is attached.
+    fn wants_takeover(&self) -> bool {
+        matches!(self.first, ClientMsg::Resize { takeover: true, .. })
+    }
+}
+
+/// Accept connections for the daemon's lifetime; each gets a short handshake
+/// thread so a slow or silent peer never blocks the next `attach`.
+fn spawn_acceptor(listener: UnixListener) -> mpsc::Receiver<Conn> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(handshake(stream));
+            });
+        }
+    });
+    rx
+}
+
+/// Read the first line. A `Resize` makes it a client; anything else (control
+/// message poke, EOF, timeout, garbage) is a [`Conn::Poke`].
+fn handshake(stream: UnixStream) -> Conn {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let Ok(writer) = stream.try_clone() else { return Conn::Poke };
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    if let Ok(n) = reader.read_line(&mut line) {
+        if n > 0 {
+            if let Ok(first @ ClientMsg::Resize { .. }) = serde_json::from_str::<ClientMsg>(line.trim()) {
+                let _ = reader.get_ref().set_read_timeout(None);
+                return Conn::Client(ClientConn { reader, writer, first });
+            }
+        }
+    }
+    Conn::Poke
+}
+
+/// A final frame that tells a client to exit and print `notice`.
+fn notice_frame(notice: &str) -> Vec<u8> {
+    let mut buf = serde_json::to_vec(&FrameMsg {
+        changes: Vec::new(),
+        cursor: None,
+        flags: Flags { detach: true, ..Default::default() },
+        images: Vec::new(),
+        image_data: Vec::new(),
+        clear: false,
+        switch_to: None,
+        clipboard: None,
+        notice: Some(notice.to_string()),
+    })
+    .unwrap_or_default();
+    buf.push(b'\n');
+    buf
+}
+
 /// Ensure the apphost process is running and return a connected handle. Spawns
 /// `tetron-wm --apphost` (detached) if its socket is absent, then connects.
 fn ensure_apphost() -> std::io::Result<crate::apphost::RemoteAppHost> {
@@ -166,7 +255,9 @@ fn ensure_apphost() -> std::io::Result<crate::apphost::RemoteAppHost> {
         // detached on-demand apphost we spawn here would not. Only spawn our own
         // when no service is installed, or as a fallback if the service didn't
         // bring its socket up in time.
-        let used_service = crate::service::ensure_started();
+        // The per-user service supervises the default session's apphost only; a
+        // named session always gets its own detached one.
+        let used_service = crate::protocol::session_name() == crate::protocol::DEFAULT_SESSION && crate::service::ensure_started();
         if !used_service {
             spawn_detached_apphost()?;
         }
@@ -185,6 +276,7 @@ fn spawn_detached_apphost() -> std::io::Result<()> {
     let exe = std::env::current_exe()?;
     std::process::Command::new(exe)
         .arg("--apphost")
+        .env("TETRON_WM_SESSION", crate::protocol::session_name())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -204,21 +296,44 @@ fn wait_for_socket(path: &std::path::Path) -> bool {
     false
 }
 
-/// Serve one attached client until it detaches (socket closes) or asks to detach.
+/// Serve one attached client, publishing attached/window-count for `tetron-wm ls`.
+/// Returns the next client when this one was evicted by `attach -d`.
 fn serve_client(
     core: &mut SessionCore,
     comp: &mut Compositor,
-    stream: UnixStream,
+    client: ClientConn,
     ctl: &Arc<AtomicU8>,
     ctl_queue: &CtlQueue,
-) {
-    let Ok(reader_stream) = stream.try_clone() else { return };
-    let mut writer = stream;
+    conns: &mpsc::Receiver<Conn>,
+    status: &DaemonStatus,
+) -> Option<ClientConn> {
+    use std::sync::atomic::Ordering::Relaxed;
+    status.attached.store(true, Relaxed);
+    let next = serve_client_inner(core, comp, client, ctl, ctl_queue, conns, status);
+    // On takeover the next client re-sets this at once.
+    status.attached.store(false, Relaxed);
+    status.windows.store(core.window_count(), Relaxed);
+    next
+}
+
+/// Serve one attached client until it detaches (socket closes) or asks to detach.
+fn serve_client_inner(
+    core: &mut SessionCore,
+    comp: &mut Compositor,
+    client: ClientConn,
+    ctl: &Arc<AtomicU8>,
+    ctl_queue: &CtlQueue,
+    conns: &mpsc::Receiver<Conn>,
+    status: &DaemonStatus,
+) -> Option<ClientConn> {
+    let ClientConn { reader: mut r, mut writer, first } = client;
 
     // Read client messages on a thread; the main loop drains them and ticks.
+    // The handshake already consumed the first message (a `Resize`): replay it
+    // so it takes the normal path.
     let (tx, rx) = mpsc::channel::<ClientMsg>();
+    let _ = tx.send(first);
     std::thread::spawn(move || {
-        let mut r = BufReader::new(reader_stream);
         let mut line = String::new();
         loop {
             line.clear();
@@ -247,29 +362,45 @@ fn serve_client(
     let mut clear_pending = true;
 
     loop {
+        // A new connection while this client is attached: `attach -d` evicts
+        // us; a plain attach is refused with a message.
+        while let Ok(conn) = conns.try_recv() {
+            let Conn::Client(mut other) = conn else { continue };
+            if other.wants_takeover() {
+                crate::dbg_log("daemon: attach -d — evicting the attached client");
+                let _ = writer.write_all(&notice_frame("detached by another client (attach -d)"));
+                let _ = writer.shutdown(std::net::Shutdown::Both);
+                return Some(other);
+            }
+            crate::dbg_log("daemon: attach refused — a client is already attached");
+            let _ = other.writer.write_all(&notice_frame(
+                "session already attached from another terminal; use `tetron-wm attach -d` to take it over",
+            ));
+        }
         // Apply all pending input.
         loop {
             match rx.try_recv() {
-                Ok(ClientMsg::Resize { w, h }) => {
+                Ok(ClientMsg::Resize { w, h, .. }) => {
                     comp.resize(w, h);
-                    core.apply(ClientMsg::Resize { w, h });
+                    core.apply(ClientMsg::Resize { w, h, takeover: false });
                     clear_pending = true;
                     // The client's wipe frees transmitted image data; re-send it.
                     sent_image_ids.clear();
                 }
                 Ok(msg) => core.apply(msg),
                 Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => return, // client gone
+                Err(mpsc::TryRecvError::Disconnected) => return None, // client gone
             }
         }
         // Out-of-band `tetron-wm kill` / `tetron-wm reload` (control socket) — honored even
         // though this client is attached.
         apply_ctl(ctl, ctl_queue, core);
         if core.shutdown_requested() {
-            return;
+            return None;
         }
 
         core.reap_dead();
+        status.windows.store(core.window_count(), std::sync::atomic::Ordering::Relaxed);
         core.pump_app_events();
         core.refresh_app_graphics();
         core.sync_app_meta();
@@ -336,11 +467,12 @@ fn serve_client(
             clear: clear_pending,
             switch_to: core.switch_spec(),
             clipboard: core.take_clipboard(),
+            notice: None,
         })
             .unwrap_or_default();
         buf.push(b'\n');
         if writer.write_all(&buf).is_err() {
-            return; // client gone
+            return None; // client gone
         }
         comp.commit();
         clear_pending = false;
@@ -349,10 +481,10 @@ fn serve_client(
             if let Some(spec) = core.switch_spec() {
                 crate::dbg_log(&format!("daemon: switch frame delivered (→ {} {})", spec.name, spec.host));
             }
-            return; // detach (flag already delivered)
+            return None; // detach (flag already delivered)
         }
         if core.reload_requested() {
-            return; // reload flag delivered; daemon will restart, apphost untouched
+            return None; // reload flag delivered; daemon will restart, apphost untouched
         }
         std::thread::sleep(Duration::from_millis(16));
     }
@@ -393,6 +525,7 @@ fn serve_control(
     ctl: Arc<AtomicU8>,
     queue: CtlQueue,
     clip: Arc<std::sync::OnceLock<crate::clipboard::SharedClip>>,
+    status: Arc<DaemonStatus>,
 ) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
@@ -402,6 +535,13 @@ fn serve_control(
             match serde_json::from_str::<ClientMsg>(line.trim()) {
                 Ok(ClientMsg::Shutdown) => ctl.store(CTL_SHUTDOWN, Ordering::SeqCst),
                 Ok(ClientMsg::Reload) => ctl.store(CTL_RELOAD, Ordering::SeqCst),
+                // `tetron-wm ls`: one JSON line back; an older daemon never replies.
+                Ok(ClientMsg::Status) => {
+                    if let Ok(mut buf) = serde_json::to_vec(&status.snapshot()) {
+                        buf.push(b'\n');
+                        let _ = std::io::Write::write_all(r.get_mut(), &buf);
+                    }
+                }
                 // Clipboard requests are answered right here (one JSON line back),
                 // so they work with no client attached and never wait on a frame.
                 Ok(ClientMsg::Clip(cmd)) => {

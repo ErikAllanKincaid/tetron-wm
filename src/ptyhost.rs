@@ -145,6 +145,9 @@ impl AppInstance {
         // graphics support is instead advertised at runtime: the reader thread's tap
         // answers the graphics query (`a=q`) with OK, which graphics-capable apps
         // (yazi, timg) probe for and treat as the authoritative capability signal.
+        // Apps belong to this session: `tetron-wm launch/clip/...` run inside a
+        // window must reach it, not the default session.
+        builder.env("TETRON_WM_SESSION", crate::protocol::session_name());
         builder.env("TERM", "xterm-256color");
         builder.env("COLORTERM", "truecolor");
         // Start in the requested working directory, else the user's home.

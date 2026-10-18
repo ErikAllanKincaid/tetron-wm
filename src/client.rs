@@ -27,13 +27,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Attach to the daemon over `stream` and run until the user detaches.
-pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
+pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     let term = Terminal::enter()?;
     let caps = term.caps;
     let (w, h) = Terminal::size()?;
 
     let mut out_stream = stream.try_clone()?;
-    send(&mut out_stream, &ClientMsg::Resize { w, h })?;
+    send(&mut out_stream, &ClientMsg::Resize { w, h, takeover })?;
 
     // A per-system theme rides over ssh as TETRON_WM_THEME: apply it to this
     // daemon's config as soon as we attach.
@@ -53,6 +53,8 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
     let detached = Arc::new(AtomicBool::new(false));
     let reload = Arc::new(AtomicBool::new(false));
     let switch: Arc<Mutex<Option<crate::systems::SwitchSpec>>> = Arc::new(Mutex::new(None));
+    // A message from the daemon to print once the terminal is restored.
+    let notice: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     // Reader thread: socket frames → ANSI → stdout.
     {
@@ -60,6 +62,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
         let detached = detached.clone();
         let reload = reload.clone();
         let switch = switch.clone();
+        let notice = notice.clone();
         let reader_stream = stream.try_clone()?;
         std::thread::spawn(move || {
             let mut r = BufReader::new(reader_stream);
@@ -76,6 +79,9 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                     Ok(_) => {
                         if let Ok(mut msg) = serde_json::from_str::<FrameMsg>(line.trim()) {
                             *flags.lock().unwrap() = msg.flags;
+                            if let Some(text) = msg.notice.take() {
+                                *notice.lock().unwrap() = Some(text);
+                            }
                             if let Some(text) = msg.clipboard.take() {
                                 // OSC 52: set the host terminal's clipboard
                                 // (Ghostty/Kitty/WezTerm; forwarded over ssh).
@@ -491,7 +497,7 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
                         route_mouse(&mut out_stream, &f, ev, &mut last_click, &mut grab)?;
                     }
                 }
-                Event::Resize(nc, nr) => send(&mut out_stream, &ClientMsg::Resize { w: nc as i32, h: nr as i32 })?,
+                Event::Resize(nc, nr) => send(&mut out_stream, &ClientMsg::Resize { w: nc as i32, h: nr as i32, takeover: false })?,
                 _ => {}
             }
         }
@@ -500,6 +506,9 @@ pub fn run(stream: UnixStream) -> std::io::Result<ClientExit> {
     // Detach: dropping `term` restores the screen; dropping the socket signals
     // the daemon, which keeps the session alive.
     drop(term);
+    if let Some(text) = notice.lock().unwrap().take() {
+        eprintln!("tetron-wm: {text}");
+    }
     if let Some(spec) = switch.lock().unwrap().take() {
         return Ok(ClientExit::Switch(spec));
     }
@@ -763,6 +772,7 @@ mod tests {
             clear: false,
             switch_to: None,
             clipboard: None,
+            notice: None,
         }
     }
 

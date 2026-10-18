@@ -8,7 +8,7 @@
 use crate::compositor::CellChange;
 use crate::geometry::{Point, Rect};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Daemon → client frame: changed cells, cursor position, routing flags, and the
 /// image layer (placements + any first-time image data).
@@ -39,6 +39,11 @@ pub struct FrameMsg {
     /// OSC 52 (Logs-viewer copy; apps' own OSC 52 stores). One frame only.
     #[serde(default)]
     pub clipboard: Option<String>,
+    /// A message for the user from the daemon, shown by the client on the real
+    /// terminal after it exits (e.g. "session in use", "detached by another
+    /// client"). Set on a final frame only.
+    #[serde(default)]
+    pub notice: Option<String>,
 }
 
 /// A request to place image `id` at `rect` (screen cells). `visible=false` tells
@@ -136,14 +141,132 @@ pub struct Flags {
     pub activity_confirming: bool,
 }
 
-/// Per-user directory that holds the daemon socket. Created mode `0700` by the
-/// daemon so other local users cannot reach the socket inside it.
-pub fn socket_dir() -> PathBuf {
+/// Daemon answer to [`crate::session::ClientMsg::Status`] on the control socket
+/// (one JSON line). Every field is `#[serde(default)]` so version skew degrades.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct StatusReply {
+    /// A client is attached right now.
+    pub attached: bool,
+    /// Open windows in the session.
+    pub windows: usize,
+}
+
+/// Live status published by the render loop for the control thread to read (the
+/// control thread has no access to `SessionCore`).
+#[derive(Default)]
+pub struct DaemonStatus {
+    pub attached: std::sync::atomic::AtomicBool,
+    pub windows: std::sync::atomic::AtomicUsize,
+}
+
+impl DaemonStatus {
+    pub fn snapshot(&self) -> StatusReply {
+        use std::sync::atomic::Ordering::Relaxed;
+        StatusReply { attached: self.attached.load(Relaxed), windows: self.windows.load(Relaxed) }
+    }
+}
+
+/// Name of the default session. Its sockets live directly in the per-user
+/// directory (the pre-named-sessions layout), so a daemon started by an older
+/// binary stays reachable across an update.
+pub const DEFAULT_SESSION: &str = "default";
+
+static SESSION_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Whether `name` is a valid session name: 1 to 32 chars of `[A-Za-z0-9_-]`.
+pub fn valid_session_name(name: &str) -> bool {
+    (1..=32).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// Select the session for this process (`-s NAME`). First call wins.
+pub fn set_session(name: &str) {
+    let _ = SESSION_OVERRIDE.set(name.to_string());
+}
+
+/// The active session name: `-s NAME`, else `$TETRON_WM_SESSION`, else `default`.
+/// App windows inherit `TETRON_WM_SESSION`, so `tetron-wm launch` run inside a
+/// window talks to the session that window belongs to. An invalid name falls
+/// back to the default.
+pub fn session_name() -> String {
+    SESSION_OVERRIDE
+        .get()
+        .cloned()
+        .or_else(|| std::env::var("TETRON_WM_SESSION").ok())
+        .filter(|n| valid_session_name(n))
+        .unwrap_or_else(|| DEFAULT_SESSION.to_string())
+}
+
+/// Per-user root directory holding every session. Created mode `0700`.
+pub fn socket_root() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
     base.join(format!("tetron-wm-{user}"))
+}
+
+/// Directory of session `name`: the root itself for `default`, else
+/// `<root>/sessions/<name>`.
+pub fn session_dir(name: &str) -> PathBuf {
+    if name == DEFAULT_SESSION {
+        socket_root()
+    } else {
+        socket_root().join("sessions").join(name)
+    }
+}
+
+/// Directory that holds the active session's sockets. Created mode `0700` (see
+/// [`ensure_socket_dir`]) so other local users cannot reach the sockets inside.
+pub fn socket_dir() -> PathBuf {
+    session_dir(&session_name())
+}
+
+/// Create the active session directory (and its parents) with mode `0700`.
+pub fn ensure_socket_dir() -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = socket_dir();
+    let root = socket_root();
+    std::fs::create_dir_all(&dir)?;
+    let mut d = dir.as_path();
+    loop {
+        std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700))?;
+        if d == root {
+            break;
+        }
+        match d.parent() {
+            Some(p) => d = p,
+            None => break,
+        }
+    }
+    Ok(dir)
+}
+
+/// Whether `dir` holds any session socket. A cleanly stopped session removes
+/// its sockets (the empty directory remains), so it is not listed; a crashed
+/// one leaves them behind and shows as stale.
+fn has_sockets(dir: &Path) -> bool {
+    ["daemon.sock", "daemon-ctl.sock", "apphost.sock"].iter().any(|f| dir.join(f).exists())
+}
+
+/// Sessions with sockets on disk: `default` (if its legacy sockets exist)
+/// plus every named session, sorted.
+pub fn list_sessions() -> Vec<String> {
+    let mut out = Vec::new();
+    if has_sockets(&socket_root()) {
+        out.push(DEFAULT_SESSION.to_string());
+    }
+    if let Ok(rd) = std::fs::read_dir(socket_root().join("sessions")) {
+        let mut named: Vec<String> = rd
+            .flatten()
+            .filter(|e| has_sockets(&e.path()))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| valid_session_name(n))
+            .collect();
+        named.sort();
+        out.extend(named);
+    }
+    out
 }
 
 /// Path of the per-user daemon socket.

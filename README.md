@@ -191,7 +191,10 @@ and it's all still there.
 
 ```bash
 tetron-wm            # ensure the daemon is running, then attach
-tetron-wm attach     # attach to an already-running daemon
+tetron-wm attach     # attach to an already-running daemon (refused if a client is attached)
+tetron-wm attach -d  # take over: evict the attached client, like tmux attach -d
+tetron-wm -s work    # a separate named session (own daemon + apps); also attach -s work
+tetron-wm ls         # list sessions: attached, detached (work waiting), recoverable, stale
 tetron-wm reload     # restart the UI only; apps keep running
 tetron-wm ps         # list every hosted app (id, pid, cmd, age, alive)
 tetron-wm kill-app <id|all>  # kill one (or every) hosted app

@@ -5,7 +5,7 @@
 
 use crate::apphost::proto::{recv, send, AppListEntry, HostEvt, HostReq, ImgBlob, RosterEntry};
 use crate::apphost::{AppHost, AppId, LocalAppHost};
-use crate::protocol::{apphost_socket_path, socket_dir};
+use crate::protocol::apphost_socket_path;
 use std::collections::{HashMap, HashSet};
 use std::fs::Permissions;
 use std::io::BufReader;
@@ -39,9 +39,7 @@ pub fn run() -> std::io::Result<()> {
         crate::dbg_log("apphost: another instance already running; exiting");
         return Ok(());
     }
-    let dir = socket_dir();
-    std::fs::create_dir_all(&dir)?;
-    std::fs::set_permissions(&dir, Permissions::from_mode(0o700))?;
+    crate::protocol::ensure_socket_dir()?;
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
     std::fs::set_permissions(&path, Permissions::from_mode(0o600))?;

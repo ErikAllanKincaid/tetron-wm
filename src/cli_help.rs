@@ -63,6 +63,7 @@ pub const ENV_VARS: &[(&str, &str)] = &[
     ("TETRON_WM_GRAPHICS", "1 force Kitty graphics on, 0 off"),
     ("TETRON_WM_GPM", "1 force the gpm mouse reader on, 0 off (Linux console)"),
     ("TETRON_WM_DEBUG", "set to print the exact system-switch script that will run"),
+    ("TETRON_WM_SESSION", "session name (same as -s); set inside app windows so tetron-wm commands there reach their own session"),
     ("TETRON_WM_BIN_DIR", "install.sh/updater install dir (default /usr/local/bin)"),
     ("TETRON_WM_INSTALL_DEPS", "1 lets a piped install.sh install dependencies"),
     ("XDG_CONFIG_HOME", "config root (default ~/.config)"),
@@ -91,10 +92,14 @@ fn shortcuts() -> String {
 pub fn text() -> String {
     let mut s = format!(
         "tetron-wm {} - a window manager and desktop for the terminal\n\n\
-USAGE:\n  tetron-wm [COMMAND]\n\n\
+USAGE:\n  tetron-wm [-s NAME] [COMMAND]\n\n\
 COMMANDS:\n\
 \x20 (none)                start the daemon if needed and attach\n\
-\x20 attach                attach to a running daemon\n\
+\x20 attach [-d] [-s NAME] attach to a running daemon; -d evicts a client already\n\
+\x20                       attached (otherwise attach is refused while one is)\n\
+\x20 ls                    list sessions: attached / detached / recoverable / stale, windows\n\
+\x20 -s, --session NAME    use the named session (own daemon, apps, sockets);\n\
+\x20                       default: $TETRON_WM_SESSION, else \"default\"\n\
 \x20 reload                restart the frontend only; apps keep running\n\
 \x20 kill                  stop the daemon (closes all windows)\n\
 \x20 kill-app <id|all>     close app <id> (see ps); all reaps only exited apps\n\
