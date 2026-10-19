@@ -54,6 +54,8 @@ pub fn run() -> std::io::Result<()> {
     let clip_slot: Arc<std::sync::OnceLock<crate::clipboard::SharedClip>> = Arc::new(std::sync::OnceLock::new());
     // Published by the render loop for `tetron-wm ls` (answered on the control thread).
     let status = Arc::new(DaemonStatus::default());
+    // What the UI shows, published by the session so the poller skips unseen data.
+    let interest = Arc::new(crate::system::Interest::default());
     if let Ok(ctl_listener) = UnixListener::bind(&ctl_path) {
         let _ = std::fs::set_permissions(&ctl_path, Permissions::from_mode(0o600));
         let ctl_flag = Arc::clone(&ctl);
@@ -85,8 +87,9 @@ pub fn run() -> std::io::Result<()> {
     // Start the background system poller and feed its shared snapshot to the
     // session so the menubar tray reflects live host state. Keep `_poller` bound
     // for the daemon's lifetime so its thread is not detached/dropped.
-    let _poller = crate::poller::SystemPoller::start(Arc::clone(&status));
+    let _poller = crate::poller::SystemPoller::start(Arc::clone(&status), Arc::clone(&interest));
     core.attach_tray_state(_poller.state());
+    core.attach_interest(Arc::clone(&interest));
     // Rebuild windows for any apps the apphost already owns (reload / crash
     // recovery). Only auto-launch the configured apps on a truly fresh start.
     // Auto-launch the configured apps ONLY on a genuinely fresh apphost. If the

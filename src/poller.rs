@@ -4,7 +4,7 @@
 //! timeout-guarded, so the poller can never hang the desktop.
 
 use crate::protocol::DaemonStatus;
-use crate::system::{backend, BatteryInfo, ClockInfo, SystemState};
+use crate::system::{backend, BatteryInfo, ClockInfo, Interest, SystemState};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 /// the tray, so the shell-outs, probes and file reads are wasted work) and wake
 /// at once when one attaches.
 #[derive(Clone)]
-struct Gate(Arc<DaemonStatus>);
+struct Gate(Arc<DaemonStatus>, Arc<Interest>);
 
 /// How often a paused poller re-checks for an attach.
 const PAUSE_STEP: Duration = Duration::from_millis(100);
@@ -30,13 +30,14 @@ impl Gate {
         waited
     }
 
-    /// Sleep up to `d`, waking early when a client attaches.
+    /// Sleep up to `d`, waking early when a client attaches or a part of the
+    /// UI that was hidden becomes visible (so its data is read at once).
     fn sleep(&self, d: Duration) {
-        let gen = self.0.attach_gen.load(Relaxed);
+        let gen = (self.0.attach_gen.load(Relaxed), self.1.kick_gen());
         let start = Instant::now();
         while start.elapsed() < d {
             std::thread::sleep(PAUSE_STEP.min(d));
-            if self.0.attach_gen.load(Relaxed) != gen {
+            if (self.0.attach_gen.load(Relaxed), self.1.kick_gen()) != gen {
                 return;
             }
         }
@@ -53,11 +54,13 @@ impl SystemPoller {
     /// place. The thread runs for the lifetime of the process (daemon).
     ///
     /// While `status.attached` is false (the session is detached) every poll is
-    /// paused; the next attach refreshes everything straight away.
-    pub fn start(status: Arc<DaemonStatus>) -> Self {
+    /// paused; the next attach refreshes everything straight away. `interest`
+    /// says which shell-backed parts the UI currently shows; unseen ones are not
+    /// read.
+    pub fn start(status: Arc<DaemonStatus>, interest: Arc<Interest>) -> Self {
         let state = Arc::new(RwLock::new(SystemState::default()));
         let worker = state.clone();
-        let gate = Gate(status);
+        let gate = Gate(status, interest);
         std::thread::spawn(move || run(worker, gate));
         SystemPoller { state }
     }
@@ -74,6 +77,8 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
     let mut last_slow = Instant::now()
         .checked_sub(Duration::from_secs(10))
         .unwrap_or_else(Instant::now);
+    let mut seen_kick = gate.1.kick_gen();
+    let caps = backend.caps();
 
     // Remote reachability + calendar events refresh on their own (slowest)
     // cadence, on a separate thread so a slow ssh-port probe or `khal` run can
@@ -122,11 +127,15 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
         let clock = now_clock();
         let battery = read_battery();
 
-        // The shell-backed metrics refresh less often than CPU/clock.
-        let slow = last_slow.elapsed() >= Duration::from_secs(3);
+        // The shell-backed metrics refresh less often than CPU/clock, or at once
+        // when a hidden part becomes visible. Only the parts the UI shows are read.
+        let kick = gate.1.kick_gen();
+        let slow = last_slow.elapsed() >= Duration::from_secs(3) || kick != seen_kick;
+        seen_kick = kick;
+        let want = gate.1.want();
         let readout = if slow {
             last_slow = Instant::now();
-            Some((backend.read(), backend.caps()))
+            Some(backend.read_parts(want))
         } else {
             None
         };
@@ -137,13 +146,21 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
             s.mem.used = used;
             s.mem.total = total;
             s.battery = battery;
-            if let Some((r, caps)) = readout {
-                s.wifi = r.wifi;
-                s.net = r.net;
-                s.bluetooth = r.bluetooth;
-                s.volume = r.volume;
-                s.known_networks = r.known_networks;
-                s.caps = caps;
+            // Capabilities are cheap and fixed; always set so segments that depend
+            // on them (Bluetooth) exist even when their data is not being read.
+            s.caps = caps;
+            if let Some(r) = readout {
+                if want.net {
+                    s.wifi = r.wifi;
+                    s.net = r.net;
+                    s.known_networks = r.known_networks;
+                }
+                if want.bluetooth {
+                    s.bluetooth = r.bluetooth;
+                }
+                if want.volume {
+                    s.volume = r.volume;
+                }
             }
         }
 
@@ -329,7 +346,7 @@ mod gate_tests {
     fn gate(attached: bool) -> (Gate, Arc<DaemonStatus>) {
         let st = Arc::new(DaemonStatus::default());
         st.attached.store(attached, Relaxed);
-        (Gate(st.clone()), st)
+        (Gate(st.clone(), Arc::new(Interest::default())), st)
     }
 
     #[test]

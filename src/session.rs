@@ -591,6 +591,8 @@ pub struct SessionCore {
     confirm_close: ConfirmClose,
     /// Modal "are you sure?" shown before launching an app entry flagged `warn`.
     launch_warn: LaunchWarn,
+    /// What the UI shows, for the poller (None outside the daemon).
+    interest: Option<std::sync::Arc<crate::system::Interest>>,
     /// Shared host-state snapshot refreshed by the daemon's `SystemPoller`.
     tray_state: std::sync::Arc<std::sync::RwLock<crate::system::SystemState>>,
     /// The menubar status tray (open popover state + hit-testing).
@@ -700,6 +702,7 @@ impl SessionCore {
             power_menu: PowerMenu::new(),
             confirm_close: ConfirmClose::new(),
             launch_warn: LaunchWarn::new(),
+            interest: None,
             tray_state: std::sync::Arc::new(std::sync::RwLock::new(crate::system::SystemState::default())),
             tray: crate::tray::Tray::new(),
             backend: crate::system::backend(),
@@ -1753,6 +1756,27 @@ impl SessionCore {
             }
         }
         self.backend.apply(&intent);
+    }
+
+    /// Attach the daemon's [`crate::system::Interest`]: the session publishes
+    /// which polled parts the UI shows each frame.
+    pub fn attach_interest(&mut self, interest: std::sync::Arc<crate::system::Interest>) {
+        self.interest = Some(interest);
+    }
+
+    /// Tell the poller which shell-backed data is on screen: Wi-Fi/net when the
+    /// segment is on the bar or its popover (or the Info menu listing it) is
+    /// open; Bluetooth when its segment is on the bar or its popover is open.
+    fn publish_interest(&self) {
+        use crate::tray::SegmentKind as K;
+        let Some(i) = &self.interest else { return };
+        let l = self.tray_layout_now();
+        let open = self.tray.open();
+        let on_bar = |k: K| l.segments.iter().any(|s| s.kind == k);
+        let listed = |k: K| l.in_info.iter().any(|r| r.kind == k);
+        let net = on_bar(K::Wifi) || open == Some(K::Wifi) || (open == Some(K::Info) && listed(K::Wifi));
+        let bt = on_bar(K::Bluetooth) || open == Some(K::Bluetooth);
+        i.set(net, bt);
     }
 
     /// Attach the daemon's shared system snapshot (written by the `SystemPoller`)
@@ -4643,6 +4667,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// The cursor is set to the last known mouse position.
     pub fn build_frame(&self) -> Frame {
+        self.publish_interest();
         if self.simple {
             return self.build_frame_simple();
         }
@@ -4885,6 +4910,7 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// window's content fills the work area with no decorations; the menubar and
     /// dock stay; the desktop and other windows are hidden.
     fn build_frame_simple(&self) -> Frame {
+        self.publish_interest();
         use crate::geometry::Point;
         let t = crate::theme::current();
         let wa = self.simple_content_rect();

@@ -219,10 +219,72 @@ pub struct SystemReadout {
     pub known_networks: Vec<String>,
 }
 
+/// Which OS-specific parts a [`SystemMonitor::read_parts`] call fetches. Each
+/// part costs a subprocess or two, so unseen data is not read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Want {
+    pub volume: bool,
+    /// WiFi, the primary link (`net`) and the known-network list.
+    pub net: bool,
+    pub bluetooth: bool,
+}
+
+impl Want {
+    pub const ALL: Want = Want { volume: true, net: true, bluetooth: true };
+}
+
+/// What the UI currently shows, published by the session for the poller: parts
+/// nobody can see (a segment in the Info menu with the menu closed) are not
+/// polled. Everything is wanted until a session says otherwise.
+#[derive(Debug)]
+pub struct Interest {
+    net: std::sync::atomic::AtomicBool,
+    bluetooth: std::sync::atomic::AtomicBool,
+    /// Bumped when a part becomes wanted, so the poller reads it at once.
+    kick: std::sync::atomic::AtomicU64,
+}
+
+impl Default for Interest {
+    fn default() -> Self {
+        Interest {
+            net: std::sync::atomic::AtomicBool::new(true),
+            bluetooth: std::sync::atomic::AtomicBool::new(true),
+            kick: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+}
+
+impl Interest {
+    /// Publish what is visible now. Volume is always on the bar, so always wanted.
+    pub fn set(&self, net: bool, bluetooth: bool) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let was_net = self.net.swap(net, Relaxed);
+        let was_bt = self.bluetooth.swap(bluetooth, Relaxed);
+        if (net && !was_net) || (bluetooth && !was_bt) {
+            self.kick.fetch_add(1, Relaxed);
+        }
+    }
+
+    pub fn want(&self) -> Want {
+        use std::sync::atomic::Ordering::Relaxed;
+        Want { volume: true, net: self.net.load(Relaxed), bluetooth: self.bluetooth.load(Relaxed) }
+    }
+
+    /// Changes whenever a part newly becomes wanted.
+    pub fn kick_gen(&self) -> u64 {
+        self.kick.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
 /// Reads the OS-specific parts of the snapshot. Portable metrics (CPU/mem/
 /// battery) are filled in by the poller via `sysinfo`.
 pub trait SystemMonitor: Send + Sync {
-    fn read(&self) -> SystemReadout;
+    /// Read only the parts in `want`; the rest come back at their defaults.
+    fn read_parts(&self, want: Want) -> SystemReadout;
+    /// Read everything.
+    fn read(&self) -> SystemReadout {
+        self.read_parts(Want::ALL)
+    }
     fn caps(&self) -> BackendCaps;
 }
 
@@ -238,7 +300,7 @@ impl<T: SystemMonitor + SystemControl> Backend for T {}
 /// Fallback backend on unsupported targets: no caps, no-op control.
 pub struct StubBackend;
 impl SystemMonitor for StubBackend {
-    fn read(&self) -> SystemReadout {
+    fn read_parts(&self, _want: Want) -> SystemReadout {
         SystemReadout::default()
     }
     fn caps(&self) -> BackendCaps {
@@ -332,3 +394,30 @@ pub mod macos;
 pub mod linux;
 /// Cross-platform tetron daemon status probe (Unix socket; any OS tetron runs on).
 pub mod tetron;
+
+#[cfg(test)]
+mod interest_tests {
+    use super::*;
+
+    #[test]
+    fn everything_is_wanted_until_a_session_says_otherwise() {
+        let i = Interest::default();
+        assert_eq!(i.want(), Want::ALL);
+    }
+
+    #[test]
+    fn newly_wanted_parts_kick_the_poller_once() {
+        let i = Interest::default();
+        i.set(false, false);
+        let k = i.kick_gen();
+        i.set(false, false);
+        assert_eq!(i.kick_gen(), k, "no change, no kick");
+        i.set(true, false);
+        assert_eq!(i.kick_gen(), k + 1, "net became wanted");
+        i.set(true, false);
+        assert_eq!(i.kick_gen(), k + 1);
+        i.set(false, false);
+        assert_eq!(i.kick_gen(), k + 1, "unwanting never kicks");
+        assert_eq!(i.want(), Want { volume: true, net: false, bluetooth: false });
+    }
+}

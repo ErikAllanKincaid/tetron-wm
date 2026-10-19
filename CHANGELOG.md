@@ -11,7 +11,7 @@ carry user-visible feature work and the occasional breaking config change.
 - On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
 
 ### Changed
-- The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach.
+- The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach. Wi-Fi/network and Bluetooth are only read while something that shows them is on screen (on the bar, or its popover open); opening one refreshes it immediately.
 
 ### Added
 - The `ⓘ` Info menu in the tray: session name, window count, version, links to a live Sessions window (`tetron-wm ls`), Logs, Shortcuts and Settings, plus the tray segments that are not on the bar.

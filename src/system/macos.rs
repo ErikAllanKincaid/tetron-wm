@@ -4,7 +4,7 @@
 
 use super::{
     run_capped, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
-    NetInfo, SystemReadout, VolumeInfo, WifiInfo,
+    NetInfo, SystemReadout, VolumeInfo, Want, WifiInfo,
 };
 
 const IF: &str = "en0"; // primary Wi-Fi interface on Apple Silicon Macs
@@ -55,13 +55,13 @@ impl Default for MacBackend {
 }
 
 impl SystemMonitor for MacBackend {
-    fn read(&self) -> SystemReadout {
+    fn read_parts(&self, want: Want) -> SystemReadout {
         SystemReadout {
-            volume: read_volume(),
-            wifi: read_wifi(),
-            net: read_net(),
-            known_networks: read_known_networks(),
-            bluetooth: if self.has_blueutil {
+            volume: if want.volume { read_volume() } else { VolumeInfo::default() },
+            wifi: if want.net { read_wifi() } else { None },
+            net: if want.net { read_net() } else { None },
+            known_networks: if want.net { read_known_networks() } else { Vec::new() },
+            bluetooth: if want.bluetooth && self.has_blueutil {
                 read_bluetooth_blueutil()
             } else {
                 BluetoothInfo::default()

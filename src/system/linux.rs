@@ -3,7 +3,7 @@
 
 use super::{
     run_capped, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
-    NetInfo, SystemReadout, VolumeInfo, WifiInfo,
+    NetInfo, SystemReadout, VolumeInfo, Want, WifiInfo,
 };
 
 /// argv for `wpctl set-volume` (level 0..=100 → 0.00..=1.00).
@@ -51,13 +51,13 @@ impl Default for LinuxBackend {
 }
 
 impl SystemMonitor for LinuxBackend {
-    fn read(&self) -> SystemReadout {
+    fn read_parts(&self, want: Want) -> SystemReadout {
         SystemReadout {
-            volume: if self.has_wpctl { read_volume() } else { VolumeInfo::default() },
-            wifi: if self.has_nmcli { read_wifi() } else { None },
-            net: read_net(),
-            known_networks: if self.has_nmcli { read_known() } else { Vec::new() },
-            bluetooth: if self.has_bt { read_bt() } else { BluetoothInfo::default() },
+            volume: if want.volume && self.has_wpctl { read_volume() } else { VolumeInfo::default() },
+            wifi: if want.net && self.has_nmcli { read_wifi() } else { None },
+            net: if want.net { read_net() } else { None },
+            known_networks: if want.net && self.has_nmcli { read_known() } else { Vec::new() },
+            bluetooth: if want.bluetooth && self.has_bt { read_bt() } else { BluetoothInfo::default() },
         }
     }
     fn caps(&self) -> BackendCaps {

@@ -952,3 +952,40 @@ fn info_menu_settings_link_opens_settings() {
     assert_eq!(core.window_count(), 1, "settings opened");
     core.shutdown();
 }
+
+#[test]
+fn poller_interest_follows_what_the_ui_shows() {
+    use std::sync::{Arc, RwLock};
+    use tetron_wm::system::{Interest, SystemState, WifiInfo};
+    let mut core = SessionCore::new(100, 30, Config::default());
+    let interest = Arc::new(Interest::default());
+    core.attach_interest(interest.clone());
+    let mut st = SystemState::default();
+    st.caps.bluetooth = true;
+    st.wifi = Some(WifiInfo { ssid: "wlan".into(), signal: 3, enabled: true });
+    core.attach_tray_state(Arc::new(RwLock::new(st)));
+
+    // Wi-Fi is on the bar (auto); Bluetooth lives in the Info menu (default),
+    // closed, so nobody can see it: it is not polled.
+    core.build_frame();
+    let w = interest.want();
+    assert!(w.net && w.volume && !w.bluetooth, "{w:?}");
+    let kick0 = interest.kick_gen();
+
+    // Open the Info menu, then the Bluetooth row: its popover needs the data.
+    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    core.apply(ClientMsg::MouseDown(icon));
+    core.build_frame();
+    assert!(!interest.want().bluetooth, "the Info row alone needs no Bluetooth data");
+    let row = find_on_layer(&mut core, 5000, "Bluetooth").expect("Bluetooth row in Info");
+    core.apply(ClientMsg::MouseDown(Point::new(row.x + 2, row.y)));
+    core.build_frame();
+    assert!(interest.want().bluetooth, "its own popover is open");
+    assert!(interest.kick_gen() > kick0, "the poller is told to read it now");
+
+    // Closing it stops the polling again.
+    core.apply(ClientMsg::MouseDown(Point::new(0, 20)));
+    core.build_frame();
+    assert!(!interest.want().bluetooth);
+    core.shutdown();
+}
