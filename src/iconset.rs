@@ -137,6 +137,16 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
     }
 }
 
+/// A short warning marker for labels (e.g. launcher variant entries) in `style`:
+/// emoji only when the style is `emoji`, so ascii consoles never see tofu.
+pub fn warning_label(style: IconStyle) -> &'static str {
+    match style {
+        IconStyle::Ascii => "[!]",
+        IconStyle::Nerd => "\u{F071}",
+        IconStyle::Emoji => "\u{26A0}\u{FE0F}",
+    }
+}
+
 /// The status glyph in the active style.
 pub fn status(s: Status) -> char {
     status_for(s, *slot().read().unwrap())
@@ -145,6 +155,11 @@ pub fn status(s: Status) -> char {
 fn slot() -> &'static RwLock<IconStyle> {
     static STYLE: OnceLock<RwLock<IconStyle>> = OnceLock::new();
     STYLE.get_or_init(|| RwLock::new(IconStyle::Ascii))
+}
+
+/// The warning label in the active style.
+pub fn warning() -> &'static str {
+    warning_label(*slot().read().unwrap())
 }
 
 /// Set the active icon style (daemon startup, from config).

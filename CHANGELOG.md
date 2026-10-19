@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- The launcher warning label on variant entries (Claude Code skip-permissions) now follows `icon_style`: `[!]` for ascii (default), a Nerd Font glyph for nerd, the emoji only for emoji.
+
 ## [0.14.14] — 2026-10-19
 
 ### Added

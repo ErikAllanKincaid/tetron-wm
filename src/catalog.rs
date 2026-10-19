@@ -212,7 +212,7 @@ pub fn detect_installed() -> Vec<AppEntry> {
         });
         for v in &c.variants {
             entries.push(AppEntry {
-                name: format!("{} {}", c.name, v.suffix),
+                name: format!("{} {}", c.name, if v.suffix == "\u{26A0}\u{FE0F}" { crate::iconset::warning() } else { v.suffix.as_str() }),
                 command: c.bin.clone(),
                 args: v.args.clone(),
                 category: Some(c.category.clone()),
@@ -267,7 +267,7 @@ mod tests {
         assert!(base.args.is_empty());
         assert_eq!(base.warn, None, "the plain entry carries no warning");
 
-        let variant = entries.iter().find(|e| e.name == "Claude Code ⚠️").expect("variant entry present");
+        let variant = entries.iter().find(|e| e.name == format!("Claude Code {}", crate::iconset::warning())).expect("variant entry present");
         assert_eq!(variant.command, "claude");
         assert_eq!(variant.args, vec!["--dangerously-skip-permissions".to_string()]);
         assert_eq!(variant.cli, None, "variants launch as given, not through the CLI wrapper");
