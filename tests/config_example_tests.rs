@@ -27,3 +27,23 @@ fn config_docs_cover_every_key() {
         }
     }
 }
+
+/// The leader key table doc lists every action with exactly its default keys, and
+/// does not call a bound key free.
+#[test]
+fn keys_doc_matches_keymap() {
+    let doc = include_str!("../docs/KEYS_tetron-wm_leader_key_table.md");
+    let free = doc.split("## Free keys").nth(1).expect("free keys section");
+    for (action, keys, _) in tetron_wm::keymap::DEFAULTS {
+        let cells: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
+        let row = format!("| {} | `{action}` |", cells.join(", "));
+        assert!(doc.contains(&row), "KEYS doc row missing or wrong for {action}: {row}");
+        for k in keys.iter().filter(|k| k.chars().count() == 1) {
+            let table = free.split("## Other rules").next().unwrap();
+            let listed = table.lines().filter(|l| l.starts_with("| lowercase") || l.starts_with("| uppercase"));
+            for l in listed {
+                assert!(!l.split_whitespace().any(|w| w.trim_matches('`') == *k), "{k} ({action}) is listed as free");
+            }
+        }
+    }
+}

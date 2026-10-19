@@ -44,13 +44,18 @@ terminal and tetron-wm just runs in it.
 
 ## Path A — easy (scripted)
 
+Shortcut: `contrib/install-tetron-wm-suite.sh` does all of Path A and the
+autologin and autostart from "Persist on tty1" in one prompted run
+(`--profile appliance`, `--dry-run` to preview, `--uninstall` to undo). The
+steps below are what it automates.
+
 ### A1. Install tetron-wm (+ optional deps)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 ```
 
-Downloads the prebuilt binary to `~/.local/bin`. The optional helpers (chafa,
+Downloads the prebuilt binary to `/usr/local/bin` (using `sudo`). The optional helpers (chafa,
 gpm, sshpass, the Nerd Font) are installed after a prompt in an interactive run;
 in a piped `curl | sh` they are skipped unless you opt in:
 
@@ -58,8 +63,8 @@ in a piped `curl | sh` they are skipped unless you opt in:
 curl -fsSL .../install.sh | TETRON_WM_INSTALL_DEPS=1 sh
 ```
 
-Override the dir with `TETRON_WM_BIN_DIR=...`. Put `~/.local/bin` on PATH if it
-is not already:
+For a no-sudo install set `TETRON_WM_BIN_DIR="$HOME/.local/bin"`, and put
+`~/.local/bin` on PATH if it is not already:
 
 ```sh
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile   # bash: ~/.bash_profile
@@ -199,7 +204,7 @@ Log in there, run `tetron-wm`, confirm windows + mouse. Ctrl+Alt+F1 returns.
 tetron-wm
 ```
 
-First run with no config opens your `$SHELL` and auto-detects installed TUIs.
+With no config file it starts an empty desktop with the defaults: click the top-left button (or press `Ctrl+Space` then `l`) and pick **Shell**. Add apps to start automatically with `[[apps]]` in `config.toml` (see [CONFIG.md](CONFIG.md#apps-auto-started-at-launch)).
 
 ### Wallpaper
 
@@ -323,7 +328,7 @@ wallpaper.
 ## References
 
 - Illustrated walkthrough (the "why"): [`tetron-wm_bare_console_guide.html`](tetron-wm_bare_console_guide.html)
-- Installers: `install.sh`, `scripts/install-kmscon.sh` (this repo)
-- Config schema: `src/config.rs`; example config in `README.md`
+- Installers: `install.sh`, `scripts/install-kmscon.sh`, `contrib/install-tetron-wm-suite.sh` (this repo)
+- Config: [`CONFIG.md`](CONFIG.md) (reference and recipes), [`config.example.toml`](../config.example.toml)
 - Maintained kmscon fork: https://github.com/Aetf/kmscon , https://github.com/Aetf/libtsm
 - Nerd Fonts: https://github.com/ryanoasis/nerd-fonts · chafa: https://hpjansson.org/chafa/

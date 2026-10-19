@@ -42,7 +42,7 @@ The leader key exists so tetron-wm shortcuts never collide with your terminal, t
 
 | Key after leader | Action name | What it will do |
 | --- | --- | --- |
-| `d` | `screen_dump` | Save a cell dump of the screen (`.ansi` and `.cells.json.gz`), see `DO-NOT-COMMIT/PLAN_tetron-wm_screenshot_cell_dump_ansi_and_json.md` |
+| `d` | `screen_dump` | Save a cell dump of the screen (`.ansi` and `.cells.json.gz`) |
 
 ## Free keys
 
@@ -50,15 +50,15 @@ These keys are unused after the leader and safe to bind in `[keys]` or to claim 
 
 | Type | Free |
 | --- | --- |
-| lowercase | `a b d e f g i j k o u w z` |
+| lowercase | `a b d e f g i j k o u w` |
 | uppercase | `B D E F G H I J K L O P U V W X Y Z` |
 | digit | `0` |
 | symbols | `` ` - = ; ' . / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |
 
-`d` is reserved for the planned screen dump above, and `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell; see `DO-NOT-COMMIT/PLAN_tetron-wm_leader_keymap_rework_mnemonic_keys.md`).
+`d` is reserved for the planned screen dump above, and `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell).
 
 ## Other rules
 
 - tetron-wm never binds terminal control keys in its own UI: no Ctrl+C, Ctrl+D, Ctrl+P and no function keys. Direct shortcuts use Alt+letter, Insert and Delete, or the leader.
 - Leader then `Esc` closes the focused window, but while a dialog or popover is open it is that dialog's key instead (cancel or close), and it never closes a window then.
-- Dialogs have their own keys while open: Enter or `y` confirms and Esc or `n` cancels (power and forget dialogs); popovers such as the clipboard list document theirs in `README.md`.
+- Dialogs have their own keys while open: Enter or `y` confirms and Esc or `n` cancels (power and forget dialogs); the clipboard history popover takes typing to filter, then `Alt+c` or leader `c` to copy without pasting, `Alt+p` or leader `p` or `Insert` to pin, and `Alt+d` or leader `d` or `Delete` to remove an entry.
