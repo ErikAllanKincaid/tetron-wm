@@ -1605,6 +1605,12 @@ impl SessionCore {
         }
     }
 
+    /// The launcher button's text: the configured label, normalised to 6 cells,
+    /// with `@session` resolved to this session's name.
+    fn launcher_label_now(&self) -> String {
+        crate::chrome::launcher_label(&self.cfg.launcher_label, &crate::protocol::session_name())
+    }
+
     /// The current tray layout (bar segments + Info rows) from the live snapshot.
     fn tray_layout_now(&self) -> crate::tray::TrayLayout {
         let st = self.tray_state.read().unwrap();
@@ -4773,7 +4779,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
 
         let segs = self.tray_segments_now();
-        layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
+        layers.push(render_menubar(self.w, &self.dock_items(), &segs, false, &self.launcher_label_now()));
         layers.extend(self.render_dock_ctx());
 
         // The desktop context / rename menu floats above the windows (but below
@@ -4975,7 +4981,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         // Chrome: menubar (simple glyph) with the taskbar pills.
         let segs = self.tray_segments_now();
-        layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
+        layers.push(render_menubar(self.w, &self.dock_items(), &segs, true, &self.launcher_label_now()));
         layers.extend(self.render_dock_ctx());
 
         // Overlays that must still work in simple mode.

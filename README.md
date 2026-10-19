@@ -321,6 +321,11 @@ assistant_mode = "panel"  # "panel" (right-docked) | "window" (floating)
 update_branch = "main"    # "main" = fast prebuilt releases; "dev" = build from source
 web_home = "https://lite.duckduckgo.com/lite/"  # start page for w3m when launched with no URL
 
+# Menubar launcher button text (also editable in Settings → Appearance)
+launcher_label = "tetron"  # up to 6 single-width characters, centred in a fixed width so
+#                          # the bar never shifts; "@session" shows the session name in a
+#                          # named session (and "tetron" in the default one)
+
 # Tiling grid (also editable in Settings → Windows)
 grid_rows = 2
 grid_cols = 3

@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Added
+- `launcher_label` config (and Settings → Appearance → Launcher label): the text of the menubar launcher button. Up to 6 characters, centred in a fixed width so nothing else on the bar moves; empty falls back to `tetron`. `@session` shows the session name in a named session, so the bar tells you which session you are in. Use single-width characters (CJK and emoji are two cells wide and will overflow).
 - The `ⓘ` Info menu in the tray: session name, window count, version, links to a live Sessions window (`tetron-wm ls`), Logs, Shortcuts and Settings, plus the tray segments that are not on the bar.
 - `[tray_placement]` config: put each tray segment on the `bar`, in the `info` menu, or `auto` (on the bar, overflowing into the menu when space runs out). **Behaviour change:** CPU, memory and Bluetooth now live in the Info menu by default; pin them back with `cpu = "bar"` (and `mem`, `bluetooth`). A CPU or memory reading of 90% or more still shows on the bar. Tray segments that do not fit a narrow terminal now move into the Info menu instead of silently disappearing; the clipboard, volume and clock are never moved.
 - `tetron-wm attach -d` takes over the session from a client already attached (that client exits with "detached by another client"). A plain `attach` while another client is attached is now refused with a message instead of hanging on a blank screen.

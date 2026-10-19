@@ -5,14 +5,43 @@ use crate::window::WindowId;
 
 // ── Theme constants ────────────────────────────────────────────────────────────
 
-/// Label drawn for the top-left launcher button (opens the app launcher).
-/// Short brand word, not the full binary name. TODO: make configurable
-/// (config.toml); when it is, derive MODE_X/ASSIST_X/APP_X from its width
-/// rather than hardcoding them (see `menubar_brand_region`, which already does).
-const GO_LABEL: &str = " tetron ";
+/// Visible characters in the launcher button's label. The button is always
+/// `LABEL_CHARS` cells of text plus one cell of padding each side, so a
+/// configurable label can never move the buttons to its right (`MODE_X` etc.).
+pub const LABEL_CHARS: usize = 6;
+
+/// Default launcher label (the brand word).
+pub const DEFAULT_LABEL: &str = "tetron";
+
+/// Total width of the launcher button: the label and a pad cell on each side.
+const GO_LABEL_W: i32 = LABEL_CHARS as i32 + 2;
+
+/// The launcher label to display: exactly [`LABEL_CHARS`] characters.
+///
+/// `@session` shows the session name (`session`) in a named session and the
+/// default label in the default one. Control characters and surrounding
+/// whitespace are dropped, an empty label falls back to the default, longer
+/// ones are cut to 6 characters, and shorter ones are centred (the odd spare
+/// cell goes on the right). Each character counts as one cell: use
+/// single-width characters (CJK or emoji are two cells wide and will overflow).
+pub fn launcher_label(configured: &str, session: &str) -> String {
+    let raw = if configured.trim() == "@session" {
+        if session == crate::protocol::DEFAULT_SESSION { DEFAULT_LABEL } else { session }
+    } else {
+        configured
+    };
+    let cleaned: String = raw.chars().filter(|c| !c.is_control()).collect();
+    let mut text: String = cleaned.trim().chars().take(LABEL_CHARS).collect();
+    if text.is_empty() {
+        text = DEFAULT_LABEL.to_string();
+    }
+    let pad = LABEL_CHARS - text.chars().count();
+    let left = pad / 2;
+    format!("{}{}{}", " ".repeat(left), text, " ".repeat(pad - left))
+}
 
 /// Column where the view-mode toggle is drawn (just right of the brand button).
-const MODE_X: i32 = 9; // GO_LABEL is 8 cells wide, + a 1-cell gap
+const MODE_X: i32 = 9; // the launcher button is 8 cells wide (GO_LABEL_W), + a 1-cell gap
 
 /// Column where the assistant (✦) button is drawn (right of the mode toggle).
 const ASSIST_X: i32 = 13;
@@ -68,11 +97,13 @@ pub struct DockItem {
 /// a "+" new-shell button, then the open-window taskbar pills; the status tray
 /// occupies the right edge. Pills shrink to badge-only and finally collapse into
 /// a "…+N" overflow marker when they would collide with the tray.
-pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::Segment], simple: bool) -> Layer {
+pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::Segment], simple: bool, label: &str) -> Layer {
     let t = crate::theme::current();
     let mut buf = CellBuffer::new(width, 1);
     buf.fill(crate::cell::Cell { ch: ' ', fg: t.text, bg: t.menubar_bg, attrs: Default::default() });
-    buf.write_str(0, 0, GO_LABEL, t.accent, t.active_bg);
+    // `label` is normalised again here, so any string keeps the button 8 cells.
+    let go = format!(" {} ", launcher_label(label, crate::protocol::DEFAULT_SESSION));
+    buf.write_str(0, 0, &go, t.accent, t.active_bg);
     let mode = if simple { MODE_SIMPLE } else { MODE_DESKTOP };
     buf.write_str(MODE_X, 0, mode, t.accent, t.active_bg);
     buf.write_str(ASSIST_X, 0, ASSIST_LABEL, t.accent, t.active_bg);
@@ -111,7 +142,7 @@ pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::S
 /// Screen-space hit region for the menubar brand ("tetron") button, used to open
 /// the launcher dropdown. Top-left of the menubar.
 pub fn menubar_brand_region() -> Rect {
-    Rect::new(0, 0, GO_LABEL.chars().count() as i32, 1)
+    Rect::new(0, 0, GO_LABEL_W, 1)
 }
 
 /// Screen-space hit region for the menubar view-mode toggle (just right of the brand).

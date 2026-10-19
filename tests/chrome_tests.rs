@@ -1,4 +1,4 @@
-use tetron_wm::chrome::{render_menubar, menubar_taskbar_regions, menubar_new_shell_region, DockItem, DockKind, menubar_mode_region};
+use tetron_wm::chrome::{render_menubar, menubar_taskbar_regions, menubar_new_shell_region, DockItem, DockKind, menubar_mode_region, menubar_brand_region};
 use tetron_wm::cell::Rgba;
 use tetron_wm::geometry::Point;
 use tetron_wm::window::WindowId;
@@ -24,7 +24,7 @@ fn row_text(layer: &tetron_wm::compositor::Layer, width: i32) -> String {
 #[test]
 fn menubar_layer_spans_top_row_and_shows_brand_and_new_shell() {
     // 40 cols: realistic width where the brand + mode + assistant + "+" all fit.
-    let layer = render_menubar(40, &[], &[], false);
+    let layer = render_menubar(40, &[], &[], false, "tetron");
     assert_eq!(layer.origin, Point::new(0, 0));
     assert_eq!(layer.buf.height(), 1);
     let row = row_text(&layer, 40);
@@ -43,7 +43,7 @@ fn new_shell_region_sits_after_the_brand_buttons() {
 #[test]
 fn taskbar_single_pill_renders_badge_letter() {
     let items = vec![single(1, "btop", 'B', false)];
-    let layer = render_menubar(80, &items, &[], false);
+    let layer = render_menubar(80, &items, &[], false, "tetron");
     let row = row_text(&layer, 80);
     assert!(row.contains('B'), "badge letter 'B' should appear in the taskbar: {row:?}");
     assert!(row.contains("btop"), "the pill shows the window label when it fits: {row:?}");
@@ -60,7 +60,7 @@ fn taskbar_group_pill_renders_count_glyph() {
         focused: false,
         attention: false,
     }];
-    let layer = render_menubar(80, &items, &[], false);
+    let layer = render_menubar(80, &items, &[], false, "tetron");
     let row = row_text(&layer, 80);
     // Group of 2 → superscript ² should appear.
     assert!(row.contains('\u{00B2}'), "group pill should show ² for count=2: {row:?}");
@@ -88,7 +88,7 @@ fn taskbar_overflows_to_badge_only_then_marker_in_narrow_width() {
     let items: Vec<DockItem> = (0..8)
         .map(|i| single(i as u64 + 1, "some-long-window-name", (b'A' + i) as char, false))
         .collect();
-    let layer = render_menubar(40, &items, &[], false);
+    let layer = render_menubar(40, &items, &[], false, "tetron");
     let row = row_text(&layer, 40);
     assert!(row.contains('\u{2026}'), "narrow taskbar should show the … overflow marker: {row:?}");
     assert!(row.contains('+'), "the overflow marker counts the hidden pills: {row:?}");
@@ -96,9 +96,9 @@ fn taskbar_overflows_to_badge_only_then_marker_in_narrow_width() {
 
 #[test]
 fn menubar_shows_mode_toggle_glyph() {
-    let desktop = row_text(&render_menubar(40, &[], &[], false), 40);
+    let desktop = row_text(&render_menubar(40, &[], &[], false, "tetron"), 40);
     assert!(desktop.contains('\u{229E}'), "desktop mode shows ⊞, got {desktop:?}");
-    let simple = row_text(&render_menubar(40, &[], &[], true), 40);
+    let simple = row_text(&render_menubar(40, &[], &[], true, "tetron"), 40);
     assert!(simple.contains('\u{25A6}'), "simple mode shows ▦, got {simple:?}");
     // region sits just right of the brand
     let r = menubar_mode_region();
@@ -112,10 +112,51 @@ fn menubar_has_no_power_button_and_tray_reaches_edge() {
     let width = 40;
     // A single tray segment placed flush to the right edge.
     let seg = Segment { kind: SegmentKind::Clock, text: "09:41".into(), rect: tetron_wm::geometry::Rect::new(width - 5, 0, 5, 1) };
-    let layer = render_menubar(width, &[], &[seg], false);
+    let layer = render_menubar(width, &[], &[seg], false, "tetron");
     let row = row_text(&layer, width);
     // No host-name power button any more (moved into the launcher).
     assert!(!row.contains("devbox"));
     // The tray segment is drawn out to the right edge.
     assert!(row.ends_with("09:41"), "tray should reach the edge, got: {row:?}");
+}
+
+#[test]
+fn launcher_label_is_always_exactly_six_cells_centred() {
+    use tetron_wm::chrome::launcher_label as l;
+    assert_eq!(l("tetron", "default"), "tetron");
+    assert_eq!(l("Menu", "default"), " Menu ");
+    assert_eq!(l("go", "default"), "  go  ");
+    assert_eq!(l("abc", "default"), " abc  ", "the odd spare cell goes on the right");
+    assert_eq!(l("waytoolong", "default"), "waytoo", "cut to six");
+    assert_eq!(l("  Start ", "default"), "Start ", "surrounding whitespace is dropped, then centred");
+    assert_eq!(l("a\nb", "default"), "  ab  ", "control characters are dropped");
+    assert_eq!(l("", "default"), "tetron", "empty falls back to the default");
+    assert_eq!(l("   ", "default"), "tetron");
+    for input in ["", "x", "ab", "abc", "abcd", "abcde", "abcdef", "abcdefg", "@session"] {
+        assert_eq!(l(input, "work").chars().count(), 6, "{input:?} is always six cells");
+    }
+}
+
+#[test]
+fn session_label_shows_the_session_name_only_in_named_sessions() {
+    use tetron_wm::chrome::launcher_label as l;
+    assert_eq!(l("@session", "work"), " work ");
+    assert_eq!(l("@session", "my-project"), "my-pro", "long names are cut to six");
+    assert_eq!(l("@session", "default"), "tetron", "the default session keeps the brand");
+}
+
+#[test]
+fn a_custom_label_never_moves_the_buttons_to_its_right() {
+    let mode_at = |label: &str| {
+        let layer = render_menubar(60, &[], &[], false, label);
+        let row = row_text(&layer, 60);
+        row.chars().position(|c| c == '\u{229E}').unwrap()
+    };
+    let base = mode_at("tetron");
+    for label in ["go", "Menu", "waytoolong", "", "@x"] {
+        assert_eq!(mode_at(label), base, "label {label:?} shifted the view toggle");
+    }
+    assert_eq!(menubar_brand_region().w, 8, "the clickable region is fixed too");
+    let layer = render_menubar(60, &[], &[], false, "Menu");
+    assert!(row_text(&layer, 60).starts_with("  Menu  "), "{:?}", row_text(&layer, 60));
 }

@@ -75,6 +75,8 @@ const TERM_PRESETS: &[(&str, Option<&str>, Option<&str>)] = &[
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TextTarget {
     Wallpaper,
+    /// Appearance → Launcher label (menubar button text).
+    LauncherLabel,
     TermBg,
     TermFg,
 }
@@ -185,7 +187,7 @@ impl Settings {
     fn item_count(&self) -> usize {
         match self.section {
             0 => 8,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll
-            1 => 7,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons
+            1 => 8,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
@@ -246,6 +248,13 @@ impl Settings {
                 _ => e.command.push(c),
             }
         } else if let Some(t) = self.text.as_mut() {
+            // The launcher label is at most 6 characters (so the menubar never
+            // shifts); `@session` is the one longer value allowed.
+            if t.target == TextTarget::LauncherLabel
+                && t.buf.chars().count() >= if t.buf.starts_with('@') { 8 } else { crate::chrome::LABEL_CHARS }
+            {
+                return;
+            }
             t.buf.push(c);
             t.error = false;
         }
@@ -346,6 +355,11 @@ impl Settings {
                 self.cfg.icon_style = all[next];
             }
             (1, 6) => self.cfg.desktop_enabled = flip(self.cfg.desktop_enabled, dir),
+            // Launcher label: Enter opens the text box (up to 6 characters, or
+            // `@session`); ←/→ do nothing, it is free text.
+            (1, 7) if dir == 0 => {
+                self.text = Some(TextEdit { target: TextTarget::LauncherLabel, buf: self.cfg.launcher_label.clone(), error: false });
+            }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
             (2, 1) if dir == 0 => self.action = Some(SettingsAction::InstallUpdate),
@@ -531,6 +545,17 @@ impl Settings {
             TextTarget::Wallpaper => {
                 self.cfg.wallpaper = if s.is_empty() { None } else { Some(s) };
             }
+            // Empty = the default; otherwise at most 6 characters (padding and
+            // `@session` are resolved when drawn, not stored).
+            TextTarget::LauncherLabel => {
+                self.cfg.launcher_label = if s == "@session" {
+                    s
+                } else if s.is_empty() {
+                    crate::chrome::DEFAULT_LABEL.to_string()
+                } else {
+                    s.chars().filter(|c| !c.is_control()).take(crate::chrome::LABEL_CHARS).collect()
+                };
+            }
             TextTarget::TermBg | TextTarget::TermFg => {
                 let val = if s.is_empty() {
                     None
@@ -562,7 +587,7 @@ impl Settings {
         if let Some(t) = self.text.as_ref() {
             // The wallpaper name commits on click-away; a half-typed color is
             // discarded instead (committing it would stage a wrong color).
-            if t.target == TextTarget::Wallpaper {
+            if matches!(t.target, TextTarget::Wallpaper | TextTarget::LauncherLabel) {
                 self.commit_text();
                 return true;
             }
@@ -640,10 +665,16 @@ impl Settings {
                 self.row(&mut buf, cx, 7, 4, "Icon label scrim", toggle_val(scrim_on(&self.cfg)));
                 self.row(&mut buf, cx, 8, 5, "Icon style", format!("\u{25C2} {} \u{25B8}", icon_style_name(self.cfg.icon_style)));
                 self.row(&mut buf, cx, 9, 6, "Desktop icons", toggle_val(self.cfg.desktop_enabled));
-                buf.write_str(cx, 11, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
-                buf.write_str(cx, 12, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "Icon style: ascii | nerd (needs a Nerd Font) | emoji.", pal_dim(), pal_bg());
+                let label_val = match self.text.as_ref().filter(|t| t.target == TextTarget::LauncherLabel) {
+                    Some(t) => format!("{}\u{2588}", t.buf), // block cursor while typing
+                    None => self.cfg.launcher_label.clone(),
+                };
+                self.row(&mut buf, cx, 10, 7, "Launcher label", label_val);
+                buf.write_str(cx, 12, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "Icon style: ascii | nerd (needs a Nerd Font) | emoji.", pal_dim(), pal_bg());
+                buf.write_str(cx, 16, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -1122,6 +1153,60 @@ mod tests {
         assert_eq!(s.config().wallpaper.as_deref(), Some("ty.jpg"));
     }
 
+    /// Move selection to the Appearance → "Launcher label" row (the last one).
+    fn to_launcher_label(s: &mut Settings) {
+        while SECTIONS[s.section] != "Appearance" {
+            s.next_section();
+        }
+        s.sel = 7;
+    }
+
+    #[test]
+    fn launcher_label_box_edits_and_limits_to_six_characters() {
+        let mut s = Settings::new(Config::default());
+        to_launcher_label(&mut s);
+        assert_eq!(s.config().launcher_label, "tetron");
+        s.toggle(); // open, pre-filled with "tetron"
+        assert!(s.is_editing());
+        for _ in 0..6 { s.backspace(); }
+        for c in "workbench".chars() { s.type_char(c); }
+        s.toggle(); // commit
+        assert!(!s.is_editing());
+        assert_eq!(s.config().launcher_label, "workbe", "capped at 6 characters");
+    }
+
+    #[test]
+    fn launcher_label_empty_restores_default_and_session_token_is_allowed() {
+        let mut s = Settings::new(Config { launcher_label: "go".into(), ..Config::default() });
+        to_launcher_label(&mut s);
+        s.toggle();
+        s.backspace(); s.backspace();
+        s.toggle(); // commit empty
+        assert_eq!(s.config().launcher_label, "tetron", "empty means the default");
+        s.toggle();
+        for _ in 0..6 { s.backspace(); }
+        for c in "@session".chars() { s.type_char(c); }
+        s.toggle();
+        assert_eq!(s.config().launcher_label, "@session", "the 8-character token is allowed");
+        // Esc cancels without changing it.
+        s.toggle();
+        s.backspace();
+        s.cancel_edit();
+        assert_eq!(s.config().launcher_label, "@session");
+    }
+
+    #[test]
+    fn click_while_launcher_label_box_open_commits() {
+        let mut s = Settings::new(Config::default());
+        to_launcher_label(&mut s);
+        s.toggle();
+        for _ in 0..6 { s.backspace(); }
+        for c in "dev".chars() { s.type_char(c); }
+        assert!(s.handle_click(Point::new(SIDEBAR_W + 5, 3), 80, 24));
+        assert!(!s.is_editing());
+        assert_eq!(s.config().launcher_label, "dev");
+    }
+
     #[test]
     fn wallpaper_default_filename_is_wallpaper_jpg() {
         assert_eq!(Config::default().wallpaper.as_deref(), Some("wallpaper.jpg"));
@@ -1223,7 +1308,7 @@ mod tests {
         s.toggle();
         assert_eq!(s.config().natural_scroll, !before);
         s.section = 1;
-        assert_eq!(s.item_count(), 7);
+        assert_eq!(s.item_count(), 8);
         s.sel = 5;
         s.right();
         assert_eq!(s.config().icon_style, IconStyle::Nerd);

@@ -207,6 +207,10 @@ pub struct Config {
     /// Start page for text web browsers launched without a URL (w3m exits at
     /// once without one). Empty = launch them bare.
     pub web_home: String,
+    /// Text of the menubar launcher button: up to 6 characters (shorter labels
+    /// are centred in the same 6 cells, so the bar never shifts), or `@session`
+    /// to show the session name in a named session. Single-width characters only.
+    pub launcher_label: String,
     /// Where screenshots are saved. Empty = `~/Pictures` if it exists, else `$HOME`.
     pub screenshot_dir: String,
     /// Leader chord, `ctrl+<key>` (default `ctrl+space`). Needs `tetron-wm reload`.
@@ -314,6 +318,7 @@ impl Default for Config {
             clipboard_ignore_apps: Vec::new(),
             clipboard_ttl_secs: 0,
             web_home: "https://lite.duckduckgo.com/lite/".into(),
+            launcher_label: "tetron".into(),
             screenshot_dir: String::new(),
             leader: None,
             keys: std::collections::BTreeMap::new(),

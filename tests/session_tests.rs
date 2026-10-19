@@ -1037,3 +1037,15 @@ fn help_is_a_window_that_stays_open_while_you_use_everything_else() {
     assert_eq!(core.window_count(), 1);
     core.shutdown();
 }
+
+#[test]
+fn configured_launcher_label_is_drawn_on_the_menubar() {
+    let cfg = Config { launcher_label: "work".into(), ..Config::default() };
+    let mut core = SessionCore::new(100, 30, cfg);
+    assert!(find_on_layer(&mut core, 1000, "work").is_some(), "the label is on the bar");
+    assert!(find_on_layer(&mut core, 1000, "tetron").is_none());
+    // The brand button still opens the launcher.
+    core.apply(ClientMsg::MouseDown(Point::new(2, 0)));
+    assert!(core.launcher_open());
+    core.shutdown();
+}
