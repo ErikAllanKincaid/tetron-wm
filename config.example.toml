@@ -1,163 +1,300 @@
-# tetron-wm configuration — ~/.config/tetron-wm/config.toml
-#
-# Every option is shown with its DEFAULT value and left commented out: with no
-# config file at all, these exact defaults apply, so you only need a config.toml
-# to change something. Uncomment a line and edit it to override.
-#
-# Full explanations: docs/CONFIG.md.
+## tetron-wm configuration: copy to ~/.config/tetron-wm/config.toml
+##
+## Every option with a real default is set here to that DEFAULT, so this file can
+## be dropped in as is and changes nothing. Edit a value to override it.
+## Options with no default (unset = automatic) are shown commented out: uncomment
+## and edit to use them. Most edits apply on `tetron-wm reload` (apps keep
+## running); the few that need more say so. Settings changed in the in-app
+## Settings window are written back to this file.
+##
+## TOML rule: plain `key = value` lines must come BEFORE any [table] or [[array]]
+## header, so those are all at the bottom.
+##
+## Full explanations: docs/CONFIG.md and `tetron-wm --help`.
 
 ## ── Window behavior ───────────────────────────────────────────────────────
-# Drag a window to a screen edge to snap it there. (default: off.)
-#snapping_enabled = false
-# Distance in cells from the edge that triggers a snap (1–10). Only matters when
-# snapping_enabled = true.
-#snap_threshold = 3
-# Draw drop shadows behind windows. (default: off.)
-#window_shadows = false
-# Scroll direction ("natural"): scrolling down goes back into history.
-# Wheel/touchpad only; does not affect Shift+PageUp/PageDown. (default: on.)
-# Set false for traditional scrolling (wheel up = back into history).
-#natural_scroll = true
-# Open new app windows maximized (filling the work area).
-#launch_maximized = false
+## Drag a window to a screen edge to snap it there.
+snapping_enabled = false
+## Distance in cells from the edge that triggers a snap (1-10). Only matters when
+## snapping_enabled = true.
+snap_threshold = 3
+## Draw drop shadows behind windows.
+window_shadows = false
+## "Natural" scrolling: wheel/touchpad down goes back into history. Set false for
+## traditional scrolling. Does not affect Shift+PageUp/PageDown.
+natural_scroll = true
+## Open new app windows maximized (filling the work area).
+launch_maximized = false
 
 ## ── Tiling ────────────────────────────────────────────────────────────────
-# Auto-arrange all windows into the tiling grid as they open/close.
-#auto_tile = false
-# Tiling grid size (each 1–6). Used by auto-tile and "send to cell".
-#grid_rows = 2
-#grid_cols = 2
-# Cells of gutter between tiled windows.
-#tile_gap = 0
+## Auto-arrange all windows into the tiling grid as they open and close.
+auto_tile = false
+## Tiling grid size (each 1-6). Used by auto-tile, tile, and "send to cell".
+## Example: a 1x3 grid gives three side-by-side columns on an ultrawide screen.
+grid_rows = 2
+grid_cols = 2
+## Cells of gutter between tiled windows.
+tile_gap = 0
 
 ## ── Appearance ────────────────────────────────────────────────────────────
-# Color theme: a built-in ("newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral";
-# default: newmoon) or the stem of a theme file in the themes dir (below). A
-# file with a built-in's name overrides that built-in.
-#theme = "newmoon"
-# Directory of *.toml theme files. Unset = <config>/themes/ (i.e.
-# ~/.config/tetron-wm/themes/). Relative paths resolve against the config dir.
-# Create a starter with: tetron-wm theme --dump <name>   (list all: --list)
+## Color theme: a built-in (newmoon, midnight, nord, gruvbox, dracula, pastoral)
+## or the stem of a theme file in the themes dir. A file named like a built-in
+## overrides it. Create a starter with: tetron-wm theme --dump <name>
+## (list all: tetron-wm theme --list)
+theme = "newmoon"
+## Directory of *.toml theme files. Unset = <config dir>/themes/. A relative path
+## resolves against the config dir.
 #theme_dir = "themes"
-# Terminal default background/foreground, independent of the desktop theme (hex
-# #rrggbb or a named color). Unset = follow the theme (e.g. "pastoral" gives
-# black-on-white terminals). Set these to decouple the terminal, e.g. a light
-# desktop with a dark terminal. Applied by the apphost at startup, so a change
-# takes effect on the next start (`tetron-wm kill` then relaunch), not a reload.
-#terminal_bg = "#ffffff"
-#terminal_fg = "#1a1a1a"
-# Force 24-bit "truecolor" output on/off. Unset = auto-detect (known truecolor
-# terminals + COLORTERM). Set true if your terminal does truecolor but does not
-# set COLORTERM (common with TERM=xterm-256color), otherwise subtle themes
-# (nord, dracula) get quantized to the 256-color palette and look wrong. The
-# TETRON_WM_TRUECOLOR=1/0 env var overrides this key.
+## Terminal default background/foreground, independent of the desktop theme (hex
+## #rrggbb or a named color). Unset = follow the theme (pastoral gives black on
+## white terminals). Example: a light desktop with dark terminals. Needs
+## `tetron-wm kill` then relaunch (the apphost reads them at startup).
+#terminal_bg = "#1a1a1a"
+#terminal_fg = "#e0e0e0"
+## Force 24-bit truecolor output on/off. Unset = auto-detect. Set true when your
+## terminal supports truecolor but does not set COLORTERM (common with
+## TERM=xterm-256color), else nord/dracula look washed out. Env override:
+## TETRON_WM_TRUECOLOR=1/0.
 #truecolor = true
-# File-type icon glyphs where the graphical (Kitty) icons can't render -- kmscon,
-# a bare VT, plain SSH: "ascii" (default; BMP geometric shapes, render in every
-# font and take the theme color), "nerd" (Nerd Font file-type glyphs -- needs a
-# Nerd Font installed, which tetron-os ships), or "emoji" (GUI terminals only).
-#icon_style = "ascii"
+## File-type icon glyphs where the graphical (Kitty) icons can not render
+## (kmscon, a bare VT, plain SSH): "ascii" (every font), "nerd" (needs a Nerd
+## Font), or "emoji".
+icon_style = "ascii"
+## Text of the menubar launcher button: up to 6 characters (centred), or
+## "@session" to show the session name in a named session.
+launcher_label = "tetron"
 
-## ── Files / working directories ───────────────────────────────────────────
-# Directory the working-directory picker opens at (default: your home).
-#default_project_dir = "/home/you"
-# Show hidden (dot) directories in the picker by default.
-#show_hidden_dirs = false
-# File-manager view: "icon" or "list". Default is list. (This override key
-# round-trips but is not yet applied at startup -- list is always the default.)
+## ── Wallpaper ─────────────────────────────────────────────────────────────
+## Desktop wallpaper: absolute path, ~-path, or a name looked up in
+## ~/.config/tetron-wm/wallpapers/ (then the config dir). Drawn as colored cells
+## with `chafa` (needs it installed; falls back to a solid desktop). Dropping a
+## wallpaper.jpg into the wallpapers dir is all it takes; absent, a built-in
+## image is used. Env override: TETRON_WM_WALLPAPER.
+wallpaper = "wallpaper.jpg"
+## Master switch. false = solid desktop (theme desktop_bg) even if wallpaper is set.
+wallpaper_enabled = true
+
+## ── Desktop icons ─────────────────────────────────────────────────────────
+## Show icons on the desktop (the contents of ~/Desktop plus [[desktop_pins]]).
+desktop_enabled = true
+## Backdrop behind icon labels when a wallpaper is shown, for legibility: a color
+## (#rrggbb, #rrggbbaa, or a name), or "none" to draw labels straight on the
+## image. Unset = semi-transparent black (#000000c8).
+#desktop_scrim = "#00000080"
+
+## ── Files and working directories ─────────────────────────────────────────
+## Directory the working-directory picker opens at. Unset = your home.
+#default_project_dir = "/home/you/code"
+## Show hidden (dot) directories in the picker by default.
+show_hidden_dirs = false
+## File-manager view: "icon" or "list". Accepted and saved, but not applied at
+## startup yet (list is always the default).
 #filemanager_view = "list"
-# recent_dirs is maintained by the app (most-recent working dirs); not hand-set.
-#recent_dirs = []
-
-## ── Desktop ───────────────────────────────────────────────────────────────
-# Show icons on the wallpaper/desktop.
-#desktop_enabled = true
-# Pinned desktop shortcuts (see [[desktop_pins]] below). Default: none — the
-# desktop shows only the real contents of ~/Desktop. Add pins explicitly.
-# desktop_positions (icon grid placement) is saved by the app, not hand-set.
 
 ## ── Assistant (the ✦ panel) ───────────────────────────────────────────────
-# Agent CLI the assistant runs (default: opencode).
+## Agent CLI the assistant runs: "opencode" (default when unset) or "hermes", or
+## any binary or wrapper script.
 #assistant_command = "opencode"
-# Extra arguments for the assistant CLI.
-#assistant_args = []
-# How it opens: "panel" (right-docked) or "window" (floating).
-#assistant_mode = "panel"
+## Extra arguments for the assistant CLI.
+assistant_args = []
+## How it opens: "panel" (right-docked) or "window" (floating).
+assistant_mode = "panel"
 
 ## ── Updates ───────────────────────────────────────────────────────────────
-# Branch the in-app updater tracks: "main" (stable prebuilt) or "dev".
-#update_branch = "main"
+## Branch the in-app updater tracks: "main" (stable prebuilt releases) or "dev"
+## (built from source, for testing).
+update_branch = "main"
 
 ## ── Web ───────────────────────────────────────────────────────────────────
-# Start page for text browsers launched without a URL (w3m exits at once
-# without one). Empty = launch them bare.
-#web_home = "https://lite.duckduckgo.com/lite/"
+## Start page for text web browsers launched without a URL (w3m exits at once
+## without one). Empty = launch them bare. Example: web_home = "https://wiki.archlinux.org"
+web_home = "https://lite.duckduckgo.com/lite/"
 
-## ── Screenshots ───────────────────────────────────────────────────────────
-# Where the leader s / launcher Screenshot PNGs go. Empty = ~/Pictures if it
-# exists, else $HOME.
-#screenshot_dir = ""
+## ── Screensaver and screenshots ───────────────────────────────────────────
+## Effect used by `tetron-wm screensaver` and leader z when none is named:
+## "black" or "clock" (list: tetron-wm screensaver list). On demand only, there
+## is no idle timer; any key or mouse event wakes it.
+screensaver = "black"
+## Where screenshots (leader s / launcher Screenshot) go. Empty = ~/Pictures if it
+## exists, else $HOME.
+screenshot_dir = ""
+
+## ── Power ─────────────────────────────────────────────────────────────────
+## Show launcher > Power (Suspend / Reboot / Power off). Set false on machines
+## that must never be shut down from here (remote servers): the actions are then
+## refused everywhere, not just hidden. Custom commands: see [power_commands].
+power_menu = true
 
 ## ── Keys ──────────────────────────────────────────────────────────────────
-# Leader chord, ctrl+<key> (needs `tetron-wm reload`). Default ctrl+space.
+## Leader chord, ctrl+<key>. Needs `tetron-wm reload`. Never pick a key a
+## terminal needs (ctrl+c, ctrl+d, ctrl+z ...). Example: leader = "ctrl+b"
 #leader = "ctrl+space"
-# Leader remaps per action: one key or a list. Actions and defaults: tetron-wm --help
-#[keys]
-#launcher = ["a", "l", "enter"]
+## Per-action remaps live in the [keys] table at the bottom.
 
 ## ── Clipboard history ─────────────────────────────────────────────────────
-#clipboard_history = true            # record everything copied
-#clipboard_persist = true            # save to ~/.local/share/tetron-wm (mode 0600)
-#clipboard_record_selection = true   # record mouse selections
-#clipboard_history_size = 100
-#clipboard_item_max_kb = 256
-#clipboard_shims = "auto"            # xclip/xsel/wl-copy/wl-paste shims: auto | on | off
-#clipboard_fake_display = false      # dummy WAYLAND_DISPLAY so Neovim uses the shims
-#clipboard_gui_bridge = "auto"       # mirror the X11/Wayland clipboard: auto | on | off
-#clipboard_osc52_read = "focused"    # who may read via OSC 52: focused | always | never
-#clipboard_ignore_apps = []          # do not record while these apps are focused
-#clipboard_ttl_secs = 0              # expire unpinned entries (0 = never)
+## Browse it from the menubar clipboard segment or leader C.
+clipboard_history = true            # record everything copied
+clipboard_persist = true            # save to ~/.local/share/tetron-wm (mode 0600); false = memory only
+clipboard_record_selection = true   # also record plain mouse selections
+clipboard_history_size = 100        # max unpinned entries
+clipboard_item_max_kb = 256         # larger entries are not recorded
+clipboard_ttl_secs = 0              # expire unpinned entries after N seconds (0 = never)
+clipboard_shims = "auto"            # xclip/xsel/wl-copy/wl-paste shims for launched apps: auto (no display only) | on | off
+clipboard_fake_display = false      # dummy WAYLAND_DISPLAY so Neovim uses the shims (side effect: apps think a desktop exists)
+clipboard_gui_bridge = "auto"       # mirror the real X11/Wayland clipboard: auto (when a display exists) | on | off
+clipboard_osc52_read = "focused"    # who may read the clipboard via OSC 52: focused | always | never
+## Do not record copies made while an app whose name or command contains one of
+## these (case-insensitive) is focused. Example for password managers:
+## clipboard_ignore_apps = ["keepassxc", "pass", "bitwarden"]
+clipboard_ignore_apps = []
 
-## ── Apps, launcher, taskbar ───────────────────────────────────────────────
-# Apps auto-started at launch and shown in the taskbar. Each entry is a table.
-# Fields: name (titlebar/taskbar label), command (executable), args (list),
-# category (launcher grouping), requires_cwd (bool), cwd (start dir),
-# cli (bool: wrap a CLI tool so it doesn't exit instantly), warn (confirm text).
-#[[apps]]
-#name = "Shell"
-#command = "bash"
-#args = []
 
-# Apps offered in the launcher menu / spotlight. If empty, the launcher falls
-# back to the `apps` list above. Same entry fields as [[apps]].
-#[[launcher]]
-#name = "htop"
-#command = "htop"
-#cli = true
+## ══ Tables and lists. Everything below must stay at the end of the file. ═════
 
-# Pinned desktop shortcuts (same fields as [[apps]]). Default: none.
-#[[desktop_pins]]
-#name = "Files"
-#command = "@files"
+## ── Leader key remaps ─────────────────────────────────────────────────────
+## Press the leader chord, then the key. A value is one key or a list; a key is a
+## single character or space, enter, tab, esc, left, right, up, down, backspace.
+## Setting an action REPLACES its default keys. Defaults shown (all of them):
+[keys]
+spotlight   = "space"
+launcher    = ["l", "enter"]
+maximize    = ["m", "M"]
+minimize    = ["n", "N"]
+close       = "esc"
+snap_left   = ["[", "left"]
+snap_right  = ["]", "right"]
+store       = "S"
+settings    = ","
+activity    = "A"
+clipboard   = "C"
+select      = ["x", "y"]
+copy        = "c"
+paste       = ["v", "p"]
+help        = ["?", "h"]
+rename      = ["r", "R"]
+tile        = "t"
+auto_tile   = "T"
+screensaver = "z"
+screenshot  = "s"
+detach      = "q"
+shutdown    = "Q"
 
-# File-role → handler map for "open with" (role name = handler command).
-#[default_apps]
-#text = "hx"
-#image = "chafa"
+## ── Status segments (menubar tray) ────────────────────────────────────────
+## Where each segment lives: "bar" (always on the bar), "info" (in the (i) menu)
+## or "auto" (on the bar, overflowing into the (i) menu when space runs out).
+## Keys: cpu, mem, battery, bluetooth, wifi, tetron, bell. Defaults shown. A CPU
+## or memory reading of 90% or more shows on the bar anyway.
+[tray_placement]
+cpu       = "info"
+mem       = "info"
+bluetooth = "info"
+battery   = "auto"
+wifi      = "auto"
+tetron    = "auto"
+bell      = "auto"
 
-# Per-app badge colors (shown on the taskbar pill): keyword (case-insensitive
-# substring of the app name/command) → color (a named color or #rrggbb).
-# Default: claude=orange, kilo=yellow.
-#[dock_badges]
-#claude = "orange"
-#kilo = "yellow"
-
-# Tray popover "Open ..." rows. Per item (cpu, mem, battery, bluetooth, network): a command
-# line or an ordered list; the first whose program is installed wins. A "hold:"
-# prefix runs it via sh -c and keeps the window open until Enter. [] removes the row.
-#[tray_tools]
+## ── Tray "Open <tool>" rows ───────────────────────────────────────────────
+## Per item (cpu, mem, battery, bluetooth, network): a command line or an ordered
+## list; the first whose program is installed wins. A "hold:" prefix runs it via
+## sh -c and keeps the window open until Enter. An empty list removes the row.
+## Defaults are built in; uncomment to override, e.g. prefer btop and hide memory:
+[tray_tools]
 #cpu = ["btop", "htop", "top"]
 #battery = ["jolt", "hold:upower -i $(upower -e | grep -m1 -i bat)"]
 #bluetooth = "bluetuith"
 #network = "nmtui"
 #mem = []
+
+## ── Power commands ────────────────────────────────────────────────────────
+## Per action (suspend, reboot, poweroff): a command line or a list tried in
+## order until one succeeds. Replaces the built-in chain (systemd, elogind,
+## sudo/doas, busybox). An empty list hides the action. Unset = built-in chain.
+[power_commands]
+#suspend = "systemctl suspend"
+#reboot = ["systemctl reboot", "sudo reboot"]
+#poweroff = ["doas poweroff", "sudo poweroff"]
+
+## ── Taskbar badge colors ──────────────────────────────────────────────────
+## Keyword (case-insensitive substring of the app name or command) -> color
+## (a name or #rrggbb), shown on the taskbar pill. Defaults shown; add more.
+[dock_badges]
+claude = "orange"
+kilo = "yellow"
+#htop = "#00cc66"
+
+## ── Default apps ("open with") ────────────────────────────────────────────
+## Role -> handler command used when opening files. Roles: image, directory,
+## text, code, audio, video, archive, pdf, other, plus editor and terminal for
+## shortcuts. Special handlers: @image (built-in viewer), @navigate (open in the
+## file manager). Unset roles show an Open-with menu. If you uncomment this table
+## it REPLACES the built-in map, so list every role you want. Built-in defaults:
+## image = "@image", directory = "@navigate", text/code/editor = $EDITOR (else
+## vi), terminal = $SHELL (else bash).
+#[default_apps]
+#image = "@image"
+#directory = "@navigate"
+#text = "hx"
+#code = "hx"
+#editor = "hx"
+#terminal = "zsh"
+#video = "mpv"
+#audio = "mpv"
+#pdf = "zathura"
+
+## ── Apps auto-started at launch ───────────────────────────────────────────
+## Each [[apps]] entry opens a window at launch and appears in the taskbar.
+## Default: none (launch from the menu or desktop). Entry fields (the same for
+## [[launcher]] and [[desktop_pins]]):
+##   name         label for the titlebar / taskbar / menu
+##   command      executable (from $PATH), or a built-in: @files, @store
+##   args         list of arguments
+##   category     launcher grouping (default "Apps")
+##   cwd          fixed start directory (skips the picker)
+##   requires_cwd true = ask for a working directory on launch
+##   cli          true = a one-shot CLI tool: run via a shell so its output stays
+##                visible instead of the window vanishing
+##   warn         confirmation text shown before launching
+## Example: a shell and htop at every start.
+#[[apps]]
+#name = "Shell"
+#command = "bash"
+#
+#[[apps]]
+#name = "htop"
+#command = "htop"
+
+## ── Launcher menu ─────────────────────────────────────────────────────────
+## Apps offered in the launcher menu and spotlight. If none are listed, the
+## launcher falls back to the [[apps]] list. The 600+ app catalog is always
+## available through the Store; these are your own extras.
+#[[launcher]]
+#name = "Neovim in project"
+#command = "nvim"
+#category = "Editors"
+#requires_cwd = true
+#
+#[[launcher]]
+#name = "Logs"
+#command = "journalctl"
+#args = ["-f"]
+#category = "System"
+#cli = true
+#
+#[[launcher]]
+#name = "Wipe cache"
+#command = "rm"
+#args = ["-rf", "/home/you/.cache/thing"]
+#category = "System"
+#cli = true
+#warn = "This deletes the cache. Continue?"
+
+## ── Desktop shortcuts ─────────────────────────────────────────────────────
+## Pinned icons on the desktop, shown alongside the real contents of ~/Desktop.
+## Default: none.
+#[[desktop_pins]]
+#name = "Files"
+#command = "@files"
+#
+#[[desktop_pins]]
+#name = "Store"
+#command = "@store"

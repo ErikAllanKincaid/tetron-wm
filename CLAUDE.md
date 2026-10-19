@@ -31,7 +31,9 @@ release). So, for every user-visible change in the release:
    config keys, env vars, renamed menu items, and workflows (detach, sessions)
    must all appear. `cli_help` tests check config keys against `struct Config`
    and keep the session/detach topics in the text.
-2. `README.md` (features, Controls, Configuration, Roadmap) matches.
+2. `README.md` (features, Controls, Configuration, Roadmap) matches, and so do
+   `docs/CONFIG.md` (option table, recipes) and `config.example.toml` (a test
+   checks every `--help` config key appears in both).
 3. `CHANGELOG.md` has an entry for each change under `[Unreleased]`.
 4. `cargo test` and `cargo clippy --all-targets` are clean.
 5. Only then: bump `Cargo.toml` + `Cargo.lock`, roll the CHANGELOG, `CLAUDE.md`'s
