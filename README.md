@@ -98,6 +98,7 @@ tetron-wm uses a **leader key** (`Ctrl+Space`) so its shortcuts never collide wi
 | `Ctrl+Space` then `x` / `y` | **Select mode**: the next drag selects text even in mouse-capturing apps (w3m, carbonyl, vim) |
 | `Ctrl+Space` then `c` / `v` | Copy the mouse selection / paste (`p` also pastes) the clipboard (= Ctrl+Shift+C / V) |
 | `Ctrl+Space` then `s`       | **Screenshot**: save a PNG of the whole screen (launcher → tetron-wm → Screenshot, or `tetron-wm screenshot [file.png]`) |
+| `Ctrl+Space` then `z`       | **Screensaver**: cover the screen (launcher → tetron-wm → Screensaver, the ⓘ menu, or `tetron-wm screensaver [on\|off\|toggle\|list] [black\|clock]`). Any key or mouse event wakes it and is not passed to the app. On demand only: no idle timer, not a lock, and it blanks the cells, not the monitor. `black` is plain black; `clock` is a big animated `HH:MM:SS` that drifts around the screen. Default effect: `screensaver = "black"` in the config |
 | `Ctrl+Space` then `m` / `n` | Maximize / minimize focused window                                 |
 | `Ctrl+Space` then `Esc`     | Close the focused window (app windows ask first)                   |
 | `Ctrl+Space` then `[` / `]` | Snap focused window left / right half                              |
@@ -328,6 +329,9 @@ web_home = "https://lite.duckduckgo.com/lite/"  # start page for w3m when launch
 # [power_commands]
 # poweroff = ["systemctl poweroff", "doas -n poweroff"]
 # suspend  = []
+
+# On-demand screensaver (leader z, launcher, ⓘ menu, or `tetron-wm screensaver`)
+screensaver = "black"      # effect used when none is named: "black" | "clock"
 
 # Menubar launcher button text (also editable in Settings → Appearance)
 launcher_label = "tetron"  # up to 6 single-width characters, centred in a fixed width so

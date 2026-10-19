@@ -117,6 +117,15 @@ use crate::window::WindowId;
 use crate::wm::{WindowManager, render_window};
 use std::collections::HashMap;
 
+/// A running screensaver: its effect, when it started, when it last painted,
+/// and the last painted frame (shown by `build_frame` until the next repaint).
+struct Saver {
+    effect: Box<dyn crate::screensaver::Effect>,
+    since: std::time::Instant,
+    last: Option<std::time::Instant>,
+    buf: Option<crate::buffer::CellBuffer>,
+}
+
 /// Opaque per-app window state the frontend stashes in the apphost so a fresh
 /// frontend (after `reload` or a crash) can rebuild the window in place.
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
@@ -434,6 +443,14 @@ pub enum ClientMsg {
     Shutdown,
     /// Restart the frontend only, keeping the apphost (and apps) alive.
     Reload,
+    /// Start, stop or toggle the screensaver, optionally naming the effect
+    /// (default: the `screensaver` config key). Sent by the leader key and by
+    /// `tetron-wm screensaver`.
+    Screensaver {
+        mode: crate::screensaver::SaverMode,
+        #[serde(default)]
+        effect: Option<String>,
+    },
     /// Ask the daemon for its [`crate::protocol::StatusReply`] (`tetron-wm ls`).
     /// Answered by the control thread; never reaches `apply`'s state.
     Status,
@@ -609,6 +626,8 @@ pub struct SessionCore {
     drag_preview: Option<Rect>,
     /// The working-directory picker, open while a flagged launch awaits a dir.
     dirpicker: Option<crate::dirpicker::DirPicker>,
+    /// The running screensaver, if any.
+    saver: Option<Saver>,
     /// The keyboard-shortcut help window, while one is open.
     help_win: Option<WindowId>,
     /// Whether the full-screen "simple" view mode is active.
@@ -714,6 +733,7 @@ impl SessionCore {
             drag_preview: None,
             dirpicker: None,
             help_win: None,
+            saver: None,
             simple: false,
             images: crate::imagestore::ImageStore::new(),
             desktop: crate::desktop::DesktopIcons::new(desktop_dir),
@@ -1719,6 +1739,11 @@ impl SessionCore {
                 self.open_help();
                 return;
             }
+            I::StartScreensaver => {
+                self.tray.close();
+                self.screensaver_on(None);
+                return;
+            }
             I::OpenSettings => {
                 self.tray.close();
                 self.open_settings();
@@ -1983,6 +2008,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Activity".into(), command: "@activity".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Clipboard".into(), command: "@clipboard".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Screenshot".into(), command: "@screenshot".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
+            AppEntry { name: "Screensaver".into(), command: "@screensaver".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
         // Suspend / Reboot / Power off: the launcher's bottom "Power" submenu,
@@ -2897,6 +2923,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Shutdown => self.shutdown = true,
             ClientMsg::Reload => self.reload = true,
             ClientMsg::Status => {} // answered by the daemon's control thread
+            ClientMsg::Screensaver { mode, effect } => {
+                use crate::screensaver::SaverMode;
+                match (mode, self.saver.is_some()) {
+                    (SaverMode::Off, _) | (SaverMode::Toggle, true) => self.screensaver_off(),
+                    (SaverMode::On, _) | (SaverMode::Toggle, false) => self.screensaver_on(effect.as_deref()),
+                }
+            }
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
             ClientMsg::ScrollAt { p, lines } if self.clipmenu.is_open() => {
                 let _ = p;
@@ -3315,6 +3348,63 @@ or a remote-side error — its authorized_keys was left untouched)",
             WinContent::Logs(l) => Some(l),
             _ => None,
         }
+    }
+
+    /// Start the screensaver with `effect` (default: the `screensaver` config
+    /// key; an unknown name falls back to black and is logged). Any client input
+    /// ends it (see `daemon.rs`).
+    pub fn screensaver_on(&mut self, effect: Option<&str>) {
+        let name = effect.unwrap_or(&self.cfg.screensaver).to_string();
+        let eff = crate::screensaver::make(&name).unwrap_or_else(|| {
+            crate::dbg_log(&format!("screensaver: unknown effect '{name}', using black"));
+            crate::screensaver::make(crate::screensaver::DEFAULT_EFFECT).expect("black exists")
+        });
+        crate::dbg_log(&format!("screensaver: on ({})", eff.name()));
+        // Menus and popovers would still be open when it wakes; close them so the
+        // desktop comes back clean.
+        self.launcher.close();
+        self.tray.close();
+        self.saver = Some(Saver { effect: eff, since: std::time::Instant::now(), last: None, buf: None });
+        self.tick_screensaver();
+    }
+
+    /// Stop the screensaver (a no-op when it is not running).
+    pub fn screensaver_off(&mut self) {
+        if self.saver.take().is_some() {
+            crate::dbg_log("screensaver: off");
+        }
+    }
+
+    /// Whether the screensaver is covering the screen.
+    pub fn screensaver_active(&self) -> bool {
+        self.saver.is_some()
+    }
+
+    /// Repaint the screensaver when it is due (its effect's frame rate, or the
+    /// screen size changed). Called once per daemon tick; cheap when nothing is due.
+    pub fn tick_screensaver(&mut self) {
+        let (w, h) = (self.w, self.h);
+        let Some(s) = self.saver.as_mut() else { return };
+        let fps = s.effect.fps();
+        let size_ok = s.buf.as_ref().map(|b| b.width() == w && b.height() == h).unwrap_or(false);
+        let due = !size_ok
+            || (fps > 0 && s.last.map(|t| t.elapsed() >= std::time::Duration::from_millis(1000 / fps as u64)).unwrap_or(true));
+        if due {
+            let ctx = crate::screensaver::Ctx { elapsed: s.since.elapsed(), now: crate::screensaver::local_time() };
+            s.buf = Some(s.effect.frame(&ctx, w, h));
+            s.last = Some(std::time::Instant::now());
+        }
+    }
+
+    /// The frame to show while the screensaver is up: one top layer, no cursor,
+    /// no image placements (so the client also removes any Kitty images).
+    fn saver_frame(&self) -> Option<Frame> {
+        let buf = self.saver.as_ref()?.buf.as_ref()?;
+        Some(Frame {
+            layers: vec![Layer { z: 10_000, origin: Point::new(0, 0), buf: buf.clone(), opacity: 1.0, scissor: None }],
+            cursor: None,
+            images: Vec::new(),
+        })
     }
 
     /// Open (or re-focus) the keyboard-shortcut help window.
@@ -3847,6 +3937,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             "@screenshot" => { self.launcher.close(); self.request_screenshot(String::new()); }
             "@help" => { self.launcher.close(); self.open_help(); }
+            "@screensaver" => { self.launcher.close(); self.screensaver_on(None); }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the
             // existing power-menu flows (confirm dialog / systems popover).
@@ -4788,6 +4879,9 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// The cursor is set to the last known mouse position.
     pub fn build_frame(&self) -> Frame {
         self.publish_interest();
+        if let Some(f) = self.saver_frame() {
+            return f;
+        }
         if self.simple {
             return self.build_frame_simple();
         }
@@ -5026,6 +5120,9 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// dock stay; the desktop and other windows are hidden.
     fn build_frame_simple(&self) -> Frame {
         self.publish_interest();
+        if let Some(f) = self.saver_frame() {
+            return f;
+        }
         use crate::geometry::Point;
         let t = crate::theme::current();
         let wa = self.simple_content_rect();

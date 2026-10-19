@@ -198,3 +198,56 @@ fn ls_shows_detached_after_client_leaves_recoverable_after_daemon_exit_and_nothi
         std::thread::sleep(Duration::from_millis(100));
     }
 }
+
+#[test]
+fn screensaver_command_lists_effects_and_rejects_bad_input() {
+    let env = Env::new("saverargs");
+    let out = env.cmd("default").args(["screensaver", "list"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && text.contains("black") && text.contains("clock"), "{text}");
+    let bad_effect = env.cmd("default").args(["screensaver", "on", "nope"]).output().unwrap();
+    assert_eq!(bad_effect.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&bad_effect.stderr).contains("black, clock"));
+    let bad_mode = env.cmd("default").args(["screensaver", "sideways"]).output().unwrap();
+    assert_eq!(bad_mode.status.code(), Some(2));
+}
+
+#[test]
+fn screensaver_starts_over_the_control_socket_and_a_key_wakes_it() {
+    let env = Env::new("saverwake");
+    env.start("sv");
+    let sock = env.sock("sv");
+    let mut client = attach(&sock, false);
+    expect_frame(&mut client);
+    // Like the real client, keep reading frames: a full repaint is far bigger than
+    // the socket buffer, so a client that stops reading stalls the daemon.
+    let mut writer = client.get_ref().try_clone().unwrap();
+    client.get_ref().set_read_timeout(None).unwrap();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        while matches!(client.read_line(&mut line), Ok(n) if n > 0) {
+            line.clear();
+        }
+    });
+
+    let out = env.cmd("sv").args(["screensaver", "on", "clock"]).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let log_path = env.root.join("tetron-wm-debug.log");
+    let wait_for = |needle: &str| {
+        let t = Instant::now();
+        loop {
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            if log.contains(needle) {
+                return;
+            }
+            assert!(t.elapsed() < Duration::from_secs(5), "log never said {needle:?}:\n{log}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    wait_for("screensaver: on (clock)");
+
+    // A key from the attached client ends it.
+    writeln!(writer, r#"{{"Key":[97]}}"#).unwrap();
+    wait_for("screensaver: off");
+    env.kill("sv");
+}

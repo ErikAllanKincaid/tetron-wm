@@ -27,6 +27,7 @@ pub mod confirmclose;
 pub mod launchwarn;
 pub mod input;
 pub mod screenshot;
+pub mod screensaver;
 pub mod session;
 pub mod config;
 pub mod configfile;

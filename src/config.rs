@@ -207,6 +207,9 @@ pub struct Config {
     /// Start page for text web browsers launched without a URL (w3m exits at
     /// once without one). Empty = launch them bare.
     pub web_home: String,
+    /// Screensaver effect used when it is started without naming one: `black`
+    /// or `clock` (see `tetron-wm screensaver list`). It runs on demand only.
+    pub screensaver: String,
     /// `[power_commands]`: per-action command chains for Suspend / Reboot / Power
     /// off (`suspend`, `reboot`, `poweroff`). A value is a command line or a list
     /// of them, tried in order until one succeeds; it replaces the built-in chain
@@ -326,6 +329,7 @@ impl Default for Config {
             web_home: "https://lite.duckduckgo.com/lite/".into(),
             launcher_label: "tetron".into(),
             power_commands: std::collections::BTreeMap::new(),
+            screensaver: crate::screensaver::DEFAULT_EFFECT.into(),
             screenshot_dir: String::new(),
             leader: None,
             keys: std::collections::BTreeMap::new(),

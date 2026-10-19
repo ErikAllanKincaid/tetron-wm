@@ -112,6 +112,7 @@ fn main() -> std::io::Result<()> {
             ctl(&tetron_wm::session::ClientMsg::Screenshot(path.to_string_lossy().into_owned()))
         }
         Some("tile") => ctl(&tetron_wm::session::ClientMsg::TileAll),
+        Some("screensaver") => screensaver_cmd(&rest),
         Some("theme") => match std::env::args().nth(2).as_deref() {
             // List every theme name (built-ins + file themes).
             Some("--list") => {
@@ -153,12 +154,44 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tetron-wm: unknown command '{other}' (try: attach, ls, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
+                "tetron-wm: unknown command '{other}' (try: attach, ls, screensaver, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
             );
             Ok(())
         }
         None => attach(true, false),
     }
+}
+
+/// `tetron-wm screensaver [on|off|toggle|list] [EFFECT]`: start or stop the
+/// on-demand screensaver in the running session. With no mode it starts it.
+/// Any key or mouse event in the attached client wakes it again.
+fn screensaver_cmd(args: &[String]) -> std::io::Result<()> {
+    use tetron_wm::screensaver::{make, SaverMode, EFFECTS};
+    let mode = args.first().map(String::as_str).unwrap_or("on");
+    if mode == "list" {
+        for (name, desc) in EFFECTS {
+            println!("{name:<8} {desc}");
+        }
+        return Ok(());
+    }
+    let mode = match mode {
+        "on" | "start" => SaverMode::On,
+        "off" | "stop" => SaverMode::Off,
+        "toggle" => SaverMode::Toggle,
+        other => {
+            eprintln!("tetron-wm screensaver: unknown '{other}' (try: on, off, toggle, list)");
+            std::process::exit(2);
+        }
+    };
+    let effect = args.get(1).cloned();
+    if let Some(name) = &effect {
+        if make(name).is_none() {
+            let names: Vec<&str> = EFFECTS.iter().map(|e| e.0).collect();
+            eprintln!("tetron-wm screensaver: no effect '{name}' (have: {})", names.join(", "));
+            std::process::exit(2);
+        }
+    }
+    ctl(&tetron_wm::session::ClientMsg::Screensaver { mode, effect })
 }
 
 /// Send one control message to the running daemon (used by `tetron-wm launch/tile/

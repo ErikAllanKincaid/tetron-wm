@@ -1049,3 +1049,101 @@ fn configured_launcher_label_is_drawn_on_the_menubar() {
     assert!(core.launcher_open());
     core.shutdown();
 }
+
+// ── Screensaver ─────────────────────────────────────────────────────────────
+
+fn saver_msg(mode: tetron_wm::screensaver::SaverMode, effect: Option<&str>) -> ClientMsg {
+    ClientMsg::Screensaver { mode, effect: effect.map(String::from) }
+}
+
+/// Whether any cell of the frame's layers is not plain black.
+fn frame_has_lit_cells(core: &SessionCore) -> bool {
+    let frame = core.build_frame();
+    frame.layers.iter().any(|l| {
+        (0..l.buf.height()).any(|y| {
+            (0..l.buf.width()).any(|x| {
+                let c = l.buf.get(x, y).unwrap();
+                c.bg.r != 0 || c.bg.g != 0 || c.bg.b != 0 || c.ch != ' '
+            })
+        })
+    })
+}
+
+#[test]
+fn screensaver_covers_everything_and_hides_cursor_and_images() {
+    use tetron_wm::screensaver::SaverMode::*;
+    let mut core = SessionCore::new(80, 24, Config::default());
+    core.apply(ClientMsg::Launch { name: "a".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 3".into()] });
+    assert!(core.build_frame().layers.len() > 1, "a normal desktop has several layers");
+    assert!(!core.screensaver_active());
+
+    core.apply(saver_msg(On, None));
+    assert!(core.screensaver_active());
+    let f = core.build_frame();
+    assert_eq!(f.layers.len(), 1, "the saver is the only layer, nothing leaks through");
+    assert_eq!((f.layers[0].buf.width(), f.layers[0].buf.height()), (80, 24));
+    assert!(f.cursor.is_none() && f.images.is_empty());
+    assert!(!frame_has_lit_cells(&core), "the default effect is plain black");
+
+    core.apply(saver_msg(Off, None));
+    assert!(!core.screensaver_active());
+    assert!(core.build_frame().layers.len() > 1, "the desktop is back");
+    core.shutdown();
+}
+
+#[test]
+fn screensaver_toggle_and_named_effects() {
+    use tetron_wm::screensaver::SaverMode::*;
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(saver_msg(Toggle, Some("clock")));
+    assert!(core.screensaver_active() && frame_has_lit_cells(&core), "the clock draws lit cells");
+    core.apply(saver_msg(Toggle, None));
+    assert!(!core.screensaver_active(), "toggle again turns it off");
+    // An unknown effect falls back to black instead of failing.
+    core.apply(saver_msg(On, Some("no-such-effect")));
+    assert!(core.screensaver_active() && !frame_has_lit_cells(&core));
+    core.shutdown();
+}
+
+#[test]
+fn screensaver_effect_defaults_to_the_config_key() {
+    use tetron_wm::screensaver::SaverMode::*;
+    let cfg = Config { screensaver: "clock".into(), ..Config::default() };
+    let mut core = SessionCore::new(100, 30, cfg);
+    core.apply(saver_msg(On, None));
+    assert!(frame_has_lit_cells(&core), "screensaver = \"clock\" is used when none is named");
+    core.shutdown();
+}
+
+#[test]
+fn screensaver_follows_a_resize_and_repaints_when_due() {
+    use tetron_wm::screensaver::SaverMode::*;
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(saver_msg(On, Some("clock")));
+    let first = core.build_frame().layers[0].buf.clone();
+    core.apply(ClientMsg::Resize { w: 60, h: 20, takeover: false });
+    core.tick_screensaver();
+    let f = core.build_frame();
+    assert_eq!((f.layers[0].buf.width(), f.layers[0].buf.height()), (60, 20), "repainted for the new size");
+    // The clock is animated: after a second a tick paints something different.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    core.apply(ClientMsg::Resize { w: 100, h: 30, takeover: false });
+    core.tick_screensaver();
+    let later = core.build_frame().layers[0].buf.clone();
+    let differs = (0..30).any(|y| (0..100).any(|x| first.get(x, y).unwrap().bg != later.get(x, y).unwrap().bg));
+    assert!(differs, "the clock moved or ticked");
+    core.shutdown();
+}
+
+#[test]
+fn screensaver_is_started_from_the_launcher_and_the_info_menu() {
+    let mut core = SessionCore::new(100, 30, Config::default());
+    // Info menu link.
+    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    core.apply(ClientMsg::MouseDown(icon));
+    let link = find_on_layer(&mut core, 5000, "Screensaver").expect("Screensaver link in the Info menu");
+    core.apply(ClientMsg::MouseDown(Point::new(link.x + 2, link.y)));
+    assert!(core.screensaver_active(), "the Info menu link starts it");
+    assert!(core.build_frame().cursor.is_none());
+    core.shutdown();
+}

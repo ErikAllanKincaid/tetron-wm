@@ -311,6 +311,9 @@ fn serve_client(
     status: &DaemonStatus,
 ) -> Option<ClientConn> {
     use std::sync::atomic::Ordering::Relaxed;
+    // A client attaching always ends the screensaver, so a reattach never shows
+    // a black screen with no way to tell why.
+    core.screensaver_off();
     status.attach_gen.fetch_add(1, Relaxed);
     status.attached.store(true, Relaxed);
     let next = serve_client_inner(core, comp, client, ctl, ctl_queue, conns, status);
@@ -391,7 +394,11 @@ fn serve_client_inner(
                     // The client's wipe frees transmitted image data; re-send it.
                     sent_image_ids.clear();
                 }
-                Ok(msg) => core.apply(msg),
+                Ok(msg) => {
+                    if let Some(msg) = wake_or_pass(core, msg) {
+                        core.apply(msg);
+                    }
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => return None, // client gone
             }
@@ -410,6 +417,7 @@ fn serve_client_inner(
         core.sync_app_meta();
         core.pump_thumbnails();
         core.poll_power();
+        core.tick_screensaver();
         core.refresh_activity();
         core.poll_desktop_dir();
         let frame = core.build_frame();
@@ -496,6 +504,19 @@ fn serve_client_inner(
     }
 }
 
+/// While the screensaver is up, any input from the attached client ends it and is
+/// swallowed (so the wake key is not also typed into the focused app). Returns the
+/// message to apply, or `None` if it was consumed. `Resize` is not input. Control
+/// socket messages (`tetron-wm screensaver ...`, `launch`, ...) take another path
+/// and never wake it.
+fn wake_or_pass(core: &mut SessionCore, msg: ClientMsg) -> Option<ClientMsg> {
+    if core.screensaver_active() && !matches!(msg, ClientMsg::Resize { .. }) {
+        core.screensaver_off();
+        return None;
+    }
+    Some(msg)
+}
+
 /// If a control message has arrived, apply it to `core` (setting its
 /// shutdown/reload flag, which the loops already act on) and return `true`.
 fn apply_ctl(ctl: &Arc<AtomicU8>, queue: &CtlQueue, core: &mut SessionCore) -> bool {
@@ -569,5 +590,53 @@ fn serve_control(
                 Err(_) => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn core() -> SessionCore {
+        SessionCore::new(80, 24, Config::default())
+    }
+
+    #[test]
+    fn input_wakes_the_screensaver_and_is_swallowed() {
+        let mut c = core();
+        c.screensaver_on(None);
+        assert!(c.screensaver_active());
+        // A key press (and every other input) ends it and never reaches the app.
+        assert!(wake_or_pass(&mut c, ClientMsg::Key(vec![b'q'])).is_none());
+        assert!(!c.screensaver_active());
+        // With the saver off, input passes straight through.
+        assert!(matches!(wake_or_pass(&mut c, ClientMsg::Key(vec![b'q'])), Some(ClientMsg::Key(_))));
+        c.shutdown();
+    }
+
+    #[test]
+    fn mouse_wakes_it_too() {
+        for msg in [
+            ClientMsg::MouseDown(crate::geometry::Point::new(1, 1)),
+            ClientMsg::MouseMove(crate::geometry::Point::new(2, 2)),
+            ClientMsg::ScrollAt { p: crate::geometry::Point::new(2, 2), lines: 3 },
+        ] {
+            let mut c = core();
+            c.screensaver_on(Some("clock"));
+            assert!(wake_or_pass(&mut c, msg).is_none());
+            assert!(!c.screensaver_active());
+            c.shutdown();
+        }
+    }
+
+    #[test]
+    fn a_resize_is_not_input_and_keeps_it_running() {
+        let mut c = core();
+        c.screensaver_on(None);
+        let passed = wake_or_pass(&mut c, ClientMsg::Resize { w: 100, h: 30, takeover: false });
+        assert!(matches!(passed, Some(ClientMsg::Resize { .. })));
+        assert!(c.screensaver_active(), "resizing the terminal must not end it");
+        c.shutdown();
     }
 }

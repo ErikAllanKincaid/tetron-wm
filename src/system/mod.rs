@@ -207,6 +207,8 @@ pub enum ControlIntent {
     OpenLogs,
     OpenHelp,
     OpenSettings,
+    /// Info menu: start the screensaver.
+    StartScreensaver,
 }
 
 /// The OS-specific slice of [`SystemState`] produced by a [`SystemMonitor`].

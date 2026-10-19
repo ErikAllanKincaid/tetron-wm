@@ -46,6 +46,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),
     ("auto_tile", &["T"], "toggle auto-tile"),
+    ("screensaver", &["z"], "start the screensaver (any key or mouse wakes it)"),
     ("screenshot", &["s"], "save a screenshot (PNG) of the whole screen"),
     ("detach", &["q"], "detach (apps keep running)"),
     ("shutdown", &["Q"], "quit tetron-wm (closes every app)"),

@@ -62,6 +62,7 @@ pub fn help_sections() -> &'static [HelpSection] {
         HelpSection {
             title: "Session",
             rows: &[
+                ("z", "screensaver (any key or mouse wakes it)"),
                 ("q / Q", "detach / quit tetron-wm"),
                 ("?", "this help (a window; Esc or q closes it)"),
             ],

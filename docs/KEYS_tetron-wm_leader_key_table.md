@@ -32,6 +32,7 @@ The leader key exists so tetron-wm shortcuts never collide with your terminal, t
 | `x`, `y` | `select` | Select mode: the next mouse drag selects text even in apps that capture the mouse (one shot) |
 | `c` | `copy` | Copy the mouse selection to the clipboard (same as Ctrl+Shift+C where the terminal allows it) |
 | `v`, `p` | `paste` | Paste the clipboard into the focused app (same as Ctrl+Shift+V) |
+| `z` | `screensaver` | Start the screensaver (any key or mouse wakes it; effect from `screensaver` in the config) |
 | `s` | `screenshot` | Save a PNG screenshot of the whole composited screen to `screenshot_dir` (default `~/Pictures`, else `$HOME`) |
 | `?`, `h` | `help` | Show the shortcut help screen |
 | `q` | `detach` | Detach the client; the daemon and all apps keep running |

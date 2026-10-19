@@ -291,6 +291,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("help"), _) => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
                             (Some("rename"), _) => send(&mut out_stream, &ClientMsg::RenameFocused)?,
                             (Some("tile"), _) => send(&mut out_stream, &ClientMsg::TileAll)?,
+                            (Some("screensaver"), _) => send(&mut out_stream, &ClientMsg::Screensaver { mode: crate::screensaver::SaverMode::Toggle, effect: None })?,
                             (Some("screenshot"), _) => send(&mut out_stream, &ClientMsg::Screenshot(String::new()))?,
                             (Some("auto_tile"), _) => send(&mut out_stream, &ClientMsg::ToggleAutoTile)?,
                             (Some("detach"), _) => break,                       // detach (apps persist)

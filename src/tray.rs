@@ -553,8 +553,9 @@ impl Tray {
         let box_w = 38;
         // Interior rows: title, 3 facts, [blank, segment rows], blank, links;
         // plus the top and bottom border.
-        let links: [(&str, ControlIntent); 4] = [
+        let links: [(&str, ControlIntent); 5] = [
             ("Sessions", ControlIntent::OpenSessions),
+            ("Screensaver", ControlIntent::StartScreensaver),
             ("Logs", ControlIntent::OpenLogs),
             ("Shortcuts", ControlIntent::OpenHelp),
             ("Settings", ControlIntent::OpenSettings),
