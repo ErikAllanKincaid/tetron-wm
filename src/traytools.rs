@@ -20,7 +20,8 @@ pub enum ToolSpec {
 }
 
 impl ToolSpec {
-    fn lines(&self) -> Vec<String> {
+    /// The non-empty command lines this value holds, in order.
+    pub fn lines(&self) -> Vec<String> {
         match self {
             ToolSpec::One(s) => vec![s.clone()],
             ToolSpec::Many(v) => v.clone(),

@@ -363,9 +363,78 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
     }
 }
 
+/// How a [`run_capped_status`] command ended.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Capped {
+    /// Exited with status 0.
+    Done,
+    /// Exited non-zero (or was killed); the text is its first line of stderr.
+    Failed(String),
+    /// Still running when the cap hit. It is left running (reaped on a thread),
+    /// not killed: for power actions that means the request was accepted and the
+    /// command is waiting on the system (a suspend returns only after resume).
+    StillRunning,
+    /// The program could not be started (not installed, not executable).
+    Missing(String),
+}
+
+/// Like [`run_capped`], but tells "failed" from "still running" and does not
+/// kill a command that outlives the cap. Use for fire-and-forget system actions.
+pub fn run_capped_status(program: &str, args: &[&str], secs: u64) -> Capped {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let mut child = match Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return Capped::Missing(e.to_string()),
+    };
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if status.success() {
+                    return Capped::Done;
+                }
+                let mut err = String::new();
+                if let Some(s) = child.stderr.take() {
+                    let _ = s.take(512).read_to_string(&mut err);
+                }
+                let first = err.lines().next().unwrap_or("").trim();
+                return Capped::Failed(if first.is_empty() { format!("exit status {status}") } else { first.to_string() });
+            }
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    // Reap it in the background so it never lingers as a zombie.
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                    return Capped::StillRunning;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Capped::Failed(e.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capped_status_distinguishes_done_failed_running_and_missing() {
+        assert_eq!(run_capped_status("true", &[], 5), Capped::Done);
+        assert!(matches!(run_capped_status("sh", &["-c", "echo nope >&2; exit 3"], 5), Capped::Failed(m) if m == "nope"));
+        assert!(matches!(run_capped_status("sh", &["-c", "exit 4"], 5), Capped::Failed(m) if m.contains('4')));
+        assert_eq!(run_capped_status("sleep", &["3"], 1), Capped::StillRunning);
+        assert!(matches!(run_capped_status("tetron-wm-no-such-program", &[], 1), Capped::Missing(_)));
+    }
 
     #[test]
     fn route_get_parses_dev_and_src() {

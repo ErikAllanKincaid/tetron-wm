@@ -22,6 +22,7 @@ pub mod settings;
 pub mod activity;
 pub mod launcher;
 pub mod powermenu;
+pub mod powerctl;
 pub mod confirmclose;
 pub mod launchwarn;
 pub mod input;

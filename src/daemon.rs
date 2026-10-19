@@ -409,6 +409,7 @@ fn serve_client_inner(
         core.refresh_app_graphics();
         core.sync_app_meta();
         core.pump_thumbnails();
+        core.poll_power();
         core.refresh_activity();
         core.poll_desktop_dir();
         let frame = core.build_frame();

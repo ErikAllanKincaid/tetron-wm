@@ -22,15 +22,75 @@ pub enum PowerAction {
     Restart,
     /// Stop tetron-wm entirely (daemon exits, every app is killed).
     Shutdown,
+    /// Suspend the computer.
+    Suspend,
+    /// Reboot the computer.
+    Reboot,
+    /// Power the computer off.
+    PowerOff,
 }
 
 impl PowerAction {
+    // The variant names are kept for compatibility (keymap actions, launcher
+    // `@`-ids); the labels are what the user reads.
     fn label(self) -> &'static str {
         match self {
-            PowerAction::Exit => "Exit",
-            PowerAction::Restart => "Restart",
-            PowerAction::Shutdown => "Shutdown",
+            PowerAction::Exit => "Detach",
+            PowerAction::Restart => "Reload",
+            PowerAction::Shutdown => "Quit",
+            PowerAction::Suspend => "Suspend",
+            PowerAction::Reboot => "Reboot",
+            PowerAction::PowerOff => "Power off",
         }
+    }
+
+    /// What confirming it does.
+    fn outcome(self) -> PowerOutcome {
+        match self {
+            PowerAction::Exit => PowerOutcome::Detach,
+            PowerAction::Restart => PowerOutcome::Reload,
+            PowerAction::Shutdown => PowerOutcome::Shutdown,
+            PowerAction::Suspend => PowerOutcome::Power(crate::powerctl::Kind::Suspend),
+            PowerAction::Reboot => PowerOutcome::Power(crate::powerctl::Kind::Reboot),
+            PowerAction::PowerOff => PowerOutcome::Power(crate::powerctl::Kind::PowerOff),
+        }
+    }
+}
+
+/// Facts the confirm dialog names: which computer, and how many apps would be lost.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ConfirmCtx {
+    pub host: String,
+    pub apps: usize,
+}
+
+/// The two message lines and the confirm-button label of `action`'s dialog.
+fn dialog_text(action: PowerAction, ctx: &ConfirmCtx) -> (String, String, &'static str) {
+    let host = if ctx.host.is_empty() { "this computer" } else { ctx.host.as_str() };
+    let lost = match ctx.apps {
+        0 => "No apps are running.".to_string(),
+        1 => "1 running app will close.".to_string(),
+        n => format!("{n} running apps will close."),
+    };
+    match action {
+        PowerAction::Exit => (
+            "Detach from tetron-wm?".into(),
+            "Your apps keep running; run tetron-wm to come back.".into(),
+            "Detach",
+        ),
+        PowerAction::Restart => (
+            "Reload the tetron-wm UI?".into(),
+            "Your apps keep running.".into(),
+            "Reload",
+        ),
+        PowerAction::Shutdown => ("Quit tetron-wm?".into(), format!("{lost} The session ends."), "Quit"),
+        PowerAction::Suspend => (
+            format!("Suspend {host}?"),
+            "Apps keep running; remote connections may drop.".into(),
+            "Suspend",
+        ),
+        PowerAction::Reboot => (format!("Reboot {host}?"), lost, "Reboot"),
+        PowerAction::PowerOff => (format!("Power off {host}?"), lost, "Power off"),
     }
 }
 
@@ -59,6 +119,9 @@ pub enum PowerOutcome {
     Shutdown,
     /// Switch the client to a saved system over ssh.
     Switch(SwitchSpec),
+    /// Suspend, reboot or power off the computer (the session runs the command
+    /// chain off the render loop and reports a failure in a window).
+    Power(crate::powerctl::Kind),
     /// Save a new system and switch to it with first-time setup (key transfer +
     /// remote install). The password is for setup only and is never persisted.
     AddAndConnect { system: RemoteSystem, password: Option<String> },
@@ -133,6 +196,9 @@ pub struct PowerMenu {
     forget: Option<ForgetConfirm>,
     systems_open: bool,
     form: Option<AddForm>,
+    /// What the confirm dialog names (host, running-app count); set by the
+    /// session just before it opens the dialog.
+    ctx: ConfirmCtx,
 }
 
 // ── Geometry (shared by render + hit-test so they can never drift) ──────────────
@@ -204,7 +270,7 @@ fn form_buttons(w: i32, h: i32) -> (Rect, Rect) {
 /// The centered confirmation dialog box.
 fn dialog_rect(w: i32, h: i32) -> Rect {
     let box_w = 52.min((w - 2).max(20));
-    let box_h = 7.min((h - 1).max(5));
+    let box_h = 8.min((h - 1).max(5));
     Rect::new((w - box_w) / 2, ((h - box_h) / 2).max(0), box_w, box_h)
 }
 
@@ -276,8 +342,15 @@ impl PowerMenu {
         self.form = None;
     }
 
+    /// Name the computer and the number of running apps the next confirm dialog
+    /// mentions (Quit, Reboot, Power off).
+    pub fn set_context(&mut self, host: String, apps: usize) {
+        self.ctx = ConfirmCtx { host, apps };
+    }
+
     /// Open the confirm dialog for `action` directly (e.g. from the launcher's
-    /// system section), as if its dropdown row had been clicked.
+    /// system section), as if its dropdown row had been clicked. Call
+    /// [`PowerMenu::set_context`] first to name the host and the app count.
     pub fn confirm_action(&mut self, action: PowerAction) {
         self.form = None;
         self.forget = None;
@@ -371,11 +444,7 @@ impl PowerMenu {
     pub fn key_confirm(&mut self) -> PowerClick {
         if let Some(action) = self.confirm {
             self.close();
-            return PowerClick::Act(match action {
-                PowerAction::Exit => PowerOutcome::Detach,
-                PowerAction::Restart => PowerOutcome::Reload,
-                PowerAction::Shutdown => PowerOutcome::Shutdown,
-            });
+            return PowerClick::Act(action.outcome());
         }
         if let Some(fc) = self.forget.as_ref() {
             let name = fc.sys.name.clone();
@@ -465,11 +534,7 @@ impl PowerMenu {
             let (cancel, confirm) = dialog_buttons(w, h);
             if confirm.contains(p) {
                 self.close();
-                return match action {
-                    PowerAction::Exit => PowerClick::Act(PowerOutcome::Detach),
-                    PowerAction::Restart => PowerClick::Act(PowerOutcome::Reload),
-                    PowerAction::Shutdown => PowerClick::Act(PowerOutcome::Shutdown),
-                };
+                return PowerClick::Act(action.outcome());
             }
             if cancel.contains(p) {
                 // The dropdown no longer exists (actions live in the launcher), so
@@ -663,13 +728,13 @@ impl PowerMenu {
             buf.set(0, d.h - 1, b('╰'));
             buf.set(d.w - 1, d.h - 1, b('╯'));
             // Message + confirm-button label.
-            let (msg, confirm_label) = match action {
-                PowerAction::Exit => ("Exit tetron-wm? Apps keep running in the background.", "Exit"),
-                PowerAction::Restart => ("Restart tetron-wm? The UI reloads; your apps keep running.", "Restart"),
-                PowerAction::Shutdown => ("Shut down tetron-wm? All running apps will close.", "Shut Down"),
-            };
-            buf.write_str(2, 2, msg, t.text, t.window_bg);
-            buf.write_str(2, 3, "Enter / y = confirm    Esc / n = cancel", t.text, t.window_bg);
+            let (line1, line2, confirm_label) = dialog_text(action, &self.ctx);
+            let cap = (d.w - 4).max(0) as usize;
+            let line1: String = line1.chars().take(cap).collect();
+            let line2: String = line2.chars().take(cap).collect();
+            buf.write_str(2, 2, &line1, t.text, t.window_bg);
+            buf.write_str(2, 3, &line2, t.dim, t.window_bg);
+            buf.write_str(2, 4, "Enter / y = confirm    Esc / n = cancel", t.dim, t.window_bg);
             // Buttons (local coords; pad the labels to fill their hit rects).
             let (cancel, confirm) = dialog_buttons(w, h);
             let cancel_s = format!("{:^width$}", "Cancel", width = cancel.w as usize);
@@ -760,6 +825,69 @@ mod tests {
 
     fn one_system() -> Vec<RemoteSystem> {
         vec![RemoteSystem { name: "pi".into(), host: "pi@10.0.0.2".into(), port: None, theme: Some("nord".into()) }]
+    }
+
+    /// All the text the confirm dialog draws, as one string.
+    fn dialog_text_of(m: &PowerMenu) -> String {
+        let layers = m.render(100, 30, &[], &[]);
+        let mut s = String::new();
+        for l in &layers {
+            for y in 0..l.buf.height() {
+                s.extend((0..l.buf.width()).map(|x| l.buf.get(x, y).map(|c| c.ch).unwrap_or(' ')));
+                s.push('\n');
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn power_actions_confirm_and_name_the_host_and_lost_apps() {
+        use crate::powerctl::Kind;
+        let cases = [
+            (PowerAction::Suspend, Kind::Suspend, "Suspend box7?", "Suspend"),
+            (PowerAction::Reboot, Kind::Reboot, "Reboot box7?", "Reboot"),
+            (PowerAction::PowerOff, Kind::PowerOff, "Power off box7?", "Power off"),
+        ];
+        for (action, kind, title, button) in cases {
+            let mut m = PowerMenu::new();
+            m.set_context("box7".into(), 2);
+            m.confirm_action(action);
+            let text = dialog_text_of(&m);
+            assert!(text.contains(title), "{text}");
+            assert!(text.contains(button), "{text}");
+            if action != PowerAction::Suspend {
+                assert!(text.contains("2 running apps will close."), "{text}");
+            }
+            // Clicking the confirm button yields the matching outcome.
+            let (_, confirm) = dialog_buttons(100, 30);
+            assert_eq!(m.on_click(center(confirm), 100, 30, &no_systems()), PowerClick::Act(PowerOutcome::Power(kind)));
+        }
+    }
+
+    #[test]
+    fn dialog_wording_for_the_renamed_and_new_actions() {
+        let ctx = |apps| ConfirmCtx { host: "h".into(), apps };
+        assert_eq!(dialog_text(PowerAction::Exit, &ctx(3)).2, "Detach");
+        assert_eq!(dialog_text(PowerAction::Restart, &ctx(3)).2, "Reload");
+        assert_eq!(dialog_text(PowerAction::Shutdown, &ctx(3)).2, "Quit");
+        assert!(dialog_text(PowerAction::Shutdown, &ctx(3)).1.contains("3 running apps will close"));
+        assert!(dialog_text(PowerAction::PowerOff, &ctx(1)).1.contains("1 running app will close"));
+        assert!(dialog_text(PowerAction::PowerOff, &ctx(0)).1.contains("No apps are running"));
+        // Detach and Reload keep your apps; they say so.
+        assert!(dialog_text(PowerAction::Exit, &ctx(3)).1.contains("keep running"));
+        assert!(dialog_text(PowerAction::Restart, &ctx(3)).1.contains("keep running"));
+        // No host given: still sensible.
+        assert!(dialog_text(PowerAction::Reboot, &ConfirmCtx::default()).0.contains("this computer"));
+    }
+
+    #[test]
+    fn keyboard_confirm_fires_the_power_outcome_and_cancel_does_not() {
+        let mut m = PowerMenu::new();
+        m.confirm_action(PowerAction::PowerOff);
+        assert_eq!(m.key_confirm(), PowerClick::Act(PowerOutcome::Power(crate::powerctl::Kind::PowerOff)));
+        m.confirm_action(PowerAction::Reboot);
+        m.key_cancel();
+        assert_eq!(m.key_confirm(), PowerClick::Consumed);
     }
 
     #[test]

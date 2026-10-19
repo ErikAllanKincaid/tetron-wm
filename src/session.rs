@@ -590,6 +590,9 @@ pub struct SessionCore {
     launcher: Launcher,
     /// The top-right power menu (Exit / Restart / Shutdown + confirm dialogs).
     power_menu: PowerMenu,
+    /// A suspend / reboot / power-off command chain running on a worker thread:
+    /// the action and the slot its [`crate::powerctl::Report`] lands in.
+    power_job: Option<(crate::powerctl::Kind, std::sync::Arc<std::sync::Mutex<Option<crate::powerctl::Report>>>)>,
     /// Modal "are you sure?" shown when closing an app window (which kills it).
     confirm_close: ConfirmClose,
     /// Modal "are you sure?" shown before launching an app entry flagged `warn`.
@@ -701,6 +704,7 @@ impl SessionCore {
             reload: false,
             launcher,
             power_menu: PowerMenu::new(),
+            power_job: None,
             confirm_close: ConfirmClose::new(),
             launch_warn: LaunchWarn::new(),
             interest: None,
@@ -1847,11 +1851,62 @@ impl SessionCore {
     }
 
     /// Carry out a confirmed power-menu outcome (button click or form submit).
+    /// Open the confirm dialog for `action`, naming this computer and how many
+    /// running apps it would end.
+    fn confirm_power(&mut self, action: crate::powermenu::PowerAction) {
+        self.launcher.close();
+        let apps = self.contents.values().filter(|c| matches!(c, WinContent::App(_))).count();
+        self.power_menu.set_context(crate::powerctl::hostname(), apps);
+        self.power_menu.confirm_action(action);
+    }
+
+    /// Run a confirmed suspend / reboot / power off on a worker thread (the
+    /// commands can take seconds, a suspend blocks until resume) so the render
+    /// loop never stalls. The clipboard history is flushed first on reboot and
+    /// power off; apps are left alone, so a refused command loses nothing.
+    fn start_power(&mut self, kind: crate::powerctl::Kind) {
+        if self.power_job.is_some() {
+            crate::dbg_log(&format!("power: {} ignored, another power action is running", kind.key()));
+            return;
+        }
+        crate::dbg_log(&format!("power: {} confirmed", kind.key()));
+        if kind != crate::powerctl::Kind::Suspend {
+            self.flush_clipboard();
+        }
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let out = std::sync::Arc::clone(&slot);
+        let cfg = self.cfg.power_commands.clone();
+        std::thread::spawn(move || {
+            let report = crate::powerctl::run(kind, &cfg, &crate::catalog::is_installed);
+            *out.lock().unwrap_or_else(|e| e.into_inner()) = Some(report);
+        });
+        self.power_job = Some((kind, slot));
+    }
+
+    /// Collect a finished power action (call once per daemon tick). A refused or
+    /// impossible one opens a window saying what was tried, instead of failing
+    /// silently; an accepted one needs nothing (the system is acting on it).
+    pub fn poll_power(&mut self) {
+        let Some((kind, slot)) = self.power_job.as_ref() else { return };
+        let Some(report) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+        let kind = *kind;
+        self.power_job = None;
+        if report.started.is_none() {
+            let text = crate::powerctl::failure_text(kind, &report);
+            let script = format!(
+                "printf '%s' {}; printf '\nPress Enter to close. '; read _k",
+                crate::systems::sh_quote(&text)
+            );
+            self.launch_in(kind.label().to_string(), "sh".into(), vec!["-c".into(), script], None);
+        }
+    }
+
     fn apply_power_outcome(&mut self, outcome: PowerOutcome) {
         match outcome {
             PowerOutcome::Detach => self.quit = true,
             PowerOutcome::Reload => self.reload = true,
             PowerOutcome::Shutdown => self.shutdown = true,
+            PowerOutcome::Power(kind) => self.start_power(kind),
             PowerOutcome::Switch(spec) => {
                 crate::dbg_log(&format!("systems: switch to '{}' ({})", spec.name, spec.host));
                 self.switch_to = Some(spec);
@@ -1930,6 +1985,22 @@ or a remote-side error — its authorized_keys was left untouched)",
             AppEntry { name: "Screenshot".into(), command: "@screenshot".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
             AppEntry { name: "Help".into(), command: "@help".into(), args: vec![], category: Some("tetron-wm".into()), requires_cwd: None, cwd: None, cli: None, warn: None },
         ];
+        // Suspend / Reboot / Power off: the launcher's bottom "Power" submenu,
+        // only for actions this computer can actually carry out.
+        for kind in crate::powerctl::Kind::ALL {
+            if crate::powerctl::available(kind, &cfg.power_commands, &crate::catalog::is_installed) {
+                apps.push(AppEntry {
+                    name: kind.label().into(),
+                    command: kind.command().into(),
+                    args: vec![],
+                    category: Some(crate::launcher::POWER_CATEGORY.into()),
+                    requires_cwd: None,
+                    cwd: None,
+                    cli: None,
+                    warn: None,
+                });
+            }
+        }
         // One remote file browser per saved system (Systems category).
         for sys in systems {
             apps.push(AppEntry {
@@ -3780,9 +3851,12 @@ or a remote-side error — its authorized_keys was left untouched)",
             // System actions from the launcher's bottom section — delegate to the
             // existing power-menu flows (confirm dialog / systems popover).
             "@systems" => { self.launcher.close(); self.power_menu.open_systems(); }
-            "@exit" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Exit); }
-            "@restart" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Restart); }
-            "@shutdown" => { self.launcher.close(); self.power_menu.confirm_action(crate::powermenu::PowerAction::Shutdown); }
+            "@exit" => self.confirm_power(crate::powermenu::PowerAction::Exit),
+            "@restart" => self.confirm_power(crate::powermenu::PowerAction::Restart),
+            "@shutdown" => self.confirm_power(crate::powermenu::PowerAction::Shutdown),
+            "@suspend" => self.confirm_power(crate::powermenu::PowerAction::Suspend),
+            "@reboot" => self.confirm_power(crate::powermenu::PowerAction::Reboot),
+            "@poweroff" => self.confirm_power(crate::powermenu::PowerAction::PowerOff),
             _ => {
                 let cli = e.cli.unwrap_or(false);
                 let requires_cwd = e.requires_cwd.unwrap_or(false);
@@ -5540,6 +5614,83 @@ fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A config whose power chains only run harmless commands. Tests must NEVER
+    /// let the real `systemctl poweroff` chain run.
+    fn safe_power_cfg(reboot: &str, poweroff: &str) -> crate::config::Config {
+        use crate::traytools::ToolSpec;
+        let mut cfg = crate::config::Config::default();
+        cfg.power_commands.insert("suspend".into(), ToolSpec::Many(Vec::new()));
+        cfg.power_commands.insert("reboot".into(), ToolSpec::One(reboot.into()));
+        cfg.power_commands.insert("poweroff".into(), ToolSpec::One(poweroff.into()));
+        cfg
+    }
+
+    fn entry_for(cmd: &str) -> crate::config::AppEntry {
+        crate::config::AppEntry {
+            name: cmd.into(), command: cmd.into(), args: Vec::new(), category: None,
+            requires_cwd: None, cwd: None, cli: None, warn: None,
+        }
+    }
+
+    #[test]
+    fn power_launcher_entries_exist_only_for_available_actions() {
+        let cfg = safe_power_cfg("true", "true");
+        let apps = SessionCore::build_launcher_apps(&cfg, &[]);
+        let power: Vec<&str> = apps
+            .iter()
+            .filter(|a| a.category.as_deref() == Some(crate::launcher::POWER_CATEGORY))
+            .map(|a| a.name.as_str())
+            .collect();
+        // Suspend is disabled by an empty list; Reboot and Power off exist, in order.
+        assert_eq!(power, vec!["Reboot", "Power off"]);
+        let cmds: Vec<&str> = apps.iter().filter(|a| a.command.starts_with("@po") || a.command == "@reboot").map(|a| a.command.as_str()).collect();
+        assert_eq!(cmds, vec!["@reboot", "@poweroff"]);
+    }
+
+    #[test]
+    fn confirmed_power_action_that_fails_opens_a_window_saying_why() {
+        let mut core = SessionCore::new(100, 30, safe_power_cfg("sh -c 'echo denied by policy >&2; exit 1'", "true"));
+        core.launch_entry(entry_for("@reboot"));
+        assert!(core.power_menu.dialog_open(), "Reboot asks first");
+        assert_eq!(core.window_count(), 0);
+        core.apply(ClientMsg::PowerKeyConfirm);
+        assert!(core.power_job.is_some(), "the chain runs on a worker thread");
+        // The worker finishes within a moment; the failure then shows up as a window.
+        let start = std::time::Instant::now();
+        while core.window_count() == 0 && start.elapsed() < std::time::Duration::from_secs(5) {
+            core.poll_power();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(core.window_count(), 1, "a failed Reboot is reported, not silent");
+        assert_eq!(core.focused_label_for_test(), "Reboot");
+        assert!(core.power_job.is_none());
+        core.shutdown();
+    }
+
+    #[test]
+    fn confirmed_power_action_that_succeeds_opens_nothing() {
+        let mut core = SessionCore::new(100, 30, safe_power_cfg("true", "true"));
+        core.launch_entry(entry_for("@poweroff"));
+        core.apply(ClientMsg::PowerKeyConfirm);
+        let start = std::time::Instant::now();
+        while core.power_job.is_some() && start.elapsed() < std::time::Duration::from_secs(5) {
+            core.poll_power();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(core.power_job.is_none(), "the job finished");
+        assert_eq!(core.window_count(), 0, "an accepted power-off needs no window");
+        core.shutdown();
+    }
+
+    #[test]
+    fn cancelling_a_power_dialog_runs_nothing() {
+        let mut core = SessionCore::new(100, 30, safe_power_cfg("true", "true"));
+        core.launch_entry(entry_for("@poweroff"));
+        core.apply(ClientMsg::PowerKeyCancel);
+        assert!(!core.power_menu.is_open() && core.power_job.is_none());
+        core.shutdown();
+    }
 
     #[test]
     fn launcher_system_actions_open_power_flows() {

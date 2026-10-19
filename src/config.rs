@@ -207,6 +207,12 @@ pub struct Config {
     /// Start page for text web browsers launched without a URL (w3m exits at
     /// once without one). Empty = launch them bare.
     pub web_home: String,
+    /// `[power_commands]`: per-action command chains for Suspend / Reboot / Power
+    /// off (`suspend`, `reboot`, `poweroff`). A value is a command line or a list
+    /// of them, tried in order until one succeeds; it replaces the built-in chain
+    /// (systemd, elogind, sudo/doas, busybox). An empty list hides the action.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub power_commands: crate::traytools::TrayTools,
     /// Text of the menubar launcher button: up to 6 characters (shorter labels
     /// are centred in the same 6 cells, so the bar never shifts), or `@session`
     /// to show the session name in a named session. Single-width characters only.
@@ -319,6 +325,7 @@ impl Default for Config {
             clipboard_ttl_secs: 0,
             web_home: "https://lite.duckduckgo.com/lite/".into(),
             launcher_label: "tetron".into(),
+            power_commands: std::collections::BTreeMap::new(),
             screenshot_dir: String::new(),
             leader: None,
             keys: std::collections::BTreeMap::new(),

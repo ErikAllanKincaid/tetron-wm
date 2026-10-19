@@ -47,6 +47,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("clipboard_ignore_apps", "[]", "do not record while these apps are focused (e.g. password managers)"),
     ("clipboard_ttl_secs", "0", "expire unpinned entries after N seconds (0 = never)"),
     ("web_home", "https://lite.duckduckgo.com/lite/", "start page for w3m and other text browsers launched without a URL"),
+    ("power_commands", "{}", "[power_commands] suspend/reboot/poweroff -> command line or list tried in order (replaces the built-in chain)"),
     ("launcher_label", "tetron", "menubar launcher button text: up to 6 characters (centred), or @session for the session name"),
     ("screenshot_dir", "", "where screenshots are saved (empty = ~/Pictures if present, else $HOME)"),
     ("leader", "ctrl+space", "leader chord, ctrl+<key> (needs reload)"),

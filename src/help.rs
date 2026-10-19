@@ -62,7 +62,7 @@ pub fn help_sections() -> &'static [HelpSection] {
         HelpSection {
             title: "Session",
             rows: &[
-                ("q / Q", "detach / shut down"),
+                ("q / Q", "detach / quit tetron-wm"),
                 ("?", "this help (a window; Esc or q closes it)"),
             ],
             notes: &[],

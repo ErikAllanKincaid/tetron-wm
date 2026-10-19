@@ -50,7 +50,7 @@ fn navigation_and_selection() {
     l.toggle_menu();
     // Root: a "Shell" quick-launch, the single "Apps" category, then a separator
     // and the system section.
-    assert_eq!(l.menu_labels(), vec!["Shell", "Apps", "", "Systems", "Exit", "Restart", "Shutdown"]);
+    assert_eq!(l.menu_labels(), vec!["Shell", "Apps", "", "Systems", "", "Detach", "Reload", "Quit"]);
     // Select "Apps" (after the Shell quick-launch) and descend into it.
     l.move_down();
     l.expand();
@@ -81,7 +81,7 @@ fn categories_group_with_headers() {
     l.toggle_menu();
     // Root: the "Shell" quick-launch, categories sorted (Git, System), then a
     // separator and the system section.
-    assert_eq!(l.menu_labels(), vec!["Shell", "Git", "System", "", "Systems", "Exit", "Restart", "Shutdown"]);
+    assert_eq!(l.menu_labels(), vec!["Shell", "Git", "System", "", "Systems", "", "Detach", "Reload", "Quit"]);
     // Select Git (after Shell) and descend → its single leaf (lazygit).
     l.move_down();
     l.expand();

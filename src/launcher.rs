@@ -24,6 +24,10 @@ fn border() -> Rgba { crate::theme::current().border }
 fn hint() -> Rgba { crate::theme::current().dim }
 fn accent() -> Rgba { crate::theme::current().accent }
 
+/// Internal category of the Suspend / Reboot / Power off entries: they are
+/// gathered into the bottom "Power" submenu instead of an app category.
+pub const POWER_CATEGORY: &str = "@power";
+
 /// A node in the cascading menu.
 #[derive(Clone, Debug)]
 enum MenuEntry {
@@ -149,8 +153,15 @@ impl Launcher {
     fn rebuild_menu(&mut self) {
         use std::collections::BTreeMap;
         let mut by_cat: BTreeMap<String, Vec<AppEntry>> = BTreeMap::new();
+        // Entries in the internal power category are not an app category: they
+        // form the bottom "Power" submenu, in the order they were supplied.
+        let mut power: Vec<AppEntry> = Vec::new();
         for a in &self.items {
-            by_cat.entry(cat_of(a)).or_default().push(a.clone());
+            if a.category.as_deref() == Some(POWER_CATEGORY) {
+                power.push(a.clone());
+            } else {
+                by_cat.entry(cat_of(a)).or_default().push(a.clone());
+            }
         }
         let rank = |c: &str| if c == "tetron-wm" { 0 } else { 1 };
         let mut cats: Vec<(String, Vec<AppEntry>)> = by_cat.into_iter().collect();
@@ -167,13 +178,21 @@ impl Launcher {
             }
         }));
         // Bottom system section: a divider, then Systems (opens the systems
-        // popover) above Exit / Restart / Shutdown (each opens a confirm dialog).
-        // Routed by the session's `launch_entry` via their `@`-sentinel commands.
+        // popover) above Detach / Reload / Quit (each opens a confirm dialog),
+        // then a Power submenu (Suspend / Reboot / Power off, each behind its own
+        // confirm) when the computer can do any of them. Routed by the session's
+        // `launch_entry` via their `@`-sentinel commands; the ids (`@exit`,
+        // `@restart`, `@shutdown`) predate the Detach / Reload / Quit labels.
         root.push(MenuEntry::Separator);
         root.push(MenuEntry::Launch(system_entry("Systems", "@systems")));
-        root.push(MenuEntry::Launch(system_entry("Exit", "@exit")));
-        root.push(MenuEntry::Launch(system_entry("Restart", "@restart")));
-        root.push(MenuEntry::Launch(system_entry("Shutdown", "@shutdown")));
+        root.push(MenuEntry::Separator);
+        root.push(MenuEntry::Launch(system_entry("Detach", "@exit")));
+        root.push(MenuEntry::Launch(system_entry("Reload", "@restart")));
+        root.push(MenuEntry::Launch(system_entry("Quit", "@shutdown")));
+        if !power.is_empty() {
+            root.push(MenuEntry::Separator);
+            root.push(MenuEntry::Submenu { label: "Power".into(), items: power.into_iter().map(MenuEntry::Launch).collect() });
+        }
         self.menu_root = root;
     }
 
@@ -790,10 +809,10 @@ mod tests {
         ]);
         l.toggle_menu();
         // root: a "Shell" quick-launch, the category submenus (sorted), then a
-        // separator and the system section (Systems/Exit/Restart/Shutdown).
+        // separator and the system section (Systems, then Detach/Reload/Quit).
         assert_eq!(
             l.menu_labels(),
-            vec!["Shell", "Games", "Tools", "", "Systems", "Exit", "Restart", "Shutdown"]
+            vec!["Shell", "Games", "Tools", "", "Systems", "", "Detach", "Reload", "Quit"]
         );
         assert_eq!(l.path_for_test(), vec![0]); // Shell selected first
         l.move_down(); // select Games (root index 1)
@@ -816,20 +835,60 @@ mod tests {
     fn system_section_skips_separator_and_yields_sentinels() {
         let mut l = Launcher::new(vec![app("Aaa", "Games"), app("Ccc", "Tools")]);
         l.toggle_menu();
-        // Shell(0) Games(1) Tools(2) sep(3) Systems(4) Exit(5) Restart(6) Shutdown(7)
+        // Shell(0) Games(1) Tools(2) sep(3) Systems(4) sep(5) Detach(6) Reload(7) Quit(8)
         l.move_down(); // Games(1)
         l.move_down(); // Tools(2)
         assert_eq!(l.path_for_test(), vec![2]);
         l.move_down(); // skip separator(3) → Systems(4)
         assert_eq!(l.path_for_test(), vec![4]);
         assert_eq!(l.activate().map(|e| e.command), Some("@systems".to_string()));
-        l.move_down(); // Exit(5)
+        l.move_down(); // skip separator(5) → Detach(6)
+        assert_eq!(l.path_for_test(), vec![6]);
         assert_eq!(l.activate().map(|e| e.command), Some("@exit".to_string()));
-        // move_up skips the separator on the way back up too
-        l.move_up(); // Systems(4)
+        l.move_down(); // Reload(7)
+        assert_eq!(l.activate().map(|e| e.command), Some("@restart".to_string()));
+        l.move_down(); // Quit(8)
+        assert_eq!(l.activate().map(|e| e.command), Some("@shutdown".to_string()));
+        // move_up skips the separators on the way back up too
+        l.move_up(); l.move_up(); l.move_up(); // Reload, Detach, skip sep → Systems(4)
         assert_eq!(l.path_for_test(), vec![4]);
         l.move_up(); // skip separator(3) → Tools(2)
         assert_eq!(l.path_for_test(), vec![2]);
+    }
+
+    #[test]
+    fn power_entries_form_a_bottom_submenu_after_quit() {
+        let power = |name: &str, cmd: &str| AppEntry {
+            name: name.into(), command: cmd.into(), args: vec![],
+            category: Some(POWER_CATEGORY.into()),
+            requires_cwd: None, cwd: None, cli: None, warn: None,
+        };
+        let mut l = Launcher::new(vec![
+            app("Aaa", "Games"),
+            power("Suspend", "@suspend"), power("Reboot", "@reboot"), power("Power off", "@poweroff"),
+        ]);
+        l.toggle_menu();
+        assert_eq!(
+            l.menu_labels(),
+            vec!["Shell", "Games", "", "Systems", "", "Detach", "Reload", "Quit", "", "Power"],
+            "Power is the last row, set apart from Quit, and is not an app category"
+        );
+        // Walk to Power (index 9), open it, and read its rows in order.
+        for _ in 0..8 { l.move_down(); }
+        assert_eq!(l.path_for_test(), vec![9]);
+        l.expand();
+        assert_eq!(l.focused_label(), Some("Suspend".to_string()));
+        l.move_down();
+        assert_eq!(l.focused_label(), Some("Reboot".to_string()));
+        l.move_down();
+        assert_eq!(l.activate().map(|e| e.command), Some("@poweroff".to_string()));
+    }
+
+    #[test]
+    fn no_power_row_when_the_computer_cannot_do_any() {
+        let mut l = Launcher::new(vec![app("Aaa", "Games")]);
+        l.toggle_menu();
+        assert!(!l.menu_labels().contains(&"Power".to_string()));
     }
 
     #[test]
