@@ -3,9 +3,45 @@
 //! (WiFi/volume/Bluetooth) refresh ~every three seconds. All shell-outs are
 //! timeout-guarded, so the poller can never hang the desktop.
 
+use crate::protocol::DaemonStatus;
 use crate::system::{backend, BatteryInfo, ClockInfo, SystemState};
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+
+/// Lets the poller threads pause while no client is attached (nobody can see
+/// the tray, so the shell-outs, probes and file reads are wasted work) and wake
+/// at once when one attaches.
+#[derive(Clone)]
+struct Gate(Arc<DaemonStatus>);
+
+/// How often a paused poller re-checks for an attach.
+const PAUSE_STEP: Duration = Duration::from_millis(100);
+
+impl Gate {
+    /// Block while detached. Returns whether it had to wait, so the caller can
+    /// refresh everything immediately on resume.
+    fn wait_attached(&self) -> bool {
+        let mut waited = false;
+        while !self.0.attached.load(Relaxed) {
+            waited = true;
+            std::thread::sleep(PAUSE_STEP);
+        }
+        waited
+    }
+
+    /// Sleep up to `d`, waking early when a client attaches.
+    fn sleep(&self, d: Duration) {
+        let gen = self.0.attach_gen.load(Relaxed);
+        let start = Instant::now();
+        while start.elapsed() < d {
+            std::thread::sleep(PAUSE_STEP.min(d));
+            if self.0.attach_gen.load(Relaxed) != gen {
+                return;
+            }
+        }
+    }
+}
 
 /// Owns a background thread that periodically refreshes a shared snapshot.
 pub struct SystemPoller {
@@ -15,10 +51,14 @@ pub struct SystemPoller {
 impl SystemPoller {
     /// Spawn the poller thread and return a handle whose `state()` is updated in
     /// place. The thread runs for the lifetime of the process (daemon).
-    pub fn start() -> Self {
+    ///
+    /// While `status.attached` is false (the session is detached) every poll is
+    /// paused; the next attach refreshes everything straight away.
+    pub fn start(status: Arc<DaemonStatus>) -> Self {
         let state = Arc::new(RwLock::new(SystemState::default()));
         let worker = state.clone();
-        std::thread::spawn(move || run(worker));
+        let gate = Gate(status);
+        std::thread::spawn(move || run(worker, gate));
         SystemPoller { state }
     }
 
@@ -28,7 +68,7 @@ impl SystemPoller {
     }
 }
 
-fn run(state: Arc<RwLock<SystemState>>) {
+fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
     let backend = backend();
     let mut sys = sysinfo::System::new_all();
     let mut last_slow = Instant::now()
@@ -40,14 +80,16 @@ fn run(state: Arc<RwLock<SystemState>>) {
     // never delay the clock/CPU updates.
     {
         let state = state.clone();
+        let gate = gate.clone();
         std::thread::spawn(move || loop {
+            gate.wait_attached();
             let online = probe_remotes();
             let events = read_khal_events();
             if let Ok(mut s) = state.write() {
                 s.remotes_online = online;
                 s.events = events;
             }
-            std::thread::sleep(Duration::from_secs(20));
+            gate.sleep(Duration::from_secs(20));
         });
     }
 
@@ -56,16 +98,23 @@ fn run(state: Arc<RwLock<SystemState>>) {
     // path so a slow/absent daemon can never delay the rest of the desktop.
     {
         let state = state.clone();
+        let gate = gate.clone();
         std::thread::spawn(move || loop {
+            gate.wait_attached();
             let tetron = crate::system::tetron::poll();
             if let Ok(mut s) = state.write() {
                 s.tetron = tetron;
             }
-            std::thread::sleep(Duration::from_secs(4));
+            gate.sleep(Duration::from_secs(4));
         });
     }
 
     loop {
+        // Detached: nobody can see the tray, so do nothing until a client
+        // attaches, then refresh everything (including the slow reads) at once.
+        if gate.wait_attached() {
+            last_slow = Instant::now().checked_sub(Duration::from_secs(10)).unwrap_or_else(Instant::now);
+        }
         sys.refresh_cpu_usage();
         sys.refresh_memory();
         let cpu_pct = sys.global_cpu_usage();
@@ -98,7 +147,7 @@ fn run(state: Arc<RwLock<SystemState>>) {
             }
         }
 
-        std::thread::sleep(Duration::from_secs(1));
+        gate.sleep(Duration::from_secs(1));
     }
 }
 
@@ -271,6 +320,49 @@ fn parse_pmset_batt(out: &str) -> Option<BatteryInfo> {
         Some(h.parse::<u32>().ok()? * 60 + m.parse::<u32>().ok()?)
     });
     Some(BatteryInfo { pct: pct.min(100), charging, mins })
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    fn gate(attached: bool) -> (Gate, Arc<DaemonStatus>) {
+        let st = Arc::new(DaemonStatus::default());
+        st.attached.store(attached, Relaxed);
+        (Gate(st.clone()), st)
+    }
+
+    #[test]
+    fn attached_does_not_wait() {
+        let (g, _) = gate(true);
+        assert!(!g.wait_attached());
+    }
+
+    #[test]
+    fn detached_blocks_until_attach_then_reports_it_waited() {
+        let (g, st) = gate(false);
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(250));
+            st.attached.store(true, Relaxed);
+        });
+        let start = Instant::now();
+        assert!(g.wait_attached());
+        assert!(start.elapsed() >= Duration::from_millis(200), "it really paused");
+        t.join().unwrap();
+    }
+
+    #[test]
+    fn sleep_wakes_early_on_attach() {
+        let (g, st) = gate(true);
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            st.attach_gen.fetch_add(1, Relaxed);
+        });
+        let start = Instant::now();
+        g.sleep(Duration::from_secs(10));
+        assert!(start.elapsed() < Duration::from_secs(2), "woke early");
+        t.join().unwrap();
+    }
 }
 
 #[cfg(test)]

@@ -10,6 +10,9 @@ carry user-visible feature work and the occasional breaking config change.
 - The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar. The same fix repairs the grouped-window dropdown: clicking one of its rows over a terminal window used to start a text selection instead of picking the row.
 - On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
 
+### Changed
+- The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach.
+
 ### Added
 - The `ⓘ` Info menu in the tray: session name, window count, version, links to a live Sessions window (`tetron-wm ls`), Logs, Shortcuts and Settings, plus the tray segments that are not on the bar.
 - `[tray_placement]` config: put each tray segment on the `bar`, in the `info` menu, or `auto` (on the bar, overflowing into the menu when space runs out). **Behaviour change:** CPU, memory and Bluetooth now live in the Info menu by default; pin them back with `cpu = "bar"` (and `mem`, `bluetooth`). A CPU or memory reading of 90% or more still shows on the bar. Tray segments that do not fit a narrow terminal now move into the Info menu instead of silently disappearing; the clipboard, volume and clock are never moved.

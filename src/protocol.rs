@@ -158,6 +158,9 @@ pub struct StatusReply {
 pub struct DaemonStatus {
     pub attached: std::sync::atomic::AtomicBool,
     pub windows: std::sync::atomic::AtomicUsize,
+    /// Bumped on every attach, so background pollers that were paused while
+    /// detached can wake at once instead of waiting out their interval.
+    pub attach_gen: std::sync::atomic::AtomicU64,
 }
 
 impl DaemonStatus {

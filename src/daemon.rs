@@ -85,7 +85,7 @@ pub fn run() -> std::io::Result<()> {
     // Start the background system poller and feed its shared snapshot to the
     // session so the menubar tray reflects live host state. Keep `_poller` bound
     // for the daemon's lifetime so its thread is not detached/dropped.
-    let _poller = crate::poller::SystemPoller::start();
+    let _poller = crate::poller::SystemPoller::start(Arc::clone(&status));
     core.attach_tray_state(_poller.state());
     // Rebuild windows for any apps the apphost already owns (reload / crash
     // recovery). Only auto-launch the configured apps on a truly fresh start.
@@ -308,6 +308,7 @@ fn serve_client(
     status: &DaemonStatus,
 ) -> Option<ClientConn> {
     use std::sync::atomic::Ordering::Relaxed;
+    status.attach_gen.fetch_add(1, Relaxed);
     status.attached.store(true, Relaxed);
     let next = serve_client_inner(core, comp, client, ctl, ctl_queue, conns, status);
     // On takeover the next client re-sets this at once.
