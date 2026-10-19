@@ -78,20 +78,6 @@ pub const ENV_VARS: &[(&str, &str)] = &[
     ("PATH / HOME / SHELL / LANG", "captured into the apphost service by `service install`"),
 ];
 
-/// The in-app shortcut section, generated from the overlay's own table.
-fn shortcuts() -> String {
-    let mut s = String::from("\nIN-APP SHORTCUTS (leader = Ctrl+Space, release, then a key):\n");
-    for sec in crate::help::help_sections() {
-        for (keys, desc) in sec.rows {
-            s += &format!("  {keys:<8} {desc}\n");
-        }
-        for note in sec.notes {
-            s += &format!("  {note}\n");
-        }
-    }
-    s
-}
-
 /// The full `--help` text.
 pub fn text() -> String {
     let mut s = format!(
@@ -158,11 +144,15 @@ CONFIG KEYS (config.toml):\n",
     for (k, d, desc) in CONFIG_KEYS {
         s += &format!("  {k:<w$}  {d:<dw$}  {desc}\n");
     }
-    s += &shortcuts();
-    s += "\nKEYS ([keys] actions; defaults):\n";
+    s += "\nKEYS - press the leader (Ctrl+Space), release it, then the key:\n\
+\x20 Rebind the leader with leader = \"ctrl+b\" and any action with [keys] action = \"x\" (see CONFIG KEYS).\n\
+\x20 ACTION      KEY(S)           DOES\n";
     for (action, keys, desc) in crate::keymap::DEFAULTS {
-        s += &format!("  {action:<10} {:<16} {desc}\n", keys.join(" "));
+        s += &format!("  {action:<11} {:<16} {desc}\n", keys.join(" "));
     }
+    s += "\x20 (fixed)     1-9              send the focused window to grid cell N\n\
+\x20 Copying out of w3m, carbonyl or vim (they grab the mouse): leader x, drag over the text,\n\
+\x20 then leader C to pick it, or leader v to paste it into another window.\n";
     s += "\nENVIRONMENT:\n";
     let w = ENV_VARS.iter().map(|e| e.0.len()).max().unwrap_or(0);
     for (n, desc) in ENV_VARS {
