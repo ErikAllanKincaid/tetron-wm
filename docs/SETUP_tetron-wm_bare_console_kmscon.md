@@ -204,7 +204,7 @@ Log in there, run `tetron-wm`, confirm windows + mouse. Ctrl+Alt+F1 returns.
 tetron-wm
 ```
 
-With no config file it starts an empty desktop with the defaults: click the top-left button (or press `Ctrl+Space` then `l`) and pick **Shell**. Add apps to start automatically with `[[apps]]` in `config.toml` (see [CONFIG.md](CONFIG.md#apps-auto-started-at-launch)).
+With no config file it starts an empty desktop with the defaults: click the top-left button (or press `Ctrl+Space` then `l`) and pick **Shell**. Add apps to start automatically with `[[apps]]` in `config.toml` (see [CONFIG.md](CONFIG.md#app-entries)).
 
 ### Wallpaper
 
