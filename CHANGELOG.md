@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.13] — 2026-10-18
+
 ### Added
 - **Power** submenu at the bottom of the launcher with **Suspend**, **Reboot** and **Power off** for the computer. Each asks first, naming the host and how many running apps would be lost. They work across systemd, elogind and Alpine/busybox setups by trying `systemctl`, `loginctl`, `sudo -n` / `doas -n` and the bare command in turn (the first that succeeds wins); a refused action opens a window listing what was tried. `[power_commands]` in the config replaces a chain, and an empty list hides the action; actions the computer cannot do are not shown.
 - `launcher_label` config (and Settings → Appearance → Launcher label): the text of the menubar launcher button. Up to 6 characters, centred in a fixed width so nothing else on the bar moves; empty falls back to `tetron`. `@session` shows the session name in a named session, so the bar tells you which session you are in. Use single-width characters (CJK and emoji are two cells wide and will overflow).
