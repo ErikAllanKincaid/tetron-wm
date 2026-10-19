@@ -1879,6 +1879,10 @@ impl SessionCore {
     /// Open the confirm dialog for `action`, naming this computer and how many
     /// running apps it would end.
     fn confirm_power(&mut self, action: crate::powermenu::PowerAction) {
+        if !self.cfg.power_menu {
+            crate::dbg_log("power: refused, power_menu = false");
+            return;
+        }
         self.launcher.close();
         let apps = self.contents.values().filter(|c| matches!(c, WinContent::App(_))).count();
         self.power_menu.set_context(crate::powerctl::hostname(), apps);
@@ -1890,6 +1894,10 @@ impl SessionCore {
     /// loop never stalls. The clipboard history is flushed first on reboot and
     /// power off; apps are left alone, so a refused command loses nothing.
     fn start_power(&mut self, kind: crate::powerctl::Kind) {
+        if !self.cfg.power_menu {
+            crate::dbg_log(&format!("power: {} refused, power_menu = false", kind.key()));
+            return;
+        }
         if self.power_job.is_some() {
             crate::dbg_log(&format!("power: {} ignored, another power action is running", kind.key()));
             return;
@@ -2014,7 +2022,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Suspend / Reboot / Power off: the launcher's bottom "Power" submenu,
         // only for actions this computer can actually carry out.
         for kind in crate::powerctl::Kind::ALL {
-            if crate::powerctl::available(kind, &cfg.power_commands, &crate::catalog::is_installed) {
+            if cfg.power_menu && crate::powerctl::available(kind, &cfg.power_commands, &crate::catalog::is_installed) {
                 apps.push(AppEntry {
                     name: kind.label().into(),
                     command: kind.command().into(),
@@ -5728,6 +5736,14 @@ mod tests {
             name: cmd.into(), command: cmd.into(), args: Vec::new(), category: None,
             requires_cwd: None, cwd: None, cli: None, warn: None,
         }
+    }
+
+    #[test]
+    fn power_menu_false_removes_every_power_entry() {
+        let mut cfg = safe_power_cfg("true", "true");
+        cfg.power_menu = false;
+        let apps = SessionCore::build_launcher_apps(&cfg, &[]);
+        assert!(!apps.iter().any(|a| a.category.as_deref() == Some(crate::launcher::POWER_CATEGORY)));
     }
 
     #[test]

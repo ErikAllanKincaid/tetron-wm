@@ -333,6 +333,9 @@ web_home = "https://lite.duckduckgo.com/lite/"  # start page for w3m when launch
 # On-demand screensaver (leader z, launcher, ⓘ menu, or `tetron-wm screensaver`)
 screensaver = "black"      # effect used when none is named: "black" | "clock"
 
+# Launcher > Power (Suspend / Reboot / Power off); false disables them everywhere
+power_menu = true          # set false on remote servers that must never be shut down
+
 # Menubar launcher button text (also editable in Settings → Appearance)
 launcher_label = "tetron"  # up to 6 single-width characters, centred in a fixed width so
 #                          # the bar never shifts; "@session" shows the session name in a
