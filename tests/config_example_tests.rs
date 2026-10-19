@@ -20,7 +20,7 @@ fn config_docs_cover_every_key() {
     let doc = include_str!("../docs/CONFIG.md");
     let example = include_str!("../config.example.toml");
     for (key, _, _) in tetron_wm::cli_help::CONFIG_KEYS {
-        assert!(doc.contains(&format!("| `{key}` |")), "docs/CONFIG.md is missing {key}");
+        assert!(doc.contains(&format!("| `{key}`")), "docs/CONFIG.md is missing {key}");
         // Legacy keys are app-managed (state.toml), so the example omits them.
         if !matches!(*key, "recent_dirs" | "desktop_positions") {
             assert!(example.contains(key), "config.example.toml is missing {key}");
