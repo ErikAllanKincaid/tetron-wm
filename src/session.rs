@@ -1774,8 +1774,16 @@ impl SessionCore {
         let open = self.tray.open();
         let on_bar = |k: K| l.segments.iter().any(|s| s.kind == k);
         let listed = |k: K| l.in_info.iter().any(|r| r.kind == k);
-        let net = on_bar(K::Wifi) || open == Some(K::Wifi) || (open == Some(K::Info) && listed(K::Wifi));
-        let bt = on_bar(K::Bluetooth) || open == Some(K::Bluetooth);
+        // A segment only exists once its data has been read, so until it does
+        // (first frames, or a link that came back) keep reading: otherwise a
+        // segment that is not yet on the bar could never appear.
+        let net = on_bar(K::Wifi)
+            || open == Some(K::Wifi)
+            || (open == Some(K::Info) && listed(K::Wifi))
+            || !(on_bar(K::Wifi) || listed(K::Wifi));
+        let bt = on_bar(K::Bluetooth)
+            || open == Some(K::Bluetooth)
+            || !(on_bar(K::Bluetooth) || listed(K::Bluetooth));
         i.set(net, bt);
     }
 

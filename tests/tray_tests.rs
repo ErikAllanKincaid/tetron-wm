@@ -457,3 +457,25 @@ fn info_row_opens_the_segment_popover_in_place() {
     assert!(nested.contains("Bluetooth"), "{nested}");
     assert!(!nested.contains("Sessions"), "the segment popover is not the Info menu");
 }
+
+#[test]
+fn info_popover_keeps_every_row_inside_its_border() {
+    for with_rows in [false, true] {
+        let mut s = sample();
+        s.caps.bluetooth = with_rows;
+        let l = layout(&s, 100, 0, &Placement::default());
+        let mut tray = Tray::new();
+        tray.force_open(SegmentKind::Info);
+        let r = tray.render_with(100, 30, &s, &info_view(&l));
+        let layer = &r.layers[0];
+        let h = layer.buf.height();
+        // The bottom row is pure border, and the last row of text sits above it.
+        let bottom: String = (0..layer.buf.width()).map(|x| layer.buf.get(x, h - 1).unwrap().ch).collect();
+        assert!(bottom.chars().all(|c| "╰─╯".contains(c)), "bottom row is the border: {bottom:?}");
+        let last: String = (0..layer.buf.width()).map(|x| layer.buf.get(x, h - 2).unwrap().ch).collect();
+        assert!(last.contains("Settings"), "the last link sits just above the border: {last:?}");
+        // Every hit rect is inside the box.
+        let b = r.bounds.unwrap();
+        assert!(r.hits.iter().all(|h| h.rect.y > b.y && h.rect.y < b.y + b.h - 1));
+    }
+}

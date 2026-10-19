@@ -551,7 +551,8 @@ impl Tray {
     fn render_info(&self, w: i32, _h: i32, anchor_x: i32, _st: &St, info: &InfoView) -> Rendered {
         let t = crate::theme::current();
         let box_w = 38;
-        // Rows: title, 3 facts, blank, segment rows, blank, links.
+        // Interior rows: title, 3 facts, [blank, segment rows], blank, links;
+        // plus the top and bottom border.
         let links: [(&str, ControlIntent); 4] = [
             ("Sessions", ControlIntent::OpenSessions),
             ("Logs", ControlIntent::OpenLogs),
@@ -559,7 +560,7 @@ impl Tray {
             ("Settings", ControlIntent::OpenSettings),
         ];
         let seg_rows = info.rows.len() as i32;
-        let box_h = 2 + 3 + if seg_rows > 0 { 1 + seg_rows } else { 0 } + 1 + links.len() as i32;
+        let box_h = 2 + 1 + 3 + if seg_rows > 0 { 1 + seg_rows } else { 0 } + 1 + links.len() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);

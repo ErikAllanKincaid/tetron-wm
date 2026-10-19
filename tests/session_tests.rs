@@ -989,3 +989,24 @@ fn poller_interest_follows_what_the_ui_shows() {
     assert!(!interest.want().bluetooth);
     core.shutdown();
 }
+
+#[test]
+fn wifi_data_is_read_until_the_segment_exists() {
+    use std::sync::{Arc, RwLock};
+    use tetron_wm::system::{Interest, SystemState, WifiInfo};
+    let mut core = SessionCore::new(100, 30, Config::default());
+    let interest = Arc::new(Interest::default());
+    core.attach_interest(interest.clone());
+    // Nothing read yet: no Wi-Fi or network data, so there is no segment to show.
+    let state = Arc::new(RwLock::new(SystemState::default()));
+    core.attach_tray_state(state.clone());
+    core.build_frame();
+    assert!(interest.want().net, "the Wi-Fi/net segment cannot appear unless it is read");
+    // Data arrives: the segment exists on the bar, still wanted.
+    state.write().unwrap().wifi = Some(WifiInfo { ssid: "w".into(), signal: 3, enabled: true });
+    core.build_frame();
+    assert!(interest.want().net);
+    let bar = find_on_layer(&mut core, 1000, "wifi");
+    assert!(bar.is_some(), "the wifi segment is on the bar");
+    core.shutdown();
+}

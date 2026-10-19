@@ -10,6 +10,10 @@ carry user-visible feature work and the occasional breaking config change.
 - The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar. The same fix repairs the grouped-window dropdown: clicking one of its rows over a terminal window used to start a text selection instead of picking the row.
 - On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
 
+### Fixed
+- The Wi-Fi/network tray segment could disappear: with the new demand-based reads it was only read once it was already on the bar, so it never appeared. Wi-Fi and Bluetooth are now read until their segment exists.
+- The Info menu popover was one row too short, so its bottom border cut through the "Settings" link.
+
 ### Changed
 - The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach. Wi-Fi/network and Bluetooth are only read while something that shows them is on screen (on the bar, or its popover open); opening one refreshes it immediately.
 
