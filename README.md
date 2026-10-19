@@ -37,6 +37,24 @@ cargo install --git https://github.com/ErikAllanKincaid/tetron-wm
 
 Want a bare Linux machine that boots straight into the desktop? Use the suite installer, which can also set up the kmscon console, autologin and autostart, and can undo all of it. See [Bare console](#bare-console-no-x11-or-wayland).
 
+## tetron mesh VPN companion network
+
+###### TLDR: Install the entire suite.
+
+Install suite.
+
+[tetron](https://github.com/ErikAllanKincaid/tetron)
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron/main/contrib/install-tetron-suite.sh | bash
+```
+
+tetron-wm has first-class, optional support for [tetron](https://github.com/ErikAllanKincaid/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tetron-wm works identically with or without tetron present.
+
+- **Status at a glance.** The tray shows `⇄<peers>` with a connection-quality dot: `●` when at least one network has a direct path, `○` when every connection is relay-only, and `off` when tetron is reachable but in standby. It is read-only, a background poll that bounds every call so a stuck daemon can never hang the tray.
+- **On/off from the popover.** Click the segment for a popover with a global **Tetron [on/off]** toggle plus one row per network. Each network row toggles just that network's data plane (**Resume** / **Standby**) with its own `●`/`○` direct-or-relay indicator; the global toggle moves them all at once. These map to tetron's own `Resume`/`Standby` IPC messages, the same effect as `tetron resume` / `tetron standby` from the CLI.
+- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/ErikAllanKincaid/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in the cli or tetron-tui, not in the tray.
+
 ## First five minutes
 
 ```sh
@@ -81,14 +99,14 @@ tetron-wm reload
 
 Common first changes:
 
-| I want | Set |
-|---|---|
-| A different color theme | `theme = "nord"` (also `newmoon`, `midnight`, `gruvbox`, `dracula`, `pastoral`) |
-| Windows to snap to screen edges | `snapping_enabled = true` |
-| Windows arranged in a grid automatically | `auto_tile = true`, `grid_rows`, `grid_cols` |
-| A wallpaper image | put it in `~/.config/tetron-wm/wallpapers/` and set `wallpaper = "name.jpg"` (needs [chafa](https://hpjansson.org/chafa/)) |
-| A different leader key | `leader = "ctrl+b"` |
-| No Power menu on a server | `power_menu = false` |
+| I want                                   | Set                                                                                                                        |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| A different color theme                  | `theme = "nord"` (also `newmoon`, `midnight`, `gruvbox`, `dracula`, `pastoral`)                                            |
+| Windows to snap to screen edges          | `snapping_enabled = true`                                                                                                  |
+| Windows arranged in a grid automatically | `auto_tile = true`, `grid_rows`, `grid_cols`                                                                               |
+| A wallpaper image                        | put it in `~/.config/tetron-wm/wallpapers/` and set `wallpaper = "name.jpg"` (needs [chafa](https://hpjansson.org/chafa/)) |
+| A different leader key                   | `leader = "ctrl+b"`                                                                                                        |
+| No Power menu on a server                | `power_menu = false`                                                                                                       |
 
 ## Bare console (no X11 or Wayland)
 
@@ -119,16 +137,21 @@ Inside the app: **Settings → Updates**. The default channel installs the lates
 
 ## Files
 
-| Path | What |
-|---|---|
-| `~/.config/tetron-wm/config.toml` | your settings |
-| `~/.config/tetron-wm/themes/`, `wallpapers/` | your themes and images |
-| `~/.local/share/tetron-wm/` | app-managed data: clipboard history, icon positions, recent directories |
-| `~/tetron-wm-debug.log` | log |
-| `$XDG_RUNTIME_DIR/tetron-wm-$USER/` | sockets |
+| Path                                         | What                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `~/.config/tetron-wm/config.toml`            | your settings                                                           |
+| `~/.config/tetron-wm/themes/`, `wallpapers/` | your themes and images                                                  |
+| `~/.local/share/tetron-wm/`                  | app-managed data: clipboard history, icon positions, recent directories |
+| `~/tetron-wm-debug.log`                      | log                                                                     |
+| `$XDG_RUNTIME_DIR/tetron-wm-$USER/`          | sockets                                                                 |
 
 ## More
 
+- [docs/CONFIG.md](docs/CONFIG.md): every config option, plus copy-paste recipes for common setups
+- [config.example.toml](config.example.toml): a ready-to-copy config with every option at its default
+- [docs/FEATURES_tetron-wm_what_it_can_do.md](docs/FEATURES_tetron-wm_what_it_can_do.md): everything tetron-wm can do, by task
+- [docs/KEYS_tetron-wm_leader_key_table.md](docs/KEYS_tetron-wm_leader_key_table.md): the leader key table
+- [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md): the bare console setup
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
 - [agent/](agent/README.md): what the built-in AI assistant (the ✦ button) is told about the desktop
 - [CLAUDE.md](CLAUDE.md): architecture and conventions for contributors and coding agents
