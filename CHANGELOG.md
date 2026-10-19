@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.14] — 2026-10-19
+
 ### Added
 - **Screensaver**, on demand: leader `z`, launcher → tetron-wm → Screensaver, a Screensaver link in the ⓘ menu, or `tetron-wm screensaver [on|off|toggle|list] [effect]` (works from another shell or over ssh). Any key or mouse event in the attached client wakes it, and that event is not passed to the focused app; attaching also wakes it. Effects: `black` (plain, free) and `clock` (a big animated `HH:MM:SS` with a blinking colon and the date, drifting around the screen to spare burn-in). Pick the default with `screensaver = "..."` in the config. It covers the cells only: the monitor stays on, there is no idle timer, and it is not a lock. New effects are one `Effect` implementation plus a registry line (`src/screensaver.rs`).
 
