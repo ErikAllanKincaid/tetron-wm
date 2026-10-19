@@ -147,10 +147,14 @@ pub fn tray_segments_with(
     ));
 
     // When out of space, shed low-priority segments first. Volume and the clock
-    // are never in this list, so they are always kept.
-    let avail = width - reserve;
+    // are never in this list, so they are always kept. The tray must never reach
+    // into the left-hand chrome (brand, mode, assistant, "+"): a segment is shed
+    // as soon as its FIRST (leftmost) cell would land left of `TASKBAR_X`, not
+    // only once the whole item has been pushed off.
+    let avail = width - reserve - crate::chrome::TASKBAR_X;
     let total = |v: &[(SegmentKind, String)]| -> i32 {
-        v.iter().map(|(_, t)| t.chars().count() as i32 + GAP).sum()
+        let widths: i32 = v.iter().map(|(_, t)| t.chars().count() as i32).sum();
+        widths + GAP * (v.len() as i32 - 1).max(0)
     };
     for k in [
         SegmentKind::Cpu,

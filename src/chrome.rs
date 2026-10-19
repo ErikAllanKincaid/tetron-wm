@@ -25,7 +25,7 @@ const NEW_SHELL_X: i32 = 17;
 
 /// Column where the taskbar pills begin (after the "+" button + a 1-cell gap).
 /// `NEW_SHELL_LABEL` (" + ") is 3 cells wide, + a 1-cell gap.
-const TASKBAR_X: i32 = 21;
+pub const TASKBAR_X: i32 = 21;
 
 /// Menubar view-mode toggle glyphs (shows the CURRENT mode; click to switch).
 const MODE_DESKTOP: &str = " \u{229E} "; // ⊞  windowed desktop

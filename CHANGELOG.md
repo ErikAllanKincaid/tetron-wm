@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
+
 ### Added
 - `tetron-wm attach -d` takes over the session from a client already attached (that client exits with "detached by another client"). A plain `attach` while another client is attached is now refused with a message instead of hanging on a blank screen.
 - Named sessions: `tetron-wm -s NAME` (or `attach -s NAME`, or `$TETRON_WM_SESSION`) runs a separate daemon, apphost, and set of apps. `tetron-wm ls` lists them with a state (`attached`, `detached` = running with no client, `recoverable` = daemon gone but apps alive, `stale`) and window count; cleanly stopped sessions are not listed. App windows inherit the session, so `tetron-wm launch`/`clip` run inside a window reach that window's session. The unnamed session is `default` and keeps its existing socket paths.

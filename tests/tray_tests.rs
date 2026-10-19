@@ -258,3 +258,25 @@ fn cpu_popover_has_a_clickable_open_row() {
     let p = tetron_wm::geometry::Point::new(hit.rect.x + 1, hit.rect.y);
     assert!(matches!(tray.on_popover_click(p, &r), Some(ControlIntent::OpenTool { .. })));
 }
+
+#[test]
+fn tray_never_covers_the_left_chrome_while_items_can_be_shed() {
+    use tetron_wm::chrome::TASKBAR_X;
+    // Every width from roomy down to just past what the always-kept segments
+    // (volume + clock) need: no segment may start left of the taskbar.
+    for width in 45..=120 {
+        let segs = tray_segments(&sample(), width, 0, 0);
+        let left = segs.iter().map(|s| s.rect.x).min().unwrap();
+        assert!(left >= TASKBAR_X, "width {width}: tray starts at {left}, covers the launcher");
+    }
+}
+
+#[test]
+fn shedding_goes_in_order_cpu_first() {
+    // Just too narrow for cpu: it goes before anything else the sample has.
+    let full = tray_segments(&sample(), 120, 0, 0);
+    let w = full.iter().map(|s| s.rect.w).sum::<i32>() + 2 * (full.len() as i32 - 1);
+    let tight = tray_segments(&sample(), tetron_wm::chrome::TASKBAR_X + w - 1, 0, 0);
+    assert!(!tight.iter().any(|s| s.kind == SegmentKind::Cpu));
+    assert!(tight.iter().any(|s| s.kind == SegmentKind::Mem));
+}
