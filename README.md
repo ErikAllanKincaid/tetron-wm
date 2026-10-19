@@ -107,7 +107,7 @@ tetron-wm uses a **leader key** (`Ctrl+Space`) so its shortcuts never collide wi
 | `Ctrl+Space` then `S` / `,` | Open the Store / Settings                                          |
 | `Ctrl+Space` then `A`       | **Activity Monitor**, see and kill hosted apps                     |
 | `Ctrl+Space` then `r`       | **Rename** the focused window (type a new name, Enter)             |
-| `Ctrl+Space` then `?`       | **Help**, show this shortcut cheatsheet in-app (any key dismisses) |
+| `Ctrl+Space` then `?`       | **Help**, show this shortcut cheatsheet in-app (stays open until you press `Esc` or `q`, or click its `✕`) |
 | `Ctrl+Space` then `q`       | Detach (apps keep running in the background)                       |
 
 Exit/Restart/Shutdown/Systems live at the bottom of the **launcher** (click **tetron**, top-left): **Exit** detaches, **Restart** reloads the UI keeping apps alive, **Shutdown** stops everything. **Systems** cascades the machine switcher: click a saved machine to ssh into its tetron-wm session (its `✕` opens a confirm, with an opt-in toggle to also revoke this PC's SSH key on that host), or **+ Add Remote…** to set up a new one (Tab/↑↓ between fields, `←`/`→` picks the theme, Enter connects). Setup also copies your terminal's **terminfo** to the remote (so Ghostty/Kitty `TERM`s like `xterm-ghostty` don't break curses apps there, with an automatic `xterm-256color` fallback on every connect) and syncs your saved-systems list. Troubleshooting a switch: every step logs to `~/tetron-wm-debug.log` (open it in-app via launcher → tetron-wm → **Logs**, press `c` to copy it); `TETRON_WM_DEBUG=1` additionally prints the exact ssh/setup script before it runs.

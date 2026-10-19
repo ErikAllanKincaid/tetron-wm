@@ -6,22 +6,21 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
-### Fixed
-- The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar. The same fix repairs the grouped-window dropdown: clicking one of its rows over a terminal window used to start a text selection instead of picking the row.
-- On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
-
-### Fixed
-- The Wi-Fi/network tray segment could disappear: with the new demand-based reads it was only read once it was already on the bar, so it never appeared. Wi-Fi and Bluetooth are now read until their segment exists.
-- The Info menu popover was one row too short, so its bottom border cut through the "Settings" link.
-
-### Changed
-- The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach. Wi-Fi/network and Bluetooth are only read while something that shows them is on screen (on the bar, or its popover open); opening one refreshes it immediately.
-
 ### Added
 - The `ⓘ` Info menu in the tray: session name, window count, version, links to a live Sessions window (`tetron-wm ls`), Logs, Shortcuts and Settings, plus the tray segments that are not on the bar.
 - `[tray_placement]` config: put each tray segment on the `bar`, in the `info` menu, or `auto` (on the bar, overflowing into the menu when space runs out). **Behaviour change:** CPU, memory and Bluetooth now live in the Info menu by default; pin them back with `cpu = "bar"` (and `mem`, `bluetooth`). A CPU or memory reading of 90% or more still shows on the bar. Tray segments that do not fit a narrow terminal now move into the Info menu instead of silently disappearing; the clipboard, volume and clock are never moved.
 - `tetron-wm attach -d` takes over the session from a client already attached (that client exits with "detached by another client"). A plain `attach` while another client is attached is now refused with a message instead of hanging on a blank screen.
 - Named sessions: `tetron-wm -s NAME` (or `attach -s NAME`, or `$TETRON_WM_SESSION`) runs a separate daemon, apphost, and set of apps. `tetron-wm ls` lists them with a state (`attached`, `detached` = running with no client, `recoverable` = daemon gone but apps alive, `stale`) and window count; cleanly stopped sessions are not listed. App windows inherit the session, so `tetron-wm launch`/`clip` run inside a window reach that window's session. The unnamed session is `default` and keeps its existing socket paths.
+
+### Changed
+- The keyboard-shortcuts window no longer closes on any key or click, so it works as a reference. It closes with `Esc`, `q`, `Enter` or `?`, or by clicking the `✕` in its title bar; the mouse wheel scrolls it, and other keys and clicks are ignored.
+- The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach. Wi-Fi/network and Bluetooth are only read while something that shows them is on screen (on the bar, or its popover open); opening one refreshes it immediately.
+
+### Fixed
+- The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar. The same fix repairs the grouped-window dropdown: clicking one of its rows over a terminal window used to start a text selection instead of picking the row.
+- On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
+- The Wi-Fi/network tray segment could disappear: with the new demand-based reads it was only read once it was already on the bar, so it never appeared. Wi-Fi and Bluetooth are now read until their segment exists.
+- The Info menu popover was one row too short, so its bottom border cut through the "Settings" link.
 
 ## [0.14.12] — 2026-10-14
 

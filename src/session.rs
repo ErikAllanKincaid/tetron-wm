@@ -2816,6 +2816,11 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Reload => self.reload = true,
             ClientMsg::Status => {} // answered by the daemon's control thread
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
+            ClientMsg::ScrollAt { lines, .. } if self.help_open => {
+                // Wheel up (+) moves toward the top, like the other lists.
+                let max = crate::help::max_scroll(self.h) as i64;
+                self.help_scroll = (self.help_scroll as i64 - lines as i64).clamp(0, max) as usize;
+            }
             ClientMsg::ScrollAt { p, lines } if self.clipmenu.is_open() => {
                 let _ = p;
                 let hist = self.clip_history();
@@ -3975,9 +3980,12 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     fn handle_mouse(&mut self, kind: MouseKind, p: Point) {
-        // The help overlay is modal: any click dismisses it.
+        // The help overlay is modal and stays open as a reference: only its ✕
+        // closes it; any other click is swallowed so nothing behind is hit.
         if kind == MouseKind::Down && self.help_open {
-            self.help_open = false;
+            if crate::help::close_button_rect(self.w, self.h).contains(p) {
+                self.help_open = false;
+            }
             return;
         }
 
