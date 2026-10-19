@@ -907,3 +907,24 @@ fn clicking_the_taskbar_overflow_marker_lists_the_hidden_windows() {
     assert!(!core.dock_popup_open_for_test());
     core.shutdown();
 }
+
+#[test]
+fn help_overlay_stays_open_until_closed_explicitly() {
+    use tetron_wm::help::close_button_rect;
+    let mut core = SessionCore::new(100, 40, Config::default());
+    core.apply(ClientMsg::ToggleHelp);
+    assert!(core.help_open());
+    // Clicks inside and outside the box do not dismiss it.
+    core.apply(ClientMsg::MouseDown(Point::new(50, 20)));
+    core.apply(ClientMsg::MouseDown(Point::new(0, 39)));
+    core.apply(ClientMsg::MouseDown(Point::new(99, 0)));
+    assert!(core.help_open(), "stray clicks keep the reference open");
+    // The wheel scrolls it (and never closes it).
+    core.apply(ClientMsg::ScrollAt { p: Point::new(50, 20), lines: -3 });
+    assert!(core.help_open());
+    // The ✕ closes it.
+    let x = close_button_rect(100, 40);
+    core.apply(ClientMsg::MouseDown(Point::new(x.x + 1, x.y)));
+    assert!(!core.help_open());
+    core.shutdown();
+}

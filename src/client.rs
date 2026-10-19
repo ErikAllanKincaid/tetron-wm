@@ -310,16 +310,11 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             _ => {}
                         }
                     } else if f.help_open {
-                        // The help overlay is modal: navigation keys scroll it,
-                        // any other key dismisses it.
-                        match k.code {
-                            KeyCode::Up | KeyCode::Char('k') => send(&mut out_stream, &ClientMsg::HelpScroll(-1))?,
-                            KeyCode::Down | KeyCode::Char('j') => send(&mut out_stream, &ClientMsg::HelpScroll(1))?,
-                            KeyCode::PageUp => send(&mut out_stream, &ClientMsg::HelpScroll(-10))?,
-                            KeyCode::PageDown | KeyCode::Char(' ') => send(&mut out_stream, &ClientMsg::HelpScroll(10))?,
-                            KeyCode::Home => send(&mut out_stream, &ClientMsg::HelpScroll(i32::MIN))?,
-                            KeyCode::End => send(&mut out_stream, &ClientMsg::HelpScroll(i32::MAX))?,
-                            _ => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
+                        // The help overlay is modal and stays open as a reference:
+                        // navigation keys scroll it, only Esc / q / Enter / ? (or
+                        // the ✕) close it, every other key is ignored.
+                        if let Some(msg) = help_key(k.code) {
+                            send(&mut out_stream, &msg)?;
                         }
                     } else if f.launcher_open {
                         match k.code {
@@ -517,6 +512,21 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     } else {
         Ok(ClientExit::Detached)
     }
+}
+
+/// What a key does while the help overlay is open: scroll it, close it
+/// explicitly, or nothing (`None`): a stray key must not dismiss the reference.
+fn help_key(code: KeyCode) -> Option<ClientMsg> {
+    Some(match code {
+        KeyCode::Up | KeyCode::Char('k') => ClientMsg::HelpScroll(-1),
+        KeyCode::Down | KeyCode::Char('j') => ClientMsg::HelpScroll(1),
+        KeyCode::PageUp => ClientMsg::HelpScroll(-10),
+        KeyCode::PageDown | KeyCode::Char(' ') => ClientMsg::HelpScroll(10),
+        KeyCode::Home => ClientMsg::HelpScroll(i32::MIN),
+        KeyCode::End => ClientMsg::HelpScroll(i32::MAX),
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'Q' | '?') => ClientMsg::ToggleHelp,
+        _ => return None,
+    })
 }
 
 /// Build the Kitty graphics escapes for a frame: transmit not-yet-seen image
@@ -761,6 +771,18 @@ mod tests {
     use super::*;
     use crate::geometry::Rect;
     use crate::protocol::ImagePlacement;
+
+    #[test]
+    fn help_closes_only_on_explicit_keys() {
+        for code in [KeyCode::Esc, KeyCode::Enter, KeyCode::Char('q'), KeyCode::Char('Q'), KeyCode::Char('?')] {
+            assert!(matches!(help_key(code), Some(ClientMsg::ToggleHelp)), "{code:?} closes");
+        }
+        for code in [KeyCode::Char('x'), KeyCode::Char('a'), KeyCode::Tab, KeyCode::Backspace, KeyCode::F(1), KeyCode::Left] {
+            assert!(help_key(code).is_none(), "{code:?} must not dismiss the reference");
+        }
+        assert!(matches!(help_key(KeyCode::Down), Some(ClientMsg::HelpScroll(1))));
+        assert!(matches!(help_key(KeyCode::PageUp), Some(ClientMsg::HelpScroll(-10))));
+    }
 
     fn frame_with(images: Vec<ImagePlacement>) -> FrameMsg {
         FrameMsg {

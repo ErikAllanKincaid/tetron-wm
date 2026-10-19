@@ -5,7 +5,7 @@
 use crate::buffer::CellBuffer;
 use crate::cell::Cell;
 use crate::compositor::Layer;
-use crate::geometry::Point;
+use crate::geometry::{Point, Rect};
 
 /// A titled group of `(keys, description)` shortcut rows.
 pub struct HelpSection {
@@ -92,7 +92,7 @@ fn body_lines() -> Vec<(String, bool)> {
     lines.push(("In overlays:  ↑↓ move · →← expand · Enter open · Esc cancel".into(), false));
     lines.push(("Menubar:  tetron-wm = launcher · ⊞/▦ = view · ✦ = assistant · host ▾ = power/Systems".into(), false));
     lines.push((String::new(), false));
-    lines.push(("↑↓ PgUp PgDn Home End scroll · any other key closes".into(), false));
+    lines.push(("↑↓ PgUp PgDn Home End scroll · Esc or q (or the ✕) closes".into(), false));
 
     lines
 }
@@ -111,16 +111,29 @@ pub fn max_scroll(h: i32) -> usize {
     body_lines().len().saturating_sub(visible_rows(h))
 }
 
+/// The help box on a `w × h` screen: `(origin, box_w, box_h)`. Render and
+/// hit-testing share this so they can never drift.
+fn geometry(w: i32, h: i32) -> (Point, i32, i32) {
+    let inner_w = body_lines().iter().map(|(l, _)| l.chars().count()).max().unwrap_or(40) as i32;
+    let box_w = (inner_w + 4).clamp(30, w - 2);
+    let box_h = box_height(h);
+    (Point::new((w - box_w) / 2, ((h - box_h) / 2).max(0)), box_w, box_h)
+}
+
+/// Screen rect of the title bar's `✕` close button. The overlay stays open until
+/// this is clicked (or Esc / q is pressed), so it works as a reference.
+pub fn close_button_rect(w: i32, h: i32) -> Rect {
+    let (origin, box_w, _) = geometry(w, h);
+    Rect::new(origin.x + box_w - 4, origin.y, 3, 1)
+}
+
 /// Render the help overlay centered on a `w × h` screen.
 pub fn render_help(w: i32, h: i32, scroll: usize) -> Vec<Layer> {
     let t = crate::theme::current();
     let lines = body_lines();
     let scroll = scroll.min(max_scroll(h));
 
-    let inner_w = lines.iter().map(|(l, _)| l.chars().count()).max().unwrap_or(40) as i32;
-    let box_w = (inner_w + 4).clamp(30, w - 2);
-    let box_h = box_height(h);
-    let origin = Point::new((w - box_w) / 2, ((h - box_h) / 2).max(0));
+    let (origin, box_w, box_h) = geometry(w, h);
 
     let mut buf = CellBuffer::new(box_w, box_h);
     buf.fill(Cell { ch: ' ', fg: t.text, bg: t.window_bg, attrs: Default::default() });
@@ -149,8 +162,9 @@ pub fn render_help(w: i32, h: i32, scroll: usize) -> Vec<Layer> {
         buf.write_str(2, y, text, fg, t.window_bg);
     }
 
+    buf.write_str(box_w - 4, 0, " ✕ ", t.title_fg, t.title_focus);
     if scroll > 0 {
-        buf.write_str(box_w - 4, 0, " ▲ ", t.title_fg, t.title_focus);
+        buf.write_str(box_w - 8, 0, " ▲ ", t.title_fg, t.title_focus);
     }
     if scroll < max_scroll(h) {
         buf.write_str(box_w - 12, box_h - 1, " ↓ more ↓ ", t.accent, t.window_bg);

@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Changed
+- The keyboard-shortcuts window no longer closes on any key or click, so it works as a reference. It closes with `Esc`, `q`, `Enter` or `?`, or by clicking the `✕` in its title bar; the mouse wheel scrolls it, and other keys and clicks are ignored.
+
 ### Fixed
 - The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar. The same fix repairs the grouped-window dropdown: clicking one of its rows over a terminal window used to start a text selection instead of picking the row.
 - On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
