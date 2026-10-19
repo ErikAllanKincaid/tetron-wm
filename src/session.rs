@@ -1599,6 +1599,11 @@ impl SessionCore {
     }
 
     /// Whether the picker's new-folder name input is active.
+    /// The directory the picker's selection is on (None when it is closed).
+    pub fn dirpicker_selected(&self) -> Option<std::path::PathBuf> {
+        self.dirpicker.as_ref().map(|d| d.selected_path())
+    }
+
     pub fn dirpicker_creating(&self) -> bool {
         self.dirpicker.as_ref().map(|d| d.is_creating()).unwrap_or(false)
     }
@@ -2943,6 +2948,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 let _ = p;
                 let hist = self.clip_history();
                 self.clipmenu.scroll(-lines, &hist); // wheel up (+) moves up the list
+            }
+            ClientMsg::ScrollAt { lines, .. } if self.dirpicker.is_some() => {
+                // Wheel over the working-directory picker moves the selection
+                // (the view follows it); positive lines = wheel up.
+                if let Some(d) = self.dirpicker.as_mut() {
+                    for _ in 0..lines.unsigned_abs().min(20) {
+                        if lines > 0 { d.move_up() } else { d.move_down() }
+                    }
+                }
             }
             ClientMsg::ScrollAt { p, lines } => {
                 // Wheel over the Volume tray segment adjusts the system volume;

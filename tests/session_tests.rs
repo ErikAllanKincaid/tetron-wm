@@ -1147,3 +1147,35 @@ fn screensaver_is_started_from_the_launcher_and_the_info_menu() {
     assert!(core.build_frame().cursor.is_none());
     core.shutdown();
 }
+
+/// The mouse wheel over the working-directory picker moves its selection
+/// (wheel down = further down the tree, wheel up = back).
+#[test]
+fn wheel_scrolls_the_working_directory_picker() {
+    let mut cfg = Config::default();
+    cfg.launcher.push(AppEntry {
+        name: "needsdir".into(),
+        command: "needsdir".into(),
+        args: vec![],
+        category: None,
+        requires_cwd: Some(true),
+        cwd: None,
+        cli: None,
+        warn: None,
+    });
+    let mut core = SessionCore::new(80, 24, cfg);
+    core.apply(ClientMsg::ToggleSpotlight);
+    for c in "needsdir".chars() {
+        core.apply(ClientMsg::LauncherChar(c));
+    }
+    core.apply(ClientMsg::LauncherEnter);
+    assert!(core.dirpicker_open());
+    let top = core.dirpicker_selected().unwrap();
+    let p = Point { x: 40, y: 12 };
+    core.apply(ClientMsg::ScrollAt { p, lines: -2 });
+    let down = core.dirpicker_selected().unwrap();
+    assert_ne!(down, top, "wheel down moved the selection");
+    core.apply(ClientMsg::ScrollAt { p, lines: 2 });
+    assert_eq!(core.dirpicker_selected().unwrap(), top, "wheel up came back");
+    core.shutdown();
+}

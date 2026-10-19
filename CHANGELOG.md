@@ -11,6 +11,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 - `power_menu = false` in the config removes launcher → Power and refuses Suspend, Reboot and Power off everywhere, for servers that must never be shut down from here (default `true`).
 
+### Fixed
+- The mouse wheel now scrolls the Working directory picker (it only worked from the keyboard).
+
 ### Changed
 - `tetron-wm --help` now explains the session workflow: an OPTIONS block for `-s/--session`, a SESSIONS section (detach, come back, `attach -d`, stop, named sessions, what each `ls` state means, `launcher_label = "@session"`), a launcher system section summary (Systems, Detach, Reload, Quit, Power), the socket directory, and the `shutdown` key now reads "quit tetron-wm" instead of "shut down the daemon". A test keeps these topics in the text.
 
