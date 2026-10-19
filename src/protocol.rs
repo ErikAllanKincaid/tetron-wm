@@ -88,7 +88,11 @@ pub struct Flags {
     /// The picker's new-folder name input is active (client forwards typed chars).
     pub dirpicker_creating: bool,
     /// The keyboard-shortcut help overlay is showing (any key dismisses it).
+    /// Legacy (the help overlay is now a window); always false, kept so old
+    /// clients still parse the frame.
     pub help_open: bool,
+    /// The help window is focused; the client routes scroll / close keys to it.
+    pub help_focused: bool,
     /// The file-manager window is focused; the client routes navigation keys to it.
     pub filemanager_focused: bool,
     /// The file manager has a text overlay open (new-folder / rename); forward chars.

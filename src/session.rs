@@ -155,6 +155,8 @@ enum WinContent {
     Logs(crate::logsview::LogsView),
     /// The activity monitor — a live table of hosted apps with kill-app controls.
     Activity(Activity),
+    /// The keyboard-shortcut cheatsheet (a normal window: stays open as a reference).
+    Help(crate::help::HelpView),
 }
 
 impl WinContent {
@@ -167,6 +169,7 @@ impl WinContent {
             WinContent::FileManager(f) => f.render(w, h),
             WinContent::Logs(l) => l.render(w, h),
             WinContent::Activity(a) => a.render(w, h),
+            WinContent::Help(v) => v.render(w, h),
         }
     }
 }
@@ -603,10 +606,8 @@ pub struct SessionCore {
     drag_preview: Option<Rect>,
     /// The working-directory picker, open while a flagged launch awaits a dir.
     dirpicker: Option<crate::dirpicker::DirPicker>,
-    /// Whether the keyboard-shortcut help overlay is showing.
-    help_open: bool,
-    /// First visible body row of the help overlay.
-    help_scroll: usize,
+    /// The keyboard-shortcut help window, while one is open.
+    help_win: Option<WindowId>,
     /// Whether the full-screen "simple" view mode is active.
     simple: bool,
     /// Decoded-image cache for ImageView windows (the native image layer).
@@ -708,8 +709,7 @@ impl SessionCore {
             backend: crate::system::backend(),
             drag_preview: None,
             dirpicker: None,
-            help_open: false,
-            help_scroll: 0,
+            help_win: None,
             simple: false,
             images: crate::imagestore::ImageStore::new(),
             desktop: crate::desktop::DesktopIcons::new(desktop_dir),
@@ -1579,9 +1579,9 @@ impl SessionCore {
         self.dirpicker.as_ref().map(|d| d.is_creating()).unwrap_or(false)
     }
 
-    /// Whether the keyboard-shortcut help overlay is showing.
+    /// Whether the keyboard-shortcut help window is open.
     pub fn help_open(&self) -> bool {
-        self.help_open
+        self.help_win.map(|id| self.contents.contains_key(&id)).unwrap_or(false)
     }
 
     /// Whether the full-screen "simple" view mode is active.
@@ -1706,8 +1706,7 @@ impl SessionCore {
             }
             I::OpenHelp => {
                 self.tray.close();
-                self.help_open = true;
-                self.help_scroll = 0;
+                self.open_help();
                 return;
             }
             I::OpenSettings => {
@@ -2620,12 +2619,19 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::ToggleHelp => {
-                self.help_open = !self.help_open;
-                self.help_scroll = 0;
+                // Open the help window; from inside it (focused), close it.
+                if self.focused_is_help() {
+                    if let Some(id) = self.wm.focused() {
+                        self.close(id);
+                    }
+                } else {
+                    self.open_help();
+                }
             }
             ClientMsg::HelpScroll(d) => {
-                let max = crate::help::max_scroll(self.h) as i64;
-                self.help_scroll = (self.help_scroll as i64).saturating_add(d as i64).clamp(0, max) as usize;
+                if let Some(h) = self.focused_help() {
+                    h.scroll_by(d);
+                }
             }
             ClientMsg::OpenImage(p) => self.open_image(p),
             ClientMsg::DirPickerUp => { if let Some(d) = self.dirpicker.as_mut() { d.move_up(); } }
@@ -2661,7 +2667,6 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // higher-z overlay would let a hidden menu silently eat the
                 // next click. Same overlay set as `app_mouse_area`.
                 let overlay_open = self.launcher.is_open()
-                    || self.help_open
                     || self.dirpicker.is_some()
                     || self.power_menu.is_open()
                     || self.confirm_close.is_open()
@@ -2816,11 +2821,6 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::Reload => self.reload = true,
             ClientMsg::Status => {} // answered by the daemon's control thread
             ClientMsg::MouseInput(m) => self.forward_mouse_to_app(m),
-            ClientMsg::ScrollAt { lines, .. } if self.help_open => {
-                // Wheel up (+) moves toward the top, like the other lists.
-                let max = crate::help::max_scroll(self.h) as i64;
-                self.help_scroll = (self.help_scroll as i64 - lines as i64).clamp(0, max) as usize;
-            }
             ClientMsg::ScrollAt { p, lines } if self.clipmenu.is_open() => {
                 let _ = p;
                 let hist = self.clip_history();
@@ -3236,6 +3236,40 @@ or a remote-side error — its authorized_keys was left untouched)",
         let id = self.wm.focused()?;
         match self.contents.get_mut(&id)? {
             WinContent::Logs(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// Open (or re-focus) the keyboard-shortcut help window.
+    fn open_help(&mut self) {
+        if let Some(id) = self.help_win {
+            if self.contents.contains_key(&id) {
+                self.wm.unminimize(id);
+                if self.simple { self.sync_app_size(id); }
+                return;
+            }
+        }
+        let (pw, ph) = crate::help::preferred_size(self.w, self.h);
+        let rect = Rect::new(((self.w - pw) / 2).max(0), 1.max((self.h - ph) / 3), pw, ph);
+        let id = self.wm.add_window("Shortcuts".into(), rect);
+        self.app_keys.insert(id, "Shortcuts".into());
+        self.contents.insert(id, WinContent::Help(crate::help::HelpView::new()));
+        self.titles.push((id, "Shortcuts".into()));
+        self.help_win = Some(id);
+    }
+
+    /// `true` when the focused window is the help window (keyboard routing).
+    pub fn focused_is_help(&self) -> bool {
+        matches!(
+            self.wm.focused().and_then(|id| self.contents.get(&id)),
+            Some(WinContent::Help(_))
+        )
+    }
+
+    fn focused_help(&mut self) -> Option<&crate::help::HelpView> {
+        let id = self.wm.focused()?;
+        match self.contents.get(&id)? {
+            WinContent::Help(h) => Some(h),
             _ => None,
         }
     }
@@ -3735,7 +3769,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             "@screenshot" => { self.launcher.close(); self.request_screenshot(String::new()); }
-            "@help" => { self.launcher.close(); self.help_open = true; self.help_scroll = 0; }
+            "@help" => { self.launcher.close(); self.open_help(); }
             "@image" => { if let Some(p) = e.args.first().cloned() { self.open_image(p); } }
             // System actions from the launcher's bottom section — delegate to the
             // existing power-menu flows (confirm dialog / systems popover).
@@ -3864,8 +3898,7 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// start under these (a click should dismiss the overlay instead), so
     /// `mouse_select` defers to `handle_mouse` when one is open.
     fn overlay_active(&self) -> bool {
-        self.help_open
-            || self.clipmenu.is_open()
+        self.clipmenu.is_open()
             || self.compat_dialog
             || self.dock_ctx.is_some()
             || self.dirpicker.is_some()
@@ -3980,15 +4013,6 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     fn handle_mouse(&mut self, kind: MouseKind, p: Point) {
-        // The help overlay is modal and stays open as a reference: only its ✕
-        // closes it; any other click is swallowed so nothing behind is hit.
-        if kind == MouseKind::Down && self.help_open {
-            if crate::help::close_button_rect(self.w, self.h).contains(p) {
-                self.help_open = false;
-            }
-            return;
-        }
-
         // The clipboard history popover is modal while open: a click picks a row
         // or a button, anywhere else closes it.
         if kind == MouseKind::Down && self.clipmenu.is_open() {
@@ -4795,11 +4819,6 @@ or a remote-side error — its authorized_keys was left untouched)",
             layers.extend(d.render(self.w, self.h));
         }
 
-        // The help overlay is the topmost layer of all.
-        if self.help_open {
-            layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
-        }
-
         // The power menu (dropdown + confirm dialog) renders above all chrome.
         {
             let online = self.tray_state.read().map(|st| st.remotes_online.clone()).unwrap_or_default();
@@ -4978,9 +4997,6 @@ or a remote-side error — its authorized_keys was left untouched)",
                 layers.extend(self.clipmenu.render(self.w, self.h, &hist, paused));
             }
         }
-        if self.help_open {
-            layers.extend(crate::help::render_help(self.w, self.h, self.help_scroll));
-        }
         {
             let online = self.tray_state.read().map(|st| st.remotes_online.clone()).unwrap_or_default();
             layers.extend(self.power_menu.render(self.w, self.h, &self.systems, &online));
@@ -5101,7 +5117,6 @@ or a remote-side error — its authorized_keys was left untouched)",
         // app in the Go launcher (drawn over a focused mouse-app) is swallowed.
         if self.select_mode
             || self.launcher.is_open()
-            || self.help_open
             || self.clipmenu.is_open()
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
@@ -5540,21 +5555,26 @@ mod tests {
         core.launch_entry(entry("@systems"));
         assert!(core.power_menu.is_open(), "@systems should open the systems popover");
         core.launch_entry(entry("@help"));
-        assert!(core.help_open, "@help should open the shortcut overlay");
+        assert!(core.help_open(), "@help should open the shortcuts window");
     }
 
     #[test]
-    fn help_overlay_scrolls_and_clamps() {
+    fn help_window_scrolls_clamps_and_toggles() {
         let mut core = SessionCore::new(80, 12, crate::config::Config::default());
         core.apply(ClientMsg::ToggleHelp);
-        assert!(crate::help::max_scroll(12) > 0, "short screen must need scrolling");
+        assert!(core.help_open() && core.focused_is_help());
+        // A short screen needs scrolling; the view learns its height on render.
+        core.build_frame();
         core.apply(ClientMsg::HelpScroll(i32::MAX));
-        assert_eq!(core.help_scroll, crate::help::max_scroll(12));
-        core.apply(ClientMsg::HelpScroll(i32::MIN));
-        assert_eq!(core.help_scroll, 0);
+        let end = core.focused_help().unwrap().scroll();
+        assert!(end > 0, "short window must scroll");
         core.apply(ClientMsg::HelpScroll(1));
+        assert_eq!(core.focused_help().unwrap().scroll(), end, "clamped at the end");
+        core.apply(ClientMsg::HelpScroll(i32::MIN));
+        assert_eq!(core.focused_help().unwrap().scroll(), 0);
+        // Toggling again from inside closes it.
         core.apply(ClientMsg::ToggleHelp);
-        assert_eq!(core.help_scroll, 0, "closing resets scroll");
+        assert!(!core.help_open());
     }
 
     #[test]

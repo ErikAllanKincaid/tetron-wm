@@ -429,7 +429,8 @@ fn serve_client_inner(
             settings_editing: core.settings_editing(),
             dirpicker_open: core.dirpicker_open(),
             dirpicker_creating: core.dirpicker_creating(),
-            help_open: core.help_open(),
+            help_open: false, // legacy overlay flag; help is a window now
+            help_focused: core.focused_is_help(),
             power_dialog: core.power_dialog_open(),
             no_window: core.focused().is_none(),
             clipmenu_open: core.clipmenu_open(),

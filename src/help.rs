@@ -1,11 +1,10 @@
-//! The in-app help overlay: a centered keyboard-shortcut cheatsheet, toggled
-//! with `leader ?`. Content is a pure data model so it is unit-testable; the
-//! renderer lays it out into a bordered overlay.
+//! The in-app help window: a keyboard-shortcut cheatsheet, opened with
+//! `leader ?`. It is a real window (move, resize, overlap, stays open as a
+//! reference); content is a pure data model so it is unit-testable.
 
 use crate::buffer::CellBuffer;
 use crate::cell::Cell;
-use crate::compositor::Layer;
-use crate::geometry::{Point, Rect};
+use std::cell::Cell as StdCell;
 
 /// A titled group of `(keys, description)` shortcut rows.
 pub struct HelpSection {
@@ -64,7 +63,7 @@ pub fn help_sections() -> &'static [HelpSection] {
             title: "Session",
             rows: &[
                 ("q / Q", "detach / shut down"),
-                ("?", "this help"),
+                ("?", "this help (a window; Esc or q closes it)"),
             ],
             notes: &[],
         },
@@ -92,83 +91,80 @@ fn body_lines() -> Vec<(String, bool)> {
     lines.push(("In overlays:  ↑↓ move · →← expand · Enter open · Esc cancel".into(), false));
     lines.push(("Menubar:  tetron-wm = launcher · ⊞/▦ = view · ✦ = assistant · host ▾ = power/Systems".into(), false));
     lines.push((String::new(), false));
-    lines.push(("↑↓ PgUp PgDn Home End scroll · Esc or q (or the ✕) closes".into(), false));
+    lines.push(("↑↓ PgUp PgDn Home End scroll · Esc or q closes this window".into(), false));
 
     lines
 }
 
-fn box_height(h: i32) -> i32 {
-    (body_lines().len() as i32 + 3).min(h - 1)
-}
-
-/// Body rows that fit inside the box (between title and bottom border).
-fn visible_rows(h: i32) -> usize {
-    (box_height(h) - 2).max(1) as usize
-}
-
-/// Largest useful scroll offset for a screen `h` rows tall (0 when it all fits).
-pub fn max_scroll(h: i32) -> usize {
-    body_lines().len().saturating_sub(visible_rows(h))
-}
-
-/// The help box on a `w × h` screen: `(origin, box_w, box_h)`. Render and
-/// hit-testing share this so they can never drift.
-fn geometry(w: i32, h: i32) -> (Point, i32, i32) {
-    let inner_w = body_lines().iter().map(|(l, _)| l.chars().count()).max().unwrap_or(40) as i32;
-    let box_w = (inner_w + 4).clamp(30, w - 2);
-    let box_h = box_height(h);
-    (Point::new((w - box_w) / 2, ((h - box_h) / 2).max(0)), box_w, box_h)
-}
-
-/// Screen rect of the title bar's `✕` close button. The overlay stays open until
-/// this is clicked (or Esc / q is pressed), so it works as a reference.
-pub fn close_button_rect(w: i32, h: i32) -> Rect {
-    let (origin, box_w, _) = geometry(w, h);
-    Rect::new(origin.x + box_w - 4, origin.y, 3, 1)
-}
-
-/// Render the help overlay centered on a `w × h` screen.
-pub fn render_help(w: i32, h: i32, scroll: usize) -> Vec<Layer> {
-    let t = crate::theme::current();
+/// Preferred window size `(w, h)` for a `screen_w × screen_h` screen: wide enough
+/// for the longest line and tall enough for everything, clamped to the screen.
+pub fn preferred_size(screen_w: i32, screen_h: i32) -> (i32, i32) {
     let lines = body_lines();
-    let scroll = scroll.min(max_scroll(h));
+    let inner_w = lines.iter().map(|(l, _)| l.chars().count()).max().unwrap_or(40) as i32;
+    let w = (inner_w + 4).clamp(30, (screen_w - 2).max(30));
+    // Titlebar + borders around the body.
+    let h = (lines.len() as i32 + 2).clamp(6, (screen_h - 3).max(6));
+    (w, h)
+}
 
-    let (origin, box_w, box_h) = geometry(w, h);
+/// The scrolling body of the help window (pure state; the window chrome is
+/// drawn by the window manager).
+#[derive(Default)]
+pub struct HelpView {
+    scroll: StdCell<usize>,
+    /// Body rows shown by the last render (bounds the scroll, sizes PgUp/PgDn).
+    rows: StdCell<usize>,
+}
 
-    let mut buf = CellBuffer::new(box_w, box_h);
-    buf.fill(Cell { ch: ' ', fg: t.text, bg: t.window_bg, attrs: Default::default() });
-    // Title bar + rounded border.
-    for x in 0..box_w {
-        buf.set(x, 0, Cell { ch: ' ', fg: t.title_fg, bg: t.title_focus, attrs: Default::default() });
+impl HelpView {
+    pub fn new() -> Self {
+        HelpView { scroll: StdCell::new(0), rows: StdCell::new(20) }
     }
-    buf.write_str(2, 0, " tetron-wm — keyboard shortcuts ", t.title_fg, t.title_focus);
-    let b = |ch: char| Cell { ch, fg: t.border, bg: t.window_bg, attrs: Default::default() };
-    for y in 1..box_h {
-        buf.set(0, y, b('│'));
-        buf.set(box_w - 1, y, b('│'));
-    }
-    for x in 0..box_w {
-        buf.set(x, box_h - 1, b('─'));
-    }
-    buf.set(0, box_h - 1, b('╰'));
-    buf.set(box_w - 1, box_h - 1, b('╯'));
 
-    for (i, (text, heading)) in lines.iter().skip(scroll).enumerate() {
-        let y = 1 + i as i32;
-        if y >= box_h - 1 {
-            break;
+    fn max_scroll(&self) -> usize {
+        body_lines().len().saturating_sub(self.rows.get().max(1))
+    }
+
+    /// Scroll by `delta` rows (saturating; `i32::MIN` / `i32::MAX` jump to the
+    /// ends), clamped to the content.
+    pub fn scroll_by(&self, delta: i32) {
+        let max = self.max_scroll() as i64;
+        let now = self.scroll.get() as i64;
+        self.scroll.set((now.saturating_add(delta as i64)).clamp(0, max) as usize);
+    }
+
+    /// Rows moved by PgUp / PgDn.
+    pub fn page(&self) -> i32 {
+        (self.rows.get().saturating_sub(1)).max(1) as i32
+    }
+
+    pub fn scroll(&self) -> usize {
+        self.scroll.get()
+    }
+
+    /// Render the body into a `w × h` buffer (the window's content area).
+    pub fn render(&self, w: i32, h: i32) -> CellBuffer {
+        let t = crate::theme::current();
+        let mut buf = CellBuffer::new(w, h);
+        buf.fill(Cell { ch: ' ', fg: t.text, bg: t.window_bg, attrs: Default::default() });
+        self.rows.set(h.max(1) as usize);
+        let max = self.max_scroll();
+        if self.scroll.get() > max {
+            self.scroll.set(max);
         }
-        let fg = if *heading { t.accent } else { t.text };
-        buf.write_str(2, y, text, fg, t.window_bg);
+        let lines = body_lines();
+        for (i, (text, heading)) in lines.iter().skip(self.scroll.get()).enumerate() {
+            let y = i as i32;
+            if y >= h {
+                break;
+            }
+            let fg = if *heading { t.accent } else { t.text };
+            let clipped: String = text.chars().take((w - 2).max(0) as usize).collect();
+            buf.write_str(1, y, &clipped, fg, t.window_bg);
+        }
+        if self.scroll.get() < max && h > 0 && w > 12 {
+            buf.write_str(w - 11, h - 1, " ↓ more ↓ ", t.accent, t.window_bg);
+        }
+        buf
     }
-
-    buf.write_str(box_w - 4, 0, " ✕ ", t.title_fg, t.title_focus);
-    if scroll > 0 {
-        buf.write_str(box_w - 8, 0, " ▲ ", t.title_fg, t.title_focus);
-    }
-    if scroll < max_scroll(h) {
-        buf.write_str(box_w - 12, box_h - 1, " ↓ more ↓ ", t.accent, t.window_bg);
-    }
-
-    vec![Layer { z: 5500, origin, buf, opacity: 1.0, scissor: None }]
 }

@@ -1012,22 +1012,28 @@ fn wifi_data_is_read_until_the_segment_exists() {
 }
 
 #[test]
-fn help_overlay_stays_open_until_closed_explicitly() {
-    use tetron_wm::help::close_button_rect;
+fn help_is_a_window_that_stays_open_while_you_use_everything_else() {
     let mut core = SessionCore::new(100, 40, Config::default());
     core.apply(ClientMsg::ToggleHelp);
+    assert!(core.help_open() && core.focused_is_help());
+    assert_eq!(core.window_count(), 1, "a real window");
+    // The launcher (and every other click) still works while it is open.
+    core.apply(ClientMsg::MouseDown(Point::new(2, 0)));
+    assert!(core.launcher_open_for_test(), "the launcher opens with the shortcuts window up");
+    assert!(core.help_open(), "and the shortcuts window stays");
+    core.apply(ClientMsg::LauncherEsc);
+    // Clicking the desktop does not dismiss it either.
+    core.apply(ClientMsg::MouseDown(Point::new(2, 38)));
     assert!(core.help_open());
-    // Clicks inside and outside the box do not dismiss it.
-    core.apply(ClientMsg::MouseDown(Point::new(50, 20)));
-    core.apply(ClientMsg::MouseDown(Point::new(0, 39)));
-    core.apply(ClientMsg::MouseDown(Point::new(99, 0)));
-    assert!(core.help_open(), "stray clicks keep the reference open");
-    // The wheel scrolls it (and never closes it).
-    core.apply(ClientMsg::ScrollAt { p: Point::new(50, 20), lines: -3 });
-    assert!(core.help_open());
-    // The ✕ closes it.
-    let x = close_button_rect(100, 40);
-    core.apply(ClientMsg::MouseDown(Point::new(x.x + 1, x.y)));
+    // With another window focused, ToggleHelp refocuses it (no second copy);
+    // from inside the help window, ToggleHelp closes it.
+    core.apply(ClientMsg::Launch { name: "sh".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 3".into()] });
+    assert!(!core.focused_is_help());
+    core.apply(ClientMsg::ToggleHelp);
+    assert!(core.focused_is_help());
+    assert_eq!(core.window_count(), 2, "no second copy");
+    core.apply(ClientMsg::ToggleHelp);
     assert!(!core.help_open());
+    assert_eq!(core.window_count(), 1);
     core.shutdown();
 }

@@ -309,10 +309,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Char('r') | KeyCode::Char('R') => send(&mut out_stream, &ClientMsg::LogsRefresh)?,
                             _ => {}
                         }
-                    } else if f.help_open {
-                        // The help overlay is modal and stays open as a reference:
-                        // navigation keys scroll it, only Esc / q / Enter / ? (or
-                        // the ✕) close it, every other key is ignored.
+                    } else if f.help_focused {
+                        // The help window is focused: navigation keys scroll it,
+                        // Esc / q / Enter / ? close it, every other key is ignored
+                        // (it is a reference, a stray key must not dismiss it).
                         if let Some(msg) = help_key(k.code) {
                             send(&mut out_stream, &msg)?;
                         }
@@ -686,6 +686,8 @@ pub(crate) fn route_mouse(
         (_, A::ScrollDown) if f.store_focused => send(out, &ClientMsg::StoreDown)?,
         (_, A::ScrollUp) if f.filemanager_focused => send(out, &ClientMsg::FileManagerUp)?,
         (_, A::ScrollDown) if f.filemanager_focused => send(out, &ClientMsg::FileManagerDown)?,
+        (_, A::ScrollUp) if f.help_focused => send(out, &ClientMsg::HelpScroll(-3))?,
+        (_, A::ScrollDown) if f.help_focused => send(out, &ClientMsg::HelpScroll(3))?,
         (_, A::ScrollUp) if f.logs_focused => send(out, &ClientMsg::LogsUp)?,
         (_, A::ScrollDown) if f.logs_focused => send(out, &ClientMsg::LogsDown)?,
         // Anywhere else, the wheel scrolls the scrollback of the PTY window

@@ -13,7 +13,7 @@ carry user-visible feature work and the occasional breaking config change.
 - Named sessions: `tetron-wm -s NAME` (or `attach -s NAME`, or `$TETRON_WM_SESSION`) runs a separate daemon, apphost, and set of apps. `tetron-wm ls` lists them with a state (`attached`, `detached` = running with no client, `recoverable` = daemon gone but apps alive, `stale`) and window count; cleanly stopped sessions are not listed. App windows inherit the session, so `tetron-wm launch`/`clip` run inside a window reach that window's session. The unnamed session is `default` and keeps its existing socket paths.
 
 ### Changed
-- The keyboard-shortcuts window no longer closes on any key or click, so it works as a reference. It closes with `Esc`, `q`, `Enter` or `?`, or by clicking the `✕` in its title bar; the mouse wheel scrolls it, and other keys and clicks are ignored.
+- The keyboard shortcuts (leader `?`, launcher, Info menu) now open in a real window instead of a modal overlay: it stays open as a reference, you can move and resize it, and the launcher, other windows and the menubar keep working while it is up. `?` or the launcher entry refocuses it; `Esc`, `q`, `Enter` or `?` close it when it is focused (other keys are ignored), and the arrow, page and wheel scroll it.
 - The background pollers (CPU, battery, Wi-Fi, volume, Bluetooth, calendar, remote reachability, tetron) now pause while no client is attached, so a detached session costs almost nothing, and refresh at once when you attach. Wi-Fi/network and Bluetooth are only read while something that shows them is on screen (on the bar, or its popover open); opening one refreshes it immediately.
 
 ### Fixed
