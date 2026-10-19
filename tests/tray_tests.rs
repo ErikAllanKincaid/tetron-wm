@@ -280,3 +280,180 @@ fn shedding_goes_in_order_cpu_first() {
     assert!(!tight.iter().any(|s| s.kind == SegmentKind::Cpu));
     assert!(tight.iter().any(|s| s.kind == SegmentKind::Mem));
 }
+
+// ── Info menu, placement, overflow ───────────────────────────────────────────
+
+use tetron_wm::system::BatteryInfo;
+use tetron_wm::tray::{tray_layout, InfoView, Place, Placement, HOT_PCT};
+
+fn layout(state: &SystemState, width: i32, bells: usize, p: &Placement) -> tetron_wm::tray::TrayLayout {
+    tray_layout(state, width, 0, bells, Some((3, false)), false, p)
+}
+
+fn kinds(l: &tetron_wm::tray::TrayLayout) -> Vec<SegmentKind> {
+    l.segments.iter().map(|s| s.kind).collect()
+}
+
+fn with_battery(mut s: SystemState) -> SystemState {
+    s.battery = Some(BatteryInfo { pct: 50, charging: false, mins: None });
+    s
+}
+
+#[test]
+fn default_placement_puts_cpu_mem_and_bluetooth_in_info() {
+    let mut s = with_battery(sample());
+    s.caps.bluetooth = true;
+    let l = layout(&s, 120, 0, &Placement::default());
+    let bar = kinds(&l);
+    for k in [SegmentKind::Cpu, SegmentKind::Mem, SegmentKind::Bluetooth] {
+        assert!(!bar.contains(&k), "{k:?} is not on the bar by default");
+        assert!(l.in_info.iter().any(|r| r.kind == k), "{k:?} is an Info row");
+    }
+    assert!(bar.contains(&SegmentKind::Battery) && bar.contains(&SegmentKind::Wifi));
+    // Info rows follow the bar order.
+    let order: Vec<_> = l.in_info.iter().map(|r| r.kind).collect();
+    assert_eq!(order, vec![SegmentKind::Cpu, SegmentKind::Mem, SegmentKind::Bluetooth]);
+}
+
+#[test]
+fn config_can_pin_cpu_back_to_the_bar() {
+    let mut cfg = std::collections::BTreeMap::new();
+    cfg.insert("cpu".to_string(), "bar".to_string());
+    let p = Placement::from_config(&cfg);
+    assert_eq!(p.get(SegmentKind::Cpu), Place::Bar);
+    assert!(kinds(&layout(&sample(), 120, 0, &p)).contains(&SegmentKind::Cpu));
+}
+
+#[test]
+fn a_hot_cpu_shows_on_the_bar_even_when_placed_in_info() {
+    let mut s = sample();
+    s.cpu_pct = HOT_PCT as f32;
+    let l = layout(&s, 120, 0, &Placement::default());
+    assert!(kinds(&l).contains(&SegmentKind::Cpu), "hot CPU is pinned to the bar");
+    assert!(!l.in_info.iter().any(|r| r.kind == SegmentKind::Cpu));
+    s.cpu_pct = HOT_PCT as f32 - 1.0;
+    assert!(!kinds(&layout(&s, 120, 0, &Placement::default())).contains(&SegmentKind::Cpu));
+}
+
+#[test]
+fn info_sits_between_bell_and_clock_at_a_fixed_distance_from_the_corner() {
+    let p = Placement::default();
+    let quiet = layout(&sample(), 100, 0, &p);
+    let busy = layout(&with_battery(sample()), 100, 4, &p);
+    let info_x = |l: &tetron_wm::tray::TrayLayout| l.segments.iter().find(|s| s.kind == SegmentKind::Info).unwrap().rect.x;
+    assert_eq!(info_x(&quiet), info_x(&busy), "bells and batteries come and go without moving it");
+    let k = kinds(&busy);
+    let pos = |x: SegmentKind| k.iter().position(|y| *y == x).unwrap();
+    assert!(pos(SegmentKind::Bell) < pos(SegmentKind::Info));
+    assert_eq!(pos(SegmentKind::Info) + 1, pos(SegmentKind::Clock));
+    assert_eq!(pos(SegmentKind::Clock) + 1, pos(SegmentKind::Volume));
+}
+
+#[test]
+fn shed_segments_overflow_into_info_instead_of_vanishing() {
+    let mut s = with_battery(sample());
+    s.caps.bluetooth = true;
+    let p = Placement::all_bar();
+    let roomy = layout(&s, 120, 2, &p);
+    assert!(roomy.in_info.is_empty());
+    // Narrow: segments leave the bar in priority order, all into Info.
+    let tight = layout(&s, 44, 2, &p);
+    for k in [SegmentKind::Clipboard, SegmentKind::Volume, SegmentKind::Clock, SegmentKind::Info] {
+        assert!(kinds(&tight).contains(&k), "{k:?} is never shed");
+        assert!(!tight.in_info.iter().any(|r| r.kind == k));
+    }
+    assert!(!tight.in_info.is_empty());
+    let on_bar = kinds(&tight);
+    for r in &tight.in_info {
+        assert!(!on_bar.contains(&r.kind), "{:?} is in Info, not on the bar too", r.kind);
+    }
+    // Nothing is lost: every segment is on the bar or in Info.
+    for k in kinds(&roomy) {
+        assert!(on_bar.contains(&k) || tight.in_info.iter().any(|r| r.kind == k), "{k:?} vanished");
+    }
+}
+
+#[test]
+fn bar_placement_is_shed_after_auto() {
+    let mut s = with_battery(sample());
+    s.caps.bluetooth = true;
+    let mut cfg = std::collections::BTreeMap::new();
+    cfg.insert("battery".to_string(), "bar".to_string());
+    cfg.insert("cpu".to_string(), "auto".to_string());
+    cfg.insert("mem".to_string(), "auto".to_string());
+    cfg.insert("bluetooth".to_string(), "auto".to_string());
+    let p = Placement::from_config(&cfg);
+    // Whenever the pinned battery has been shed, every `auto` segment is already
+    // in Info; and a width exists where autos are shed but battery stays.
+    let autos = [SegmentKind::Cpu, SegmentKind::Mem, SegmentKind::Bluetooth, SegmentKind::Wifi];
+    let mut kept_battery_while_shedding = false;
+    for width in 40..120 {
+        let l = layout(&s, width, 0, &p);
+        let battery_shed = l.in_info.iter().any(|r| r.kind == SegmentKind::Battery);
+        if battery_shed {
+            assert!(!kinds(&l).iter().any(|k| autos.contains(k)), "width {width}: battery shed while an auto segment stayed");
+        } else if !l.in_info.is_empty() {
+            kept_battery_while_shedding = true;
+        }
+    }
+    assert!(kept_battery_while_shedding);
+}
+
+fn info_view(l: &tetron_wm::tray::TrayLayout) -> InfoView {
+    InfoView { session: "work".into(), windows: 3, version: "9.9.9", rows: l.in_info.clone() }
+}
+
+fn screen_text(r: &tetron_wm::tray::Rendered) -> String {
+    let mut out = String::new();
+    for l in &r.layers {
+        for y in 0..l.buf.height() {
+            out.extend((0..l.buf.width()).map(|x| l.buf.get(x, y).map(|c| c.ch).unwrap_or(' ')));
+            out.push('\n');
+        }
+    }
+    out
+}
+
+#[test]
+fn info_popover_shows_session_facts_rows_and_links() {
+    let mut s = sample();
+    s.caps.bluetooth = true;
+    let l = layout(&s, 100, 0, &Placement::default());
+    let mut tray = Tray::new();
+    tray.force_open(SegmentKind::Info);
+    let r = tray.render_with(100, 30, &s, &info_view(&l));
+    let text = screen_text(&r);
+    assert!(text.contains("work") && text.contains("9.9.9"), "{text}");
+    assert!(text.contains("Session") && text.contains("Windows") && text.contains("Version"), "{text}");
+    for label in ["CPU", "Memory", "Bluetooth", "Sessions", "Logs", "Shortcuts", "Settings"] {
+        assert!(text.contains(label), "missing {label}:\n{text}");
+    }
+    let intents: Vec<_> = r.hits.iter().map(|h| h.intent.clone()).collect();
+    assert!(intents.contains(&ControlIntent::OpenSessions));
+    assert!(intents.contains(&ControlIntent::OpenLogs));
+    assert!(intents.contains(&ControlIntent::OpenHelp));
+    assert!(intents.contains(&ControlIntent::OpenSettings));
+    // Bluetooth has no direct tool: its row opens its own popover.
+    assert!(intents.contains(&ControlIntent::OpenSegment("bluetooth".into())));
+    // CPU runs its tool straight away (top is always a candidate).
+    assert!(intents.iter().any(|i| matches!(i, ControlIntent::OpenTool { .. })));
+}
+
+#[test]
+fn info_row_opens_the_segment_popover_in_place() {
+    let mut s = sample();
+    s.caps.bluetooth = true;
+    let l = layout(&s, 100, 0, &Placement::default());
+    let mut tray = Tray::new();
+    tray.force_open(SegmentKind::Info);
+    let r = tray.render_with(100, 30, &s, &info_view(&l));
+    // Click the Bluetooth row.
+    let hit = r.hits.iter().find(|h| h.intent == ControlIntent::OpenSegment("bluetooth".into())).unwrap();
+    let intent = tray.on_popover_click(Point::new(hit.rect.x + 2, hit.rect.y), &r).unwrap();
+    assert_eq!(intent, ControlIntent::OpenSegment("bluetooth".into()));
+    tray.open_nested(SegmentKind::from_key("bluetooth").unwrap());
+    assert_eq!(tray.open(), Some(SegmentKind::Bluetooth));
+    let nested = screen_text(&tray.render_with(100, 30, &s, &info_view(&l)));
+    assert!(nested.contains("Bluetooth"), "{nested}");
+    assert!(!nested.contains("Sessions"), "the segment popover is not the Info menu");
+}

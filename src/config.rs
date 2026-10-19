@@ -222,6 +222,13 @@ pub struct Config {
     /// open until Enter; an empty list removes the row.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tray_tools: crate::traytools::TrayTools,
+    /// `[tray_placement]`: where each status segment lives, by key (`cpu`, `mem`,
+    /// `battery`, `bluetooth`, `wifi`, `tetron`, `bell`): `"bar"` (on the bar),
+    /// `"info"` (in the ⓘ menu) or `"auto"` (on the bar, overflowing into the ⓘ
+    /// menu when space runs out). Defaults: cpu, mem and bluetooth `info`, the
+    /// rest `auto`. A CPU / memory reading of 90% or more shows on the bar anyway.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub tray_placement: std::collections::BTreeMap<String, String>,
     /// Per-app dock badge colors: keyword (matched case-insensitively as a
     /// substring of the app name/command) → color (named or `#rrggbb`).
     #[serde(default = "default_dock_badges", skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -311,6 +318,7 @@ impl Default for Config {
             leader: None,
             keys: std::collections::BTreeMap::new(),
             tray_tools: std::collections::BTreeMap::new(),
+            tray_placement: std::collections::BTreeMap::new(),
             dock_badges: default_dock_badges(),
         }
     }

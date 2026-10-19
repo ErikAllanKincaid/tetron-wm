@@ -50,6 +50,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("screenshot_dir", "", "where screenshots are saved (empty = ~/Pictures if present, else $HOME)"),
     ("leader", "ctrl+space", "leader chord, ctrl+<key> (needs reload)"),
     ("keys", "{}", "[keys] leader remaps: action = \"x\" or [\"x\", \"enter\"]"),
+    ("tray_placement", "{}", "[tray_placement] segment -> bar | info | auto (defaults: cpu, mem, bluetooth info; rest auto)"),
     ("dock_badges", "built-in", "[dock_badges] app keyword -> badge color"),
     ("tray_tools", "built-in", "[tray_tools] cpu/mem/battery/bluetooth/network -> Open-row commands"),
 ];

@@ -28,7 +28,123 @@ pub enum SegmentKind {
     Select,
     Clipboard,
     Bell,
+    /// The `ⓘ` menu: session info, links, and the segments placed in (or
+    /// overflowed into) it.
+    Info,
     Clock,
+}
+
+impl SegmentKind {
+    /// Config / intent key of a segment that can live in the Info menu
+    /// (`[tray_placement]`); `None` for the always-on-bar kinds.
+    pub fn key(self) -> Option<&'static str> {
+        Some(match self {
+            SegmentKind::Cpu => "cpu",
+            SegmentKind::Mem => "mem",
+            SegmentKind::Battery => "battery",
+            SegmentKind::Bluetooth => "bluetooth",
+            SegmentKind::Wifi => "wifi",
+            SegmentKind::Tetron => "tetron",
+            SegmentKind::Bell => "bell",
+            _ => return None,
+        })
+    }
+
+    /// Inverse of [`SegmentKind::key`].
+    pub fn from_key(key: &str) -> Option<SegmentKind> {
+        Some(match key {
+            "cpu" => SegmentKind::Cpu,
+            "mem" => SegmentKind::Mem,
+            "battery" => SegmentKind::Battery,
+            "bluetooth" => SegmentKind::Bluetooth,
+            "wifi" => SegmentKind::Wifi,
+            "tetron" => SegmentKind::Tetron,
+            "bell" => SegmentKind::Bell,
+            _ => return None,
+        })
+    }
+
+    /// Human label for the segment's row in the Info menu.
+    fn label(self) -> &'static str {
+        match self {
+            SegmentKind::Cpu => "CPU",
+            SegmentKind::Mem => "Memory",
+            SegmentKind::Battery => "Battery",
+            SegmentKind::Bluetooth => "Bluetooth",
+            SegmentKind::Wifi => "Network",
+            SegmentKind::Tetron => "Tetron",
+            SegmentKind::Bell => "Alerts",
+            _ => "",
+        }
+    }
+}
+
+/// Where a segment is shown: pinned to the bar, in the Info menu, or on the bar
+/// but allowed to overflow into the Info menu when space runs out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    /// On the bar; overflows into Info only after every `Auto` segment has.
+    Bar,
+    /// Always in the Info menu (a hot CPU / memory is shown on the bar anyway).
+    Info,
+    /// On the bar, overflows into the Info menu when space runs out.
+    Auto,
+}
+
+/// A CPU or memory reading at or above this percentage is shown on the bar even
+/// when placed in Info, so a problem is visible without opening the menu.
+pub const HOT_PCT: u32 = 90;
+
+/// Per-segment placement (`[tray_placement]` in the config).
+#[derive(Clone, Debug, Default)]
+pub struct Placement(std::collections::BTreeMap<String, String>);
+
+impl Placement {
+    /// Build from the config table (`cpu = "info"`, ...). Unknown values fall
+    /// back to the segment's default.
+    pub fn from_config(map: &std::collections::BTreeMap<String, String>) -> Self {
+        Placement(map.clone())
+    }
+
+    /// Every segment on the bar (what the plain `tray_segments*` helpers use).
+    pub fn all_bar() -> Self {
+        let mut m = std::collections::BTreeMap::new();
+        for k in ["cpu", "mem", "battery", "bluetooth", "wifi", "tetron", "bell"] {
+            m.insert(k.to_string(), "bar".to_string());
+        }
+        Placement(m)
+    }
+
+    /// The effective placement of `kind`. Defaults: CPU, memory and Bluetooth in
+    /// Info; everything else `auto`.
+    pub fn get(&self, kind: SegmentKind) -> Place {
+        let Some(key) = kind.key() else { return Place::Bar };
+        match self.0.get(key).map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            Some("bar") => Place::Bar,
+            Some("info") => Place::Info,
+            Some("auto") => Place::Auto,
+            _ => match kind {
+                SegmentKind::Cpu | SegmentKind::Mem | SegmentKind::Bluetooth => Place::Info,
+                _ => Place::Auto,
+            },
+        }
+    }
+}
+
+/// A segment that lives in the Info menu: placed there, or overflowed into it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InfoRow {
+    pub kind: SegmentKind,
+    pub label: &'static str,
+    /// The segment's bar text (icon + value), shown as the row's readout.
+    pub text: String,
+}
+
+/// The tray layout: what is on the bar and what lives in the Info menu.
+#[derive(Clone, Debug, Default)]
+pub struct TrayLayout {
+    pub segments: Vec<Segment>,
+    pub in_info: Vec<InfoRow>,
 }
 
 pub use crate::traytools::ToolAction;
@@ -77,7 +193,8 @@ pub fn tray_segments(state: &SystemState, width: i32, reserve: i32, bells: usize
 }
 
 /// Like [`tray_segments`], plus the clipboard segment when `clip` is
-/// `Some((entries, paused))` (clipboard history enabled).
+/// `Some((entries, paused))` (clipboard history enabled). Every segment is on
+/// the bar (see [`Placement::all_bar`]); the session uses [`tray_layout`].
 pub fn tray_segments_with(
     state: &SystemState,
     width: i32,
@@ -86,19 +203,53 @@ pub fn tray_segments_with(
     clip: Option<(usize, bool)>,
     select_mode: bool,
 ) -> Vec<Segment> {
+    tray_layout(state, width, reserve, bells, clip, select_mode, &Placement::all_bar()).segments
+}
+
+/// Lay out the tray: the right-aligned bar segments and the rows of the Info
+/// menu. Segments placed in Info, and segments that do not fit the bar (shed,
+/// lowest priority first), become Info rows instead of disappearing. Volume,
+/// the clock, the clipboard, the SELECT marker and Info itself are never shed.
+pub fn tray_layout(
+    state: &SystemState,
+    width: i32,
+    reserve: i32,
+    bells: usize,
+    clip: Option<(usize, bool)>,
+    select_mode: bool,
+    placement: &Placement,
+) -> TrayLayout {
     // Display order, left→right.
     use crate::iconset::{status, Status};
     let mut texts: Vec<(SegmentKind, String)> = Vec::new();
+    let mut info: Vec<(SegmentKind, String)> = Vec::new();
+    let cpu = state.cpu_pct.round() as u32;
+    let mem = mem_pct(state.mem.used, state.mem.total) as u32;
+    // A hot CPU / memory is pinned to the bar even when placed in Info.
+    fn put(
+        texts: &mut Vec<(SegmentKind, String)>,
+        info: &mut Vec<(SegmentKind, String)>,
+        placement: &Placement,
+        kind: SegmentKind,
+        text: String,
+        hot: bool,
+    ) {
+        if placement.get(kind) == Place::Info && !hot {
+            info.push((kind, text));
+        } else {
+            texts.push((kind, text));
+        }
+    }
     // A space follows each glyph so a double-width Nerd Font icon does not overlap
     // the metric (same convention as the file manager's list view).
-    texts.push((SegmentKind::Cpu, format!("{} {}%", status(Status::Cpu), state.cpu_pct.round() as u32)));
-    texts.push((SegmentKind::Mem, format!("{} {}%", status(Status::Mem), mem_pct(state.mem.used, state.mem.total))));
+    put(&mut texts, &mut info, placement, SegmentKind::Cpu, format!("{} {}%", status(Status::Cpu), cpu), cpu >= HOT_PCT);
+    put(&mut texts, &mut info, placement, SegmentKind::Mem, format!("{} {}%", status(Status::Mem), mem), mem >= HOT_PCT);
     if let Some(b) = &state.battery {
         let g = status(if b.charging { Status::BatteryCharging } else { Status::Battery });
-        texts.push((SegmentKind::Battery, format!("{} {}%", g, b.pct)));
+        put(&mut texts, &mut info, placement, SegmentKind::Battery, format!("{} {}%", g, b.pct), false);
     }
     if state.caps.bluetooth || state.bluetooth.enabled {
-        texts.push((SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth))));
+        put(&mut texts, &mut info, placement, SegmentKind::Bluetooth, format!("{} bt", status(Status::Bluetooth)), false);
     }
     // Network: `wifi` (with signal bars) when the primary link is WiFi, `net`
     // for any other link (ethernet, tether, VPN). The SSID lives in the popover.
@@ -106,9 +257,9 @@ pub fn tray_segments_with(
         let on_wifi = state.net.as_ref().map(|n| n.wifi).unwrap_or(true);
         if on_wifi {
             let sig = state.wifi.as_ref().map(|w| w.signal).unwrap_or(0);
-            texts.push((SegmentKind::Wifi, format!("{} wifi", bars_glyph(sig))));
+            put(&mut texts, &mut info, placement, SegmentKind::Wifi, format!("{} wifi", bars_glyph(sig)), false);
         } else {
-            texts.push((SegmentKind::Wifi, format!("{} net", status(Status::Net))));
+            put(&mut texts, &mut info, placement, SegmentKind::Wifi, format!("{} net", status(Status::Net)), false);
         }
     }
     // tetron: only when the daemon answered (installed + running). `⇄{peers}`
@@ -123,7 +274,7 @@ pub fn tray_segments_with(
         } else {
             "○"
         };
-        texts.push((SegmentKind::Tetron, format!("{} {connected} {dot}", status(Status::Net))));
+        put(&mut texts, &mut info, placement, SegmentKind::Tetron, format!("{} {connected} {dot}", status(Status::Net)), false);
     }
     if select_mode {
         texts.push((SegmentKind::Select, "SELECT".to_string()));
@@ -133,8 +284,11 @@ pub fn tray_segments_with(
         texts.push((SegmentKind::Clipboard, format!("{} {tail}", status(Status::Clipboard))));
     }
     if bells > 0 {
-        texts.push((SegmentKind::Bell, format!("{} {bells}", status(Status::Bell))));
+        put(&mut texts, &mut info, placement, SegmentKind::Bell, format!("{} {bells}", status(Status::Bell)), false);
     }
+    // The Info menu: fixed width, always present, a fixed distance from the right
+    // corner (only the fixed-width clock and volume are right of it).
+    texts.push((SegmentKind::Info, "\u{24D8} ".to_string()));
     // Clock is time-only ("09:41"); one click on it drops down the full calendar.
     texts.push((SegmentKind::Clock, state.clock.time.clone()));
     // Volume sits at the far right, past the clock — a fixed corner the user can
@@ -146,30 +300,34 @@ pub fn tray_segments_with(
         format!("{} {:>3}", status(volume_status(&state.volume)), state.volume.level),
     ));
 
-    // When out of space, shed low-priority segments first. Volume and the clock
-    // are never in this list, so they are always kept. The tray must never reach
-    // into the left-hand chrome (brand, mode, assistant, "+"): a segment is shed
-    // as soon as its FIRST (leftmost) cell would land left of `TASKBAR_X`, not
-    // only once the whole item has been pushed off.
+    // When out of space, move low-priority segments into the Info menu. Volume,
+    // the clock, the clipboard, SELECT and Info are never in this list. The tray
+    // must never reach into the left-hand chrome (brand, mode, assistant, "+"):
+    // a segment is shed as soon as the tray's FIRST (leftmost) cell would land
+    // left of `TASKBAR_X`, not only once the whole item has been pushed off.
     let avail = width - reserve - crate::chrome::TASKBAR_X;
     let total = |v: &[(SegmentKind, String)]| -> i32 {
         let widths: i32 = v.iter().map(|(_, t)| t.chars().count() as i32).sum();
         widths + GAP * (v.len() as i32 - 1).max(0)
     };
-    for k in [
+    // `Bar` segments go last, after every `Auto` one.
+    let mut order = [
         SegmentKind::Cpu,
         SegmentKind::Mem,
         SegmentKind::Battery,
         SegmentKind::Bell,
-        SegmentKind::Clipboard,
         SegmentKind::Tetron,
         SegmentKind::Wifi,
         SegmentKind::Bluetooth,
-    ] {
+    ];
+    order.sort_by_key(|k| placement.get(*k) == Place::Bar);
+    for k in order {
         if total(&texts) <= avail {
             break;
         }
-        texts.retain(|(sk, _)| *sk != k);
+        if let Some(i) = texts.iter().position(|(sk, _)| *sk == k) {
+            info.push(texts.remove(i));
+        }
     }
 
     // Right-align: lay out from the right edge leftward, then return left→right.
@@ -184,7 +342,22 @@ pub fn tray_segments_with(
         x -= GAP;
     }
     out.reverse();
-    out
+    // Info rows in the bar's left→right order (CPU, memory, battery, …).
+    let rank = |k: SegmentKind| [
+        SegmentKind::Cpu,
+        SegmentKind::Mem,
+        SegmentKind::Battery,
+        SegmentKind::Bluetooth,
+        SegmentKind::Wifi,
+        SegmentKind::Tetron,
+        SegmentKind::Bell,
+    ].iter().position(|x| *x == k).unwrap_or(usize::MAX);
+    info.sort_by_key(|(k, _)| rank(*k));
+    let in_info = info
+        .into_iter()
+        .map(|(kind, text)| InfoRow { kind, label: kind.label(), text })
+        .collect();
+    TrayLayout { segments: out, in_info }
 }
 
 // ── Interactive tray: open popover state + rendering + hit-testing ─────────────
@@ -210,6 +383,16 @@ pub struct Rendered {
     pub layers: Vec<Layer>,
     pub hits: Vec<PopoverHit>,
     pub bounds: Option<Rect>,
+}
+
+/// What the Info menu shows besides the tray state: the session it belongs to
+/// and the segments living in it.
+#[derive(Clone, Debug, Default)]
+pub struct InfoView {
+    pub session: String,
+    pub windows: usize,
+    pub version: &'static str,
+    pub rows: Vec<InfoRow>,
 }
 
 /// One pending notification: a background app rang the bell.
@@ -255,6 +438,15 @@ impl Tray {
     /// Open `kind`'s popover at a default anchor (used by tests).
     pub fn force_open(&mut self, kind: SegmentKind) {
         self.open = Some((kind, 20));
+        self.cal_offset = 0;
+    }
+
+    /// Open `kind`'s popover in place of the open one, keeping its anchor (the
+    /// Info menu's rows open the segment's own popover; one level only, a
+    /// segment popover never opens another).
+    pub fn open_nested(&mut self, kind: SegmentKind) {
+        let anchor = self.open.map(|(_, x)| x).unwrap_or(20);
+        self.open = Some((kind, anchor));
         self.cal_offset = 0;
     }
 
@@ -316,10 +508,17 @@ impl Tray {
         r.hits.iter().find(|h| h.rect.contains(p)).map(|h| h.intent.clone())
     }
 
-    /// Render the open popover (if any) into layers + hits.
+    /// Render the open popover (if any) into layers + hits. The Info menu shows
+    /// nothing session-specific here; the session uses [`Tray::render_with`].
     pub fn render(&self, w: i32, h: i32, state: &St) -> Rendered {
+        self.render_with(w, h, state, &InfoView::default())
+    }
+
+    /// Like [`Tray::render`], with the session facts the Info menu displays.
+    pub fn render_with(&self, w: i32, h: i32, state: &St, info: &InfoView) -> Rendered {
         let Some((kind, anchor_x)) = self.open else { return Rendered::default() };
         match kind {
+            SegmentKind::Info => self.render_info(w, h, anchor_x, state, info),
             SegmentKind::Volume => self.render_volume(w, h, anchor_x, state),
             SegmentKind::Wifi => self.render_wifi(w, h, anchor_x, state),
             SegmentKind::Bluetooth => self.render_bluetooth(w, h, anchor_x, state),
@@ -345,6 +544,64 @@ impl Tray {
                 self.render_lines(w, h, anchor_x, "Battery", SegmentKind::Battery, &lines)
             }
         }
+    }
+
+    /// The Info menu: session facts, the segments living in it (a click opens
+    /// the segment's popover; CPU and memory run their tool directly), and links.
+    fn render_info(&self, w: i32, _h: i32, anchor_x: i32, _st: &St, info: &InfoView) -> Rendered {
+        let t = crate::theme::current();
+        let box_w = 38;
+        // Rows: title, 3 facts, blank, segment rows, blank, links.
+        let links: [(&str, ControlIntent); 4] = [
+            ("Sessions", ControlIntent::OpenSessions),
+            ("Logs", ControlIntent::OpenLogs),
+            ("Shortcuts", ControlIntent::OpenHelp),
+            ("Settings", ControlIntent::OpenSettings),
+        ];
+        let seg_rows = info.rows.len() as i32;
+        let box_h = 2 + 3 + if seg_rows > 0 { 1 + seg_rows } else { 0 } + 1 + links.len() as i32;
+        let origin = self.box_origin(w, anchor_x, box_w);
+        let mut buf = CellBuffer::new(box_w, box_h);
+        fill_box(&mut buf, box_w, box_h);
+        let cap = (box_w - 4) as usize;
+        let clip = |s: String| -> String { s.chars().take(cap).collect() };
+        buf.write_str(2, 1, "Info", t.accent, t.window_bg);
+        let mut y = 2;
+        for (k, v) in [
+            ("Session", info.session.clone()),
+            ("Windows", info.windows.to_string()),
+            ("Version", info.version.to_string()),
+        ] {
+            buf.write_str(2, y, &clip(format!("{k:<8}{v}")), t.text, t.window_bg);
+            y += 1;
+        }
+        let mut hits = Vec::new();
+        if seg_rows > 0 {
+            y += 1; // blank line
+            for row in &info.rows {
+                // CPU / memory open their tool straight away; everything else
+                // opens its own popover.
+                let action = segment_app(row.kind, &self.tools, &crate::catalog::is_installed);
+                let tail = if action.is_some() { " \u{25B8}" } else { "" };
+                let line = clip(format!("{:<10}{}{}", row.label, row.text, tail));
+                buf.write_str(2, y, &line, t.text, t.window_bg);
+                let intent = match (row.kind, action) {
+                    (SegmentKind::Cpu | SegmentKind::Mem, Some(a)) => {
+                        ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args }
+                    }
+                    _ => ControlIntent::OpenSegment(row.kind.key().unwrap_or("").to_string()),
+                };
+                hits.push(PopoverHit { rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1), intent });
+                y += 1;
+            }
+        }
+        y += 1; // blank line
+        for (label, intent) in links {
+            buf.write_str(2, y, &format!("\u{25B8} {label}"), t.accent, t.window_bg);
+            hits.push(PopoverHit { rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1), intent });
+            y += 1;
+        }
+        Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 
     fn box_origin(&self, w: i32, anchor_x: i32, box_w: i32) -> Point {

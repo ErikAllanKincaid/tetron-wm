@@ -1602,10 +1602,28 @@ impl SessionCore {
         }
     }
 
+    /// The current tray layout (bar segments + Info rows) from the live snapshot.
+    fn tray_layout_now(&self) -> crate::tray::TrayLayout {
+        let st = self.tray_state.read().unwrap();
+        let placement = crate::tray::Placement::from_config(&self.cfg.tray_placement);
+        crate::tray::tray_layout(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode, &placement)
+    }
+
     /// The current tray segments, laid out from the live snapshot.
     fn tray_segments_now(&self) -> Vec<crate::tray::Segment> {
+        self.tray_layout_now().segments
+    }
+
+    /// Render the open tray popover (with the Info menu's session facts).
+    fn tray_render_now(&self) -> crate::tray::Rendered {
+        let info = crate::tray::InfoView {
+            session: crate::protocol::session_name(),
+            windows: self.window_count(),
+            version: env!("CARGO_PKG_VERSION"),
+            rows: self.tray_layout_now().in_info,
+        };
         let st = self.tray_state.read().unwrap();
-        crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
+        self.tray.render_with(self.w, self.h, &st, &info)
     }
 
     /// Apply a tray control intent: optimistically update the cached snapshot so
@@ -1659,6 +1677,39 @@ impl SessionCore {
                 // A popover "Open <tool>" row: run it in a window.
                 self.tray.close();
                 self.launch_in(title, command, args, None);
+                return;
+            }
+            I::OpenSegment(key) => {
+                if let Some(kind) = crate::tray::SegmentKind::from_key(&key) {
+                    self.tray.open_nested(kind);
+                }
+                return;
+            }
+            I::OpenSessions => {
+                self.tray.close();
+                // A live view of every session: re-run `tetron-wm ls` each second.
+                // Absolute path (like the updater) so a bare `tetron-wm` missing
+                // from the shell's PATH cannot break it.
+                let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "tetron-wm".into());
+                let exe = crate::systems::sh_quote(&exe);
+                let script = format!("while :; do clear; {exe} ls; sleep 1; done");
+                self.launch_in("sessions".into(), "sh".into(), vec!["-c".into(), script], None);
+                return;
+            }
+            I::OpenLogs => {
+                self.tray.close();
+                self.open_logs();
+                return;
+            }
+            I::OpenHelp => {
+                self.tray.close();
+                self.help_open = true;
+                self.help_scroll = 0;
+                return;
+            }
+            I::OpenSettings => {
+                self.tray.close();
+                self.open_settings();
                 return;
             }
             I::CopyText(text) => {
@@ -4038,7 +4089,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // An open tray popover captures the next click: apply its intent, or
         // dismiss when the click misses every hot-zone.
         if kind == MouseKind::Down && self.tray.open().is_some() {
-            let rendered = { let st = self.tray_state.read().unwrap(); self.tray.render(self.w, self.h, &st) };
+            let rendered = self.tray_render_now();
             if let Some(intent) = self.tray.on_popover_click(p, &rendered) {
                 self.apply_intent(intent);
                 return;
@@ -4656,10 +4707,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
 
-        let segs = {
-            let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
-        };
+        let segs = self.tray_segments_now();
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, false));
         layers.extend(self.render_dock_ctx());
 
@@ -4693,8 +4741,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
         // An open tray popover renders above everything else.
         {
-            let st = self.tray_state.read().unwrap();
-            layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            layers.extend(self.tray_render_now().layers);
             if self.clipmenu.is_open() {
                 let hist = self.clip_history();
                 let paused = hist.paused();
@@ -4866,10 +4913,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
 
         // Chrome: menubar (simple glyph) with the taskbar pills.
-        let segs = {
-            let st = self.tray_state.read().unwrap();
-            crate::tray::tray_segments_with(&st, self.w, 0, self.tray.notif_count(), self.clip_badge(), self.select_mode)
-        };
+        let segs = self.tray_segments_now();
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, true));
         layers.extend(self.render_dock_ctx());
 
@@ -4885,8 +4929,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
         layers.extend(self.launcher.render(self.w, self.h).layers);
         {
-            let st = self.tray_state.read().unwrap();
-            layers.extend(self.tray.render(self.w, self.h, &st).layers);
+            layers.extend(self.tray_render_now().layers);
             if self.clipmenu.is_open() {
                 let hist = self.clip_history();
                 let paused = hist.paused();

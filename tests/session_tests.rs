@@ -907,3 +907,48 @@ fn clicking_the_taskbar_overflow_marker_lists_the_hidden_windows() {
     assert!(!core.dock_popup_open_for_test());
     core.shutdown();
 }
+
+/// Screen position of the first cell showing `needle` on a layer of z `z`.
+fn find_on_layer(core: &mut SessionCore, z: i32, needle: &str) -> Option<Point> {
+    let frame = core.build_frame();
+    for l in frame.layers.iter().filter(|l| l.z == z) {
+        for y in 0..l.buf.height() {
+            let row: String = (0..l.buf.width()).map(|x| l.buf.get(x, y).map(|c| c.ch).unwrap_or(' ')).collect();
+            if let Some(i) = row.find(needle) {
+                return Some(Point::new(l.origin.x + row[..i].chars().count() as i32, l.origin.y + y));
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn info_menu_opens_from_the_bar_and_its_links_work() {
+    let mut core = SessionCore::new(100, 30, Config::default());
+    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").expect("the ⓘ segment is on the menubar");
+    assert_eq!(icon.y, 0);
+    core.apply(ClientMsg::MouseDown(icon));
+    // The popover shows the session facts and the links.
+    let session = tetron_wm::protocol::session_name();
+    assert!(find_on_layer(&mut core, 5000, "Session").is_some());
+    assert!(find_on_layer(&mut core, 5000, &session).is_some());
+    // "Sessions" opens a window running the live `ls` loop.
+    let link = find_on_layer(&mut core, 5000, "Sessions").expect("Sessions link");
+    core.apply(ClientMsg::MouseDown(Point::new(link.x + 2, link.y)));
+    assert_eq!(core.window_count(), 1);
+    assert_eq!(core.focused_label_for_test(), "sessions");
+    // The popover closed.
+    assert!(find_on_layer(&mut core, 5000, "Shortcuts").is_none());
+    core.shutdown();
+}
+
+#[test]
+fn info_menu_settings_link_opens_settings() {
+    let mut core = SessionCore::new(100, 30, Config::default());
+    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    core.apply(ClientMsg::MouseDown(icon));
+    let link = find_on_layer(&mut core, 5000, "Settings").expect("Settings link");
+    core.apply(ClientMsg::MouseDown(Point::new(link.x + 2, link.y)));
+    assert_eq!(core.window_count(), 1, "settings opened");
+    core.shutdown();
+}

@@ -199,6 +199,14 @@ pub enum ControlIntent {
     /// Copy text to the clipboard (the network popover's IP row). Handled by
     /// the session, not the OS backend.
     CopyText(String),
+    /// Info menu: open another tray segment's own popover in place (one level;
+    /// the key is `SegmentKind::key()`). Handled by the session's tray state.
+    OpenSegment(String),
+    /// Info menu links. Handled by the session, not the OS backend.
+    OpenSessions,
+    OpenLogs,
+    OpenHelp,
+    OpenSettings,
 }
 
 /// The OS-specific slice of [`SystemState`] produced by a [`SystemMonitor`].
