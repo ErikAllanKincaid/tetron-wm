@@ -96,31 +96,57 @@ pub fn text() -> String {
     let mut s = format!(
         "tetron-wm {} - a window manager and desktop for the terminal\n\n\
 USAGE:\n  tetron-wm [-s NAME] [COMMAND]\n\n\
+OPTIONS:\n\
+\x20 -s, --session NAME    use the named session: its own daemon, apps and sockets.\n\
+\x20                       Works with every command. Default: $TETRON_WM_SESSION, else \"default\"\n\
+\x20 -V, --version         print version\n\
+\x20 -h, --help            print this help (also works after any command)\n\n\
 COMMANDS:\n\
-\x20 (none)                start the daemon if needed and attach\n\
-\x20 attach [-d] [-s NAME] attach to a running daemon; -d evicts a client already\n\
-\x20                       attached (otherwise attach is refused while one is)\n\
-\x20 ls                    list sessions: attached / detached / recoverable / stale, windows\n\
-\x20 -s, --session NAME    use the named session (own daemon, apps, sockets);\n\
-\x20                       default: $TETRON_WM_SESSION, else \"default\"\n\
+\x20 (none)                start the session's daemon if needed, then attach\n\
+\x20 attach [-d] [-s NAME] attach to a RUNNING session (never starts one). A session has one\n\
+\x20                       client: attach is refused while another is attached; -d detaches\n\
+\x20                       that client and takes over (tmux attach -d)\n\
+\x20 ls                    list sessions and windows: attached | detached | recoverable | stale\n\
 \x20 reload                restart the frontend only; apps keep running\n\
-\x20 kill                  stop the daemon (closes all windows)\n\
+\x20 kill                  stop the session's daemon and app host (closes all windows)\n\
 \x20 kill-app <id|all>     close app <id> (see ps); all reaps only exited apps\n\
 \x20 ps                    list running apps\n\
 \x20 launch <cmd> [args]   open an app window in the running desktop\n\
 \x20 tile                  tile all windows into the grid\n\
+\x20 screenshot [file.png] save a PNG of the whole screen (needs an attached client)\n\
 \x20 theme <name>          switch theme\n\
 \x20 theme --list          list built-in and file themes\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
 \x20                       to edit (e.g. theme --dump nord, then set theme = \"nord\")\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
 \x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
-\x20 service [install|uninstall|status]  per-user apphost service\n\
-\x20 --daemon, --apphost   run the daemon / app host directly\n\
-\x20 -V, --version         print version\n\
-\x20 -h, --help            print this help (also works after any command)\n\n\
+\x20 service [install|uninstall|status]  per-user apphost service (default session only)\n\
+\x20 --daemon, --apphost   run the daemon / app host directly\n\n\
+SESSIONS:\n\
+\x20 Apps run in a background daemon, so you can detach and come back to the same windows:\n\
+\x20   detach     leader q, or launcher > Detach (apps keep running, nothing closes)\n\
+\x20   come back  run tetron-wm (or tetron-wm attach); see what is waiting with tetron-wm ls\n\
+\x20   take over  tetron-wm attach -d, from another terminal or over ssh\n\
+\x20   stop       launcher > Quit, leader Q, or tetron-wm kill (closes every app)\n\
+\x20 Name a session to keep separate workspaces side by side:\n\
+\x20   tetron-wm -s work              start or attach the session \"work\"\n\
+\x20   tetron-wm -s work launch htop  any command can target a session\n\
+\x20   tetron-wm ls                   SESSION  STATE  WINDOWS for every session\n\
+\x20 ls states: attached = a client is connected; detached = running with no client (your\n\
+\x20 work is waiting); recoverable = daemon gone but apps alive, start it to restore the\n\
+\x20 windows; stale = leftover sockets, nothing answers. A cleanly stopped session is not listed.\n\
+\x20 Windows opened inside a session inherit it (TETRON_WM_SESSION), so tetron-wm commands run\n\
+\x20 in a window reach that window's session. Names: 1-32 chars of A-Z a-z 0-9 _ -.\n\
+\x20 The launcher button shows the session name with launcher_label = \"@session\".\n\n\
+LAUNCHER SYSTEM SECTION (click the top-left button):\n\
+\x20 Systems  switch to a saved remote machine over ssh\n\
+\x20 Detach   leave; apps keep running        Reload  restart the UI, apps keep running\n\
+\x20 Quit     stop tetron-wm, closing all apps\n\
+\x20 Power    Suspend / Reboot / Power off the COMPUTER (each asks first; a refused action\n\
+\x20          opens a window saying what was tried; set [power_commands] to change how)\n\n\
 FILES:\n  config:  $XDG_CONFIG_HOME/tetron-wm/config.toml (default ~/.config/tetron-wm/)\n\
-\x20 themes:  <config dir>/themes/*.toml\n  log:     ~/tetron-wm-debug.log\n\n\
+\x20 themes:  <config dir>/themes/*.toml\n  log:     ~/tetron-wm-debug.log\n\
+\x20 sockets: $XDG_RUNTIME_DIR/tetron-wm-$USER/ (named sessions in sessions/NAME/)\n\n\
 CONFIG KEYS (config.toml):\n",
         env!("CARGO_PKG_VERSION")
     );
@@ -160,6 +186,31 @@ mod tests {
         fields.sort();
         keys.sort();
         assert_eq!(fields, keys);
+    }
+
+    /// `--help` must keep explaining the detach / attach / named-session workflow.
+    #[test]
+    fn text_documents_detach_attach_and_named_sessions() {
+        let t = text();
+        for needle in [
+            "-s, --session NAME",
+            "attach [-d] [-s NAME]",
+            "tetron-wm ls",
+            "attached | detached | recoverable | stale",
+            "launcher > Detach",
+            "TETRON_WM_SESSION",
+            "@session",
+            "SESSIONS:",
+            "Power ",
+            "[power_commands]",
+            "launcher_label",
+            "tray_placement",
+            "sessions/NAME/",
+        ] {
+            assert!(t.contains(needle), "--help is missing {needle:?}");
+        }
+        // The old wording must not come back.
+        assert!(!t.contains("launcher > Exit") && !t.contains("Shutdown"), "stale labels in --help");
     }
 
     #[test]

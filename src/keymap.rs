@@ -48,7 +48,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("auto_tile", &["T"], "toggle auto-tile"),
     ("screenshot", &["s"], "save a screenshot (PNG) of the whole screen"),
     ("detach", &["q"], "detach (apps keep running)"),
-    ("shutdown", &["Q"], "shut down the daemon"),
+    ("shutdown", &["Q"], "quit tetron-wm (closes every app)"),
 ];
 
 /// Parse one key name: a single character, or `space`, `enter`, `tab`, `esc`,
