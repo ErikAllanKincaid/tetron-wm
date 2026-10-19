@@ -845,3 +845,45 @@ fn cli_launch_with_args_via_client_msg_runs_bare() {
     assert_eq!(args, vec!["choose".to_string(), "a".to_string()]);
     core.shutdown();
 }
+
+/// Text of every row of every layer, one string per layer row (for asserting
+/// what a popup shows without caring about its exact position).
+fn all_layer_text(core: &mut SessionCore) -> Vec<String> {
+    let frame = core.build_frame();
+    let mut out = Vec::new();
+    for l in &frame.layers {
+        for y in 0..l.buf.height() {
+            out.push((0..l.buf.width()).map(|x| l.buf.get(x, y).map(|c| c.ch).unwrap_or(' ')).collect());
+        }
+    }
+    out
+}
+
+#[test]
+fn clicking_the_taskbar_overflow_marker_lists_the_hidden_windows() {
+    // 8 distinctly named windows in a 60-col bar: the taskbar cannot show all
+    // pills, so a "…+N" marker appears. Clicking it must list the hidden windows.
+    let mut core = SessionCore::new(60, 24, Config::default());
+    for i in 1..=8 {
+        core.apply(ClientMsg::Launch { name: format!("win{i}"), command: "sh".into(), args: vec!["-c".into(), "sleep 3".into()] });
+    }
+    assert!(!core.dock_popup_open_for_test());
+    // Find the marker on the menubar row.
+    let rows = all_layer_text(&mut core);
+    let bar = rows.iter().find(|r| r.contains("\u{2026}+")).expect("overflow marker is drawn").clone();
+    let col = bar.chars().position(|c| c == '\u{2026}').unwrap() as i32;
+    let after: String = bar.chars().skip(col as usize + 2).take_while(|c| c.is_ascii_digit()).collect();
+    let hidden: usize = after.parse().unwrap();
+    assert!(hidden >= 1);
+
+    core.apply(ClientMsg::MouseDown(Point::new(col, 0)));
+    assert!(core.dock_popup_open_for_test(), "clicking …+N opens the overflow list");
+    let text = all_layer_text(&mut core).join("\n");
+    // The last-launched window is hidden behind the marker, so it is listed.
+    assert!(text.contains("win8"), "overflow list shows hidden windows:\n{text}");
+
+    // A second click on the marker (or anywhere else) dismisses it.
+    core.apply(ClientMsg::MouseDown(Point::new(col, 0)));
+    assert!(!core.dock_popup_open_for_test());
+    core.shutdown();
+}

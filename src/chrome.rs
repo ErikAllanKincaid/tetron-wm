@@ -138,6 +138,17 @@ pub fn menubar_tray_left(width: i32, segments: &[crate::tray::Segment]) -> i32 {
     segments.iter().map(|s| s.rect.x).min().unwrap_or(width)
 }
 
+/// The "…+N" overflow marker, when the taskbar is too crowded to show every
+/// pill: its screen rect (row 0) and the indices (into `items`) of the pills
+/// that are hidden behind it. `None` when everything fits.
+pub fn menubar_taskbar_overflow(width: i32, items: &[DockItem], segments: &[crate::tray::Segment]) -> Option<(Rect, Vec<usize>)> {
+    let tray_left = menubar_tray_left(width, segments);
+    let (pills, marker) = taskbar_layout(TASKBAR_X, tray_left - 1, items);
+    let (rect, _) = marker?;
+    let hidden = (0..items.len()).filter(|i| !pills.iter().any(|(idx, ..)| idx == i)).collect();
+    Some((rect, hidden))
+}
+
 /// Return `(pill_index, Rect)` hit regions in *screen* coordinates (row 0).
 ///
 /// The caller uses these to translate a taskbar click into a pill index, then
@@ -274,12 +285,8 @@ fn lay_pills(start_x: i32, avail: i32, texts: &[(usize, String)]) -> Option<Vec<
 /// 3. as many badge-only pills as fit plus a trailing `" …+N "` overflow marker.
 ///
 /// Returns `(pills, overflow_marker)` where `pills` is the `lay_pills` layout and
-/// the marker (when present) is its `(local_rect, text)` — it is drawn but not
-/// clickable.
-///
-// TODO(taskbar-scroll): make the "…+N" marker a scroll affordance (wheel over
-// the taskbar, or click to cycle) so a very long window list stays reachable
-// rather than silently hidden behind the badge-only overflow.
+/// the marker (when present) is its `(local_rect, text)`. Clicking the marker
+/// opens a list of the hidden windows (see [`menubar_taskbar_overflow`]).
 fn taskbar_layout(start_x: i32, end_x: i32, items: &[DockItem]) -> (Vec<PillLayout>, Option<(Rect, String)>) {
     let avail = (end_x - start_x).max(0);
     if avail <= 0 || items.is_empty() { return (Vec::new(), None); }

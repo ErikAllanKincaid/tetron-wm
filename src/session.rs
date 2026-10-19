@@ -11,7 +11,7 @@
 //! expose on a socket.
 
 use crate::chrome::{
-    render_menubar, menubar_new_shell_region, menubar_taskbar_regions, menubar_assistant_region, menubar_brand_region, menubar_mode_region, DockItem, DockKind,
+    render_menubar, menubar_new_shell_region, menubar_taskbar_regions, menubar_taskbar_overflow, menubar_assistant_region, menubar_brand_region, menubar_mode_region, DockItem, DockKind,
 };
 use crate::powermenu::{PowerClick, PowerMenu, PowerOutcome};
 use crate::confirmclose::ConfirmClose;
@@ -1996,6 +1996,12 @@ or a remote-side error — its authorized_keys was left untouched)",
         }).collect()
     }
 
+    /// Test helper: whether the dock popup (group chooser or …+N list) is open.
+    #[doc(hidden)]
+    pub fn dock_popup_open_for_test(&self) -> bool {
+        self.dock_popup.is_some()
+    }
+
     /// Test helper: number of dock pills (after grouping).
     #[doc(hidden)]
     pub fn dock_pill_count_for_test(&self) -> usize {
@@ -2030,9 +2036,33 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
     }
 
+    /// Rows for the "…+N" overflow list: every window of every taskbar pill that
+    /// is hidden behind the marker (badge, label per window).
+    fn overflow_popup_rows(&self) -> Vec<(WindowId, char, crate::cell::Rgba, String)> {
+        let items = self.dock_items();
+        let segs = self.tray_segments_now();
+        let Some((_, hidden)) = menubar_taskbar_overflow(self.w, &items, &segs) else { return Vec::new() };
+        let mut rows = Vec::new();
+        for i in hidden {
+            let it = &items[i];
+            let wins: Vec<WindowId> = match &it.kind {
+                DockKind::Single(id) => vec![*id],
+                DockKind::Group(_, wins) => wins.clone(),
+            };
+            for id in wins {
+                let label = self.titles.iter().find(|(w, _)| *w == id).map(|(_, t)| t.clone()).unwrap_or_else(|| it.label.clone());
+                rows.push((id, it.badge_letter, it.badge_color, label));
+            }
+        }
+        rows
+    }
+
     /// Collect the rows for the open dock-group popup (badge, label per window).
     fn dock_popup_rows(&self) -> Vec<(WindowId, char, crate::cell::Rgba, String)> {
         let Some(ref key) = self.dock_popup else { return Vec::new() };
+        if key == OVERFLOW_POPUP {
+            return self.overflow_popup_rows();
+        }
         let focused = self.wm.focused();
         let badge = crate::badge::badge_for(key, &self.cfg.dock_badges);
         self.titles
@@ -2057,6 +2087,10 @@ or a remote-side error — its authorized_keys was left untouched)",
         // Find the pill's x position so the popup anchors to it
         let items = self.dock_items();
         let segs = self.tray_segments_now();
+        if key == OVERFLOW_POPUP {
+            let x = menubar_taskbar_overflow(self.w, &items, &segs).map(|(r, _)| r.x).unwrap_or(0);
+            return crate::chrome::render_dock_popup(self.w, self.h, x, 2, rows, self.wm.focused());
+        }
         let regions = menubar_taskbar_regions(self.w, &items, &segs);
         let pill_x = items
             .iter()
@@ -4074,6 +4108,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
 
             let items = self.dock_items();
+            // The "…+N" marker opens the list of hidden windows.
+            if let Some((r, _)) = menubar_taskbar_overflow(self.w, &items, &self.tray_segments_now()) {
+                if r.contains(p) {
+                    self.dock_popup = Some(OVERFLOW_POPUP.to_string());
+                    return;
+                }
+            }
             for (idx, r) in self.dock_regions() {
                 if r.contains(p) {
                     match &items[idx].kind {
@@ -4449,7 +4490,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.app_keys.remove(&id);
         // Close popup if its group no longer exists after this window closes.
         if let Some(ref key) = self.dock_popup.clone() {
-            let still_has_group = self.app_keys.values().any(|k| k == key);
+            let still_has_group = key == OVERFLOW_POPUP || self.app_keys.values().any(|k| k == key);
             if !still_has_group {
                 self.dock_popup = None;
             }
@@ -5094,6 +5135,10 @@ fn sanitize_images(images: &mut Vec<crate::protocol::ImagePlacement>, w: i32, h:
 /// One-shot UI reopen hint codes, persisted across a frontend reload.
 #[allow(non_upper_case_globals)]
 const Ui_SETTINGS_UPDATES: u8 = 1;
+
+/// `dock_popup` key meaning "the taskbar's …+N overflow list" rather than a
+/// window group. Cannot collide with an app key (starts with a control char).
+const OVERFLOW_POPUP: &str = "\u{1}overflow";
 
 /// Path of the reopen-hint file (per-user socket dir, so it's reload-scoped).
 fn reopen_hint_path() -> std::path::PathBuf {

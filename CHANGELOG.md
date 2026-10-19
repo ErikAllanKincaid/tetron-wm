@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Fixed
+- The taskbar `…+N` marker (shown when too many windows to list) is now clickable: it opens a dropdown of the hidden windows, and picking one focuses it. Before, the hidden windows could not be reached from the taskbar.
 - On a narrow terminal the status tray no longer draws over the launcher, view-mode, assistant, and "+" buttons. Tray items are now shed (lowest priority first) as soon as their first cell would reach the left buttons, instead of the tray overwriting them.
 
 ### Added
