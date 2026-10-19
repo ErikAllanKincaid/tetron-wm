@@ -3786,6 +3786,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             || self.launch_warn.is_open()
             || self.launcher.is_open()
             || self.tray.open().is_some()
+            || self.dock_popup.is_some()
     }
 
     /// Mouse text-selection for terminal (app) windows: select by left-drag over

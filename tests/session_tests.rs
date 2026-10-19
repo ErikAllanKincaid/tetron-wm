@@ -882,7 +882,27 @@ fn clicking_the_taskbar_overflow_marker_lists_the_hidden_windows() {
     // The last-launched window is hidden behind the marker, so it is listed.
     assert!(text.contains("win8"), "overflow list shows hidden windows:\n{text}");
 
-    // A second click on the marker (or anywhere else) dismisses it.
+    // Picking a row focuses that window and closes the list.
+    let frame = core.build_frame();
+    let mut target = None;
+    for l in &frame.layers {
+        for y in 0..l.buf.height() {
+            let row: String = (0..l.buf.width()).map(|x| l.buf.get(x, y).map(|c| c.ch).unwrap_or(' ')).collect();
+            if l.z == 5200 {
+                if let Some(i) = row.find("win7") {
+                    target = Some(Point::new(l.origin.x + row[..i].chars().count() as i32, l.origin.y + y));
+                }
+            }
+        }
+    }
+    let target = target.expect("a row for win7 is drawn");
+    core.apply(ClientMsg::MouseDown(target));
+    assert_eq!(core.focused_label_for_test(), "win7", "clicking the row focuses the window");
+    assert!(!core.dock_popup_open_for_test());
+
+    // Re-open, then a second click on the marker dismisses it.
+    core.apply(ClientMsg::MouseDown(Point::new(col, 0)));
+    assert!(core.dock_popup_open_for_test());
     core.apply(ClientMsg::MouseDown(Point::new(col, 0)));
     assert!(!core.dock_popup_open_for_test());
     core.shutdown();
