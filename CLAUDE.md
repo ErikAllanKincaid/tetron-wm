@@ -22,6 +22,21 @@ Clippy is currently warning-clean — keep it that way.
 in the same commit as user-visible changes (roll `[Unreleased]` into a new
 `[x.y.z]` heading).
 
+**Pre-bump checklist — do ALL of this BEFORE the version bump commit.** A bump
+pushed to `main` publishes immediately and a published version can not be
+amended (0.14.13 shipped without its `--help` text and needed a follow-up
+release). So, for every user-visible change in the release:
+1. **`--help` is updated** (`src/cli_help.rs`: the `text()` body, `CONFIG_KEYS`,
+   `ENV_VARS`; key descriptions in `src/keymap.rs`). New commands, options,
+   config keys, env vars, renamed menu items, and workflows (detach, sessions)
+   must all appear. `cli_help` tests check config keys against `struct Config`
+   and keep the session/detach topics in the text.
+2. `README.md` (features, Controls, Configuration, Roadmap) matches.
+3. `CHANGELOG.md` has an entry for each change under `[Unreleased]`.
+4. `cargo test` and `cargo clippy --all-targets` are clean.
+5. Only then: bump `Cargo.toml` + `Cargo.lock`, roll the CHANGELOG, `CLAUDE.md`'s
+   "currently x.y.z", and merge/push.
+
 **Releases are automated — cut one by merging a version bump.** Bump
 `Cargo.toml` + `Cargo.lock`, roll the CHANGELOG, open a PR, merge it.
 `.github/workflows/release.yml` triggers on push to `main`; when the version is
