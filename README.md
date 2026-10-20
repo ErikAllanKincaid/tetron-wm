@@ -20,7 +20,7 @@ Your apps run in the background, so you can close the terminal, drop an ssh conn
 Prebuilt binary for Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). No Rust needed.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
 ```
 
 It installs to `/usr/local/bin` and uses `sudo` for that. To install into your home instead:
