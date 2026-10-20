@@ -194,6 +194,40 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
     buf
 }
 
+/// Apply one SGR parameter string, updating `fg`/`bg` (truecolor `38;2;r;g;b` /
+/// `48;2;r;g;b`, plus reset/default). Non-color attributes are ignored.
+fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
+    let toks: Vec<&str> = params.split(';').collect();
+    let num = |t: Option<&&str>| t.and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
+    let mut i = 0;
+    while i < toks.len() {
+        match toks[i] {
+            "" | "0" => {
+                *fg = def;
+                *bg = def;
+                i += 1;
+            }
+            "39" => {
+                *fg = def;
+                i += 1;
+            }
+            "49" => {
+                *bg = def;
+                i += 1;
+            }
+            "38" if toks.get(i + 1) == Some(&"2") => {
+                *fg = Rgba::rgb(num(toks.get(i + 2)), num(toks.get(i + 3)), num(toks.get(i + 4)));
+                i += 5;
+            }
+            "48" if toks.get(i + 1) == Some(&"2") => {
+                *bg = Rgba::rgb(num(toks.get(i + 2)), num(toks.get(i + 3)), num(toks.get(i + 4)));
+                i += 5;
+            }
+            _ => i += 1,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,40 +259,6 @@ mod tests {
             let got = resolve_path("pic.png");
             assert!(got.starts_with(&cfg), "{got:?} should be under {cfg:?}");
             assert!(got.ends_with("pic.png"));
-        }
-    }
-}
-
-/// Apply one SGR parameter string, updating `fg`/`bg` (truecolor `38;2;r;g;b` /
-/// `48;2;r;g;b`, plus reset/default). Non-color attributes are ignored.
-fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
-    let toks: Vec<&str> = params.split(';').collect();
-    let num = |t: Option<&&str>| t.and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
-    let mut i = 0;
-    while i < toks.len() {
-        match toks[i] {
-            "" | "0" => {
-                *fg = def;
-                *bg = def;
-                i += 1;
-            }
-            "39" => {
-                *fg = def;
-                i += 1;
-            }
-            "49" => {
-                *bg = def;
-                i += 1;
-            }
-            "38" if toks.get(i + 1) == Some(&"2") => {
-                *fg = Rgba::rgb(num(toks.get(i + 2)), num(toks.get(i + 3)), num(toks.get(i + 4)));
-                i += 5;
-            }
-            "48" if toks.get(i + 1) == Some(&"2") => {
-                *bg = Rgba::rgb(num(toks.get(i + 2)), num(toks.get(i + 3)), num(toks.get(i + 4)));
-                i += 5;
-            }
-            _ => i += 1,
         }
     }
 }

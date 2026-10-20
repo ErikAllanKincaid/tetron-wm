@@ -7,11 +7,11 @@
 //! key picks which glyph set, set process-globally at daemon startup (like the
 //! theme):
 //!   - `ascii`  (default): BMP geometric/symbol shapes, present in essentially
-//!              every console/monospace font and monochrome so they take the
-//!              theme color. Renders everywhere.
+//!     every console/monospace font and monochrome so they take the
+//!     theme color. Renders everywhere.
 //!   - `nerd`:  Nerd Font file-type glyphs -- the nicest console result, but
-//!              Private-Use-Area, so tofu without a Nerd Font installed.
-//!              tetron-os ships one and sets this.
+//!     Private-Use-Area, so tofu without a Nerd Font installed.
+//!     tetron-os ships one and sets this.
 //!   - `emoji`: color emoji -- nice on a GUI terminal, tofu on a console.
 
 use crate::openwith::Role;
