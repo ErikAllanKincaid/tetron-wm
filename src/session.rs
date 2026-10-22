@@ -434,6 +434,11 @@ pub enum ClientMsg {
     WindowPickerNumber(u8),
     /// Window picker: close without changing focus (Esc).
     WindowPickerEsc,
+    /// Open (or close) the menubar volume popover from the keyboard (leader =).
+    VolumeOpen,
+    /// A key for the open volume popover (Left / Right level, Up / Down rows,
+    /// Enter, m / Space mute, Esc).
+    TrayKey(crate::tray::TrayKey),
     /// Start the keyboard move mode on the focused window (leader w).
     MoveModeStart,
     /// Move mode: move (or, in resize mode, grow/shrink) by `dx`, `dy` cells.
@@ -1797,6 +1802,19 @@ impl SessionCore {
                 self.open_settings();
                 return;
             }
+            I::OpenStoreSearch(query) => {
+                self.tray.close();
+                self.open_store();
+                if let Some(store) = self.store_win.and_then(|id| match self.contents.get_mut(&id) {
+                    Some(WinContent::Store(st)) => Some(st),
+                    _ => None,
+                }) {
+                    for c in query.chars() {
+                        store.type_char(c);
+                    }
+                }
+                return;
+            }
             I::CopyText(text) => {
                 self.tray.close();
                 self.set_clipboard(&text);
@@ -2166,6 +2184,30 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Whether the window picker is showing (the client routes its keys to it).
     pub fn window_picker_open(&self) -> bool { self.win_picker.is_open() }
+
+    /// Whether the volume popover is open (the client routes its keys to it,
+    /// whether a click or leader `=` opened it).
+    pub fn volume_popover_open(&self) -> bool {
+        self.tray.open() == Some(crate::tray::SegmentKind::Volume)
+    }
+
+    /// Leader `=`: toggle the volume popover under its menubar segment, closing
+    /// any other popover or menu first so only one thing has the keys.
+    fn volume_open(&mut self) {
+        if self.volume_popover_open() {
+            self.tray.close();
+            return;
+        }
+        self.launcher.close();
+        self.power_menu.close();
+        let x = self
+            .tray_segments_now()
+            .iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Volume)
+            .map(|s| s.rect.x)
+            .unwrap_or(self.w);
+        self.tray.open_at(crate::tray::SegmentKind::Volume, x);
+    }
 
     /// Whether the keyboard move mode is active on a window that still exists.
     pub fn move_mode_open(&self) -> bool {
@@ -3037,6 +3079,14 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::DesktopBackspace => self.desktop.overlay_backspace(),
             ClientMsg::DesktopCommit => self.desktop_commit(),
             ClientMsg::DesktopCancel => self.desktop.cancel_overlay(),
+            ClientMsg::VolumeOpen => self.volume_open(),
+            ClientMsg::TrayKey(key) => {
+                if self.tray.open() == Some(crate::tray::SegmentKind::Volume) {
+                    if let Some(intent) = self.tray.volume_key(key) {
+                        self.apply_intent(intent);
+                    }
+                }
+            }
             ClientMsg::MoveModeStart => self.move_mode_start(),
             ClientMsg::MoveModeStep { dx, dy } => self.move_mode_step(dx, dy),
             ClientMsg::MoveModeToggleResize => {

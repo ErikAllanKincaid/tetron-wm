@@ -139,6 +139,9 @@ pub struct Flags {
     /// The keyboard move / resize mode (leader w) is active; the client routes
     /// arrows, r, Enter and Esc to it and swallows other keys.
     pub move_mode: bool,
+    /// The menubar volume popover is open (by click or leader =); the client
+    /// routes arrows, Enter, m / Space and Esc to it.
+    pub tray_volume: bool,
     /// The clipboard history popover is open; the client routes keys to it.
     pub clipmenu_open: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.

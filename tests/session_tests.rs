@@ -1306,3 +1306,16 @@ fn move_mode_enter_keeps_and_restores_maximized_on_esc() {
     assert_eq!(core.focused_window_rect_for_test().unwrap().x, start.x + 3, "restore still works");
     core.shutdown();
 }
+
+#[test]
+fn leader_volume_toggles_the_volume_popover() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    core.apply(ClientMsg::VolumeOpen);
+    assert!(core.volume_popover_open());
+    core.apply(ClientMsg::TrayKey(tetron_wm::tray::TrayKey::Esc));
+    assert!(!core.volume_popover_open());
+    core.apply(ClientMsg::VolumeOpen);
+    core.apply(ClientMsg::VolumeOpen);
+    assert!(!core.volume_popover_open(), "leader = again closes it");
+    core.shutdown();
+}

@@ -209,6 +209,9 @@ pub enum ControlIntent {
     OpenSettings,
     /// Info menu: start the screensaver.
     StartScreensaver,
+    /// Open the Store with this search typed in (the volume popover's "Get
+    /// wiremix" row when no mixer is installed). Handled by the session.
+    OpenStoreSearch(String),
 }
 
 /// The OS-specific slice of [`SystemState`] produced by a [`SystemMonitor`].

@@ -169,6 +169,7 @@ focus_next  = "tab"
 focus_prev  = "backtab"
 windows     = "f"
 move        = "w"
+volume      = "="
 close       = "esc"
 snap_left   = ["[", "left"]
 snap_right  = ["]", "right"]
@@ -203,15 +204,17 @@ tetron    = "auto"
 bell      = "auto"
 
 ## ── Tray "Open <tool>" rows ───────────────────────────────────────────────
-## Per item (cpu, mem, battery, bluetooth, network): a command line or an ordered
-## list; the first whose program is installed wins. A "hold:" prefix runs it via
-## sh -c and keeps the window open until Enter. An empty list removes the row.
+## Per item (cpu, mem, battery, bluetooth, network, volume): a command line or
+## an ordered list; the first whose program is installed wins. A "hold:" prefix
+## runs it via sh -c and keeps the window open until Enter. An empty list
+## removes the row.
 ## Defaults are built in; uncomment to override, e.g. prefer btop and hide memory:
 [tray_tools]
 #cpu = ["btop", "htop", "top"]
 #battery = ["jolt", "hold:upower -i $(upower -e | grep -m1 -i bat)"]
 #bluetooth = "bluetuith"
 #network = "nmtui"
+#volume = ["pulsemixer", "alsamixer"]
 #mem = []
 
 ## ── Power commands ────────────────────────────────────────────────────────

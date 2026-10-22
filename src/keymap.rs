@@ -36,6 +36,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("focus_prev", &["backtab"], "focus the previous window (Shift+Tab)"),
     ("windows", &["f"], "window picker: numbered list of all windows"),
     ("move", &["w"], "move the focused window with the arrows (r resizes, Enter done, Esc undo)"),
+    ("volume", &["="], "volume popover: Left/Right level, m mute, Down + Enter opens the mixer"),
     ("close", &["esc"], "close focused window (asks first for app windows)"),
     ("snap_left", &["[", "left"], "snap left half"),
     ("snap_right", &["]", "right"], "snap right half"),
