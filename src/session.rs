@@ -297,6 +297,8 @@ pub enum ClientMsg {
     /// Settings: previous / next section.
     SettingsPrevSection,
     SettingsNextSection,
+    /// Settings: move keyboard focus between the section list and the rows (Tab).
+    SettingsTogglePane,
     /// Settings: decrease / increase / toggle the selected setting.
     SettingsLeft,
     SettingsRight,
@@ -434,6 +436,11 @@ pub enum ClientMsg {
     WindowPickerNumber(u8),
     /// Window picker: close without changing focus (Esc).
     WindowPickerEsc,
+    /// Open (or close) the menubar volume popover from the keyboard (leader =).
+    VolumeOpen,
+    /// A key for the open volume popover (Left / Right level, Up / Down rows,
+    /// Enter, m / Space mute, Esc).
+    TrayKey(crate::tray::TrayKey),
     /// Start the keyboard move mode on the focused window (leader w).
     MoveModeStart,
     /// Move mode: move (or, in resize mode, grow/shrink) by `dx`, `dy` cells.
@@ -1267,6 +1274,22 @@ impl SessionCore {
             Some(crate::settings::SettingsAction::RevertColors) => {
                 self.push_terminal_colors();
             }
+            // Sound section: the same intents the tray popover uses, so the
+            // menubar and Settings can never disagree.
+            Some(crate::settings::SettingsAction::VolumeDown) => self.apply_intent(crate::system::ControlIntent::VolumeDown),
+            Some(crate::settings::SettingsAction::VolumeUp) => self.apply_intent(crate::system::ControlIntent::VolumeUp),
+            Some(crate::settings::SettingsAction::VolumeSet(l)) => self.apply_intent(crate::system::ControlIntent::VolumeSet(l)),
+            Some(crate::settings::SettingsAction::ToggleMute) => self.apply_intent(crate::system::ControlIntent::ToggleMute),
+            Some(crate::settings::SettingsAction::SetOutput(id)) => {
+                self.apply_intent(crate::system::ControlIntent::SetOutput(id));
+                self.refresh_sound_outputs();
+            }
+            Some(crate::settings::SettingsAction::OpenMixer) => {
+                if let Some((_, intent)) = crate::tray::volume_mixer_now(&self.cfg.tray_tools) {
+                    self.apply_intent(intent);
+                }
+            }
+            Some(crate::settings::SettingsAction::RefreshSound) => self.refresh_sound_outputs(),
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
             }
@@ -1284,6 +1307,15 @@ impl SessionCore {
                 self.launch("update tetron-wm".into(), "sh".into(), vec!["-lc".into(), cmd]);
             }
             None => {}
+        }
+    }
+
+    /// Re-read the audio outputs into the focused Settings panel (Sound section).
+    fn refresh_sound_outputs(&mut self) {
+        let outs = crate::system::audio_outputs();
+        crate::dbg_log(&format!("sound: {} outputs, default {:?}", outs.len(), outs.iter().find(|o| o.default).map(|o| &o.name)));
+        if let Some(s) = self.focused_settings_mut() {
+            s.set_outputs(outs);
         }
     }
 
@@ -1797,6 +1829,19 @@ impl SessionCore {
                 self.open_settings();
                 return;
             }
+            I::OpenStoreSearch(query) => {
+                self.tray.close();
+                self.open_store();
+                if let Some(store) = self.store_win.and_then(|id| match self.contents.get_mut(&id) {
+                    Some(WinContent::Store(st)) => Some(st),
+                    _ => None,
+                }) {
+                    for c in query.chars() {
+                        store.type_char(c);
+                    }
+                }
+                return;
+            }
             I::CopyText(text) => {
                 self.tray.close();
                 self.set_clipboard(&text);
@@ -2166,6 +2211,30 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Whether the window picker is showing (the client routes its keys to it).
     pub fn window_picker_open(&self) -> bool { self.win_picker.is_open() }
+
+    /// Whether the volume popover is open (the client routes its keys to it,
+    /// whether a click or leader `=` opened it).
+    pub fn volume_popover_open(&self) -> bool {
+        self.tray.open() == Some(crate::tray::SegmentKind::Volume)
+    }
+
+    /// Leader `=`: toggle the volume popover under its menubar segment, closing
+    /// any other popover or menu first so only one thing has the keys.
+    fn volume_open(&mut self) {
+        if self.volume_popover_open() {
+            self.tray.close();
+            return;
+        }
+        self.launcher.close();
+        self.power_menu.close();
+        let x = self
+            .tray_segments_now()
+            .iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Volume)
+            .map(|s| s.rect.x)
+            .unwrap_or(self.w);
+        self.tray.open_at(crate::tray::SegmentKind::Volume, x);
+    }
 
     /// Whether the keyboard move mode is active on a window that still exists.
     pub fn move_mode_open(&self) -> bool {
@@ -2730,12 +2799,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::OpenSettings => self.open_settings(),
-            ClientMsg::SettingsUp => { if let Some(s) = self.focused_settings_mut() { s.move_up(); } }
-            ClientMsg::SettingsDown => { if let Some(s) = self.focused_settings_mut() { s.move_down(); } }
-            ClientMsg::SettingsPrevSection => { if let Some(s) = self.focused_settings_mut() { s.prev_section(); } }
-            ClientMsg::SettingsNextSection => { if let Some(s) = self.focused_settings_mut() { s.next_section(); } }
-            ClientMsg::SettingsLeft => { if let Some(s) = self.focused_settings_mut() { s.left(); } self.sync_settings(); }
-            ClientMsg::SettingsRight => { if let Some(s) = self.focused_settings_mut() { s.right(); } self.sync_settings(); }
+            // Up / Down in the section list change section, which can arm the
+            // Sound refresh, so both drain.
+            ClientMsg::SettingsUp => { if let Some(s) = self.focused_settings_mut() { s.move_up(); } self.drain_settings_action(); }
+            ClientMsg::SettingsDown => { if let Some(s) = self.focused_settings_mut() { s.move_down(); } self.drain_settings_action(); }
+            ClientMsg::SettingsPrevSection => { if let Some(s) = self.focused_settings_mut() { s.prev_section(); } self.drain_settings_action(); }
+            ClientMsg::SettingsNextSection => { if let Some(s) = self.focused_settings_mut() { s.next_section(); } self.drain_settings_action(); }
+            ClientMsg::SettingsTogglePane => { if let Some(s) = self.focused_settings_mut() { s.toggle_pane(); } }
+            ClientMsg::SettingsLeft => { if let Some(s) = self.focused_settings_mut() { s.left(); } self.drain_settings_action(); self.sync_settings(); }
+            ClientMsg::SettingsRight => { if let Some(s) = self.focused_settings_mut() { s.right(); } self.drain_settings_action(); self.sync_settings(); }
             ClientMsg::SettingsToggle => {
                 if let Some(s) = self.focused_settings_mut() {
                     s.toggle();
@@ -3037,6 +3109,14 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::DesktopBackspace => self.desktop.overlay_backspace(),
             ClientMsg::DesktopCommit => self.desktop_commit(),
             ClientMsg::DesktopCancel => self.desktop.cancel_overlay(),
+            ClientMsg::VolumeOpen => self.volume_open(),
+            ClientMsg::TrayKey(key) => {
+                if self.tray.open() == Some(crate::tray::SegmentKind::Volume) {
+                    if let Some(intent) = self.tray.volume_key(key) {
+                        self.apply_intent(intent);
+                    }
+                }
+            }
             ClientMsg::MoveModeStart => self.move_mode_start(),
             ClientMsg::MoveModeStep { dx, dy } => self.move_mode_step(dx, dy),
             ClientMsg::MoveModeToggleResize => {
@@ -3135,11 +3215,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::ScrollAt { p, lines } => {
-                // Wheel over the Volume tray segment adjusts the system volume;
-                // otherwise it scrolls the window under the pointer.
-                match self.volume_scroll_intent(p, lines) {
-                    Some(intent) => self.apply_intent(intent),
-                    None => self.scroll_app_at(p, lines),
+                // Wheel over the Volume tray segment, or over the volume row of
+                // Settings → Sound, adjusts the system volume; otherwise it
+                // scrolls the window under the pointer.
+                if let Some(intent) = self.volume_scroll_intent(p, lines) {
+                    self.apply_intent(intent);
+                } else if self.settings_wheel(p, lines) {
+                    self.drain_settings_action();
+                } else {
+                    self.scroll_app_at(p, lines);
                 }
             }
             ClientMsg::PowerFormChar(c) => self.power_menu.form_char(c),
@@ -3275,9 +3359,30 @@ or a remote-side error — its authorized_keys was left untouched)",
         let mut panel = Settings::new(self.cfg.clone());
         panel.set_apphost_outdated(self.apphost_outdated);
         panel.set_colors_live(self.apphost.proto_version() >= 4);
+        panel.set_sound_source(self.tray_state.clone());
         self.contents.insert(id, WinContent::Settings(Box::new(panel)));
         self.titles.push((id, "Settings".into()));
         self.settings_win = Some(id);
+    }
+
+    /// Wheel at screen point `p`: if the topmost window there is the Settings
+    /// panel and the point is its Sound volume row, it arms a volume action and
+    /// takes focus so the drain finds it.
+    fn settings_wheel(&mut self, p: Point, lines: i32) -> bool {
+        let Some(id) = self.wm.topmost_at(p) else { return false };
+        let Some(cr) = self.wm.get(id).map(|w| w.content_rect()) else { return false };
+        if !cr.contains(p) {
+            return false;
+        }
+        let local = Point::new(p.x - cr.x, p.y - cr.y);
+        let used = match self.contents.get_mut(&id) {
+            Some(WinContent::Settings(s)) => s.wheel_at(local, lines),
+            _ => false,
+        };
+        if used {
+            self.wm.raise(id);
+        }
+        used
     }
 
     /// `true` when the focused window hosts the settings panel.

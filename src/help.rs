@@ -23,6 +23,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("Tab/S-Tab", "next / previous window (Tab repeats)"),
                 ("f", "window picker (1-9 or Enter)"),
                 ("w", "move window: arrows, r resize"),
+                ("=", "volume: Left/Right, m mute"),
                 ("m / n", "maximize / minimize"),
                 ("Esc", "close window (asks first for apps)"),
                 ("[ / ]", "snap left / right half"),
@@ -44,10 +45,11 @@ pub fn help_sections() -> &'static [HelpSection] {
             rows: &[
                 ("Space", "spotlight search"),
                 ("l / Enter", "app menu (launcher)"),
-                ("S / ,", "store / settings"),
+                ("S", "app store"),
+                (",", "settings"),
                 ("A", "activity monitor"),
             ],
-            notes: &[],
+            notes: &["In Settings: Tab switches between sections and rows."],
         },
         HelpSection {
             title: "Clipboard",

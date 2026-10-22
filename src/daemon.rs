@@ -447,6 +447,7 @@ fn serve_client_inner(
             no_window: core.focused().is_none(),
             window_picker: core.window_picker_open(),
             move_mode: core.move_mode_open(),
+            tray_volume: core.volume_popover_open(),
             clipmenu_open: core.clipmenu_open(),
             filemanager_focused: core.focused_is_filemanager(),
             filemanager_editing: core.filemanager_editing(),

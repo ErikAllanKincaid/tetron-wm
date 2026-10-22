@@ -32,7 +32,8 @@ impl ToolSpec {
     }
 }
 
-/// `[tray_tools]`: item name (`cpu`, `mem`, `battery`, `network`) → candidates.
+/// `[tray_tools]`: item name (`cpu`, `mem`, `battery`, `bluetooth`, `network`,
+/// `volume`) → candidates.
 pub type TrayTools = BTreeMap<String, ToolSpec>;
 
 /// A window the popover offers to open.
@@ -56,6 +57,10 @@ pub fn defaults(item: &str) -> Vec<&'static str> {
             "hold:pmset -g batt",
         ],
         "bluetooth" => vec!["bluetuith", "bluetoothctl", "hold:blueutil --paired"],
+        // PipeWire native first, then the PulseAudio API ones (pipewire-pulse
+        // serves them too), then ALSA's mixer, which ships almost everywhere
+        // but sets the card's level, not the sink the menubar shows.
+        "volume" => vec!["wiremix", "pulsemixer", "ncpamixer", "alsamixer"],
         "network" => vec![
             "wlctl",
             "nmtui",
@@ -76,6 +81,7 @@ fn title(item: &str) -> &'static str {
         "battery" => "Battery",
         "bluetooth" => "Bluetooth",
         "network" => "Network",
+        "volume" => "Volume",
         _ => "Tool",
     }
 }

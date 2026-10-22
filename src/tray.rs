@@ -157,6 +157,7 @@ fn tool_item(kind: SegmentKind) -> Option<&'static str> {
         SegmentKind::Battery => Some("battery"),
         SegmentKind::Wifi => Some("network"),
         SegmentKind::Bluetooth => Some("bluetooth"),
+        SegmentKind::Volume => Some("volume"),
         _ => None,
     }
 }
@@ -418,6 +419,46 @@ pub struct Tray {
     notifs: Vec<Notif>,
     /// `[tray_tools]` overrides for the popovers' Open rows.
     tools: crate::traytools::TrayTools,
+    /// Volume popover keyboard row: 0 the level bar, 1 the mixer link.
+    vol_sel: usize,
+}
+
+/// The mixer row shared by the volume popover and Settings → Sound: the first
+/// installed program of `[tray_tools] volume` (wiremix gets `-s extracompat`
+/// when `ascii`, the bare-console glyph tier), else on Linux a Store search
+/// for wiremix. An empty `volume` list in the config removes the row.
+pub fn volume_mixer(
+    tools: &crate::traytools::TrayTools,
+    installed: &dyn Fn(&str) -> bool,
+    ascii: bool,
+) -> Option<(String, ControlIntent)> {
+    if let Some(mut a) = segment_app(SegmentKind::Volume, tools, installed) {
+        if ascii && a.command == "wiremix" && a.args.is_empty() {
+            a.args = vec!["-s".into(), "extracompat".into()];
+        }
+        return Some((a.label, ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args }));
+    }
+    let removed = tools.get("volume").is_some_and(|s| s.lines().is_empty());
+    (cfg!(target_os = "linux") && !removed)
+        .then(|| ("Get wiremix (Store)".to_string(), ControlIntent::OpenStoreSearch("wiremix".into())))
+}
+
+/// The volume mixer row for the live config and glyph tier.
+pub fn volume_mixer_now(tools: &crate::traytools::TrayTools) -> Option<(String, ControlIntent)> {
+    volume_mixer(tools, &crate::catalog::is_installed, crate::iconset::style() == crate::iconset::IconStyle::Ascii)
+}
+
+/// A key routed to the open volume popover (the client sends these while the
+/// `tray_volume` flag is set, however the popover was opened).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TrayKey {
+    Left,
+    Right,
+    Up,
+    Down,
+    Enter,
+    Mute,
+    Esc,
 }
 
 impl Tray {
@@ -437,8 +478,58 @@ impl Tray {
 
     /// Open `kind`'s popover at a default anchor (used by tests).
     pub fn force_open(&mut self, kind: SegmentKind) {
-        self.open = Some((kind, 20));
+        self.open_at(kind, 20);
+    }
+
+    /// Open `kind`'s popover anchored under column `anchor_x` (the keyboard
+    /// path: leader `=` opens Volume under its segment).
+    pub fn open_at(&mut self, kind: SegmentKind, anchor_x: i32) {
+        self.open = Some((kind, anchor_x));
         self.cal_offset = 0;
+        self.vol_sel = 0;
+    }
+
+    /// The volume popover's link row: the first installed mixer from
+    /// `[tray_tools] volume`, or on Linux a Store search for wiremix when none
+    /// is installed (an empty `volume` list in the config removes the row).
+    /// On the ascii icon tier (bare console) wiremix gets its ASCII char set.
+    pub fn volume_link(&self) -> Option<(String, ControlIntent)> {
+        volume_mixer_now(&self.tools)
+    }
+
+    /// The highlighted volume popover row (0 level, 1 link), for tests.
+    pub fn volume_row(&self) -> usize {
+        self.vol_sel
+    }
+
+    /// A key while the volume popover is open. Left / Right step the level on
+    /// any row, Up / Down move between the level and the link row, Enter opens
+    /// the link (or closes on the level row), `m` / Space mute, Esc closes.
+    /// Returns the intent for the session to apply.
+    pub fn volume_key(&mut self, key: TrayKey) -> Option<ControlIntent> {
+        let link = self.volume_link();
+        match key {
+            TrayKey::Left => Some(ControlIntent::VolumeDown),
+            TrayKey::Right => Some(ControlIntent::VolumeUp),
+            TrayKey::Mute => Some(ControlIntent::ToggleMute),
+            TrayKey::Up => {
+                self.vol_sel = 0;
+                None
+            }
+            TrayKey::Down => {
+                self.vol_sel = if link.is_some() { 1 } else { 0 };
+                None
+            }
+            TrayKey::Enter => {
+                let pick = if self.vol_sel == 1 { link.map(|(_, i)| i) } else { None };
+                self.close();
+                pick
+            }
+            TrayKey::Esc => {
+                self.close();
+                None
+            }
+        }
     }
 
     /// Open `kind`'s popover in place of the open one, keeping its anchor (the
@@ -494,6 +585,7 @@ impl Tray {
                 Some((k, _)) if k == seg.kind => None,
                 _ => {
                     self.cal_offset = 0; // calendar always opens on the current month
+                    self.vol_sel = 0;
                     Some((seg.kind, seg.rect.x))
                 }
             };
@@ -612,30 +704,44 @@ impl Tray {
     }
 
     fn render_volume(&self, w: i32, _h: i32, anchor_x: i32, st: &St) -> Rendered {
-        let box_w = 24;
-        let box_h = 4;
+        let link = self.volume_link();
+        let box_w = 26;
+        // Rows: title, level bar, [link], key hint, plus the two border rows.
+        let box_h = 5 + link.is_some() as i32;
         let origin = self.box_origin(w, anchor_x, box_w);
         let mut buf = CellBuffer::new(box_w, box_h);
         fill_box(&mut buf, box_w, box_h);
         let t = crate::theme::current();
         let v = &st.volume;
         buf.write_str(2, 1, &format!("Volume {}{}", v.level, if v.muted { " (muted)" } else { "" }), t.text, t.window_bg);
+        // The keyboard row highlight: the whole inner width of the selected row.
+        let sel_y = 2 + self.vol_sel as i32;
+        let bg_at = |y: i32| if y == sel_y { t.active_bg } else { t.window_bg };
+        for x in 1..box_w - 1 {
+            buf.set(x, sel_y, crate::cell::Cell { ch: ' ', fg: t.text, bg: t.active_bg, attrs: Default::default() });
+        }
         // Row 2: ◂  bar  ▸   speaker
         let filled = (v.level as i32 * 6 / 100).clamp(0, 6) as usize;
         let bar: String = (0..6).map(|i| if i < filled { crate::glyphs::ch(crate::glyphs::Glyph::BarOn) } else { crate::glyphs::ch(crate::glyphs::Glyph::BarOff) }).collect();
-        buf.write_str(2, 2, "◂", t.accent, t.window_bg);
-        buf.write_str(5, 2, &bar, t.text, t.window_bg);
-        buf.write_str(13, 2, "▸", t.accent, t.window_bg);
-        buf.write_str(17, 2, &crate::iconset::status(volume_status(v)).to_string(), t.text, t.window_bg);
+        buf.write_str(2, 2, "◂", t.accent, bg_at(2));
+        buf.write_str(5, 2, &bar, t.text, bg_at(2));
+        buf.write_str(13, 2, "▸", t.accent, bg_at(2));
+        buf.write_str(17, 2, &crate::iconset::status(volume_status(v)).to_string(), t.text, bg_at(2));
         let hit = |lx: i32, lw: i32, intent: ControlIntent| PopoverHit {
             rect: Rect::new(origin.x + lx, origin.y + 2, lw, 1),
             intent,
         };
-        let hits = vec![
+        let mut hits = vec![
             hit(2, 1, ControlIntent::VolumeDown),
             hit(13, 1, ControlIntent::VolumeUp),
             hit(17, 2, ControlIntent::ToggleMute),
         ];
+        if let Some((label, intent)) = link {
+            let row: String = format!("\u{25B8} {label}").chars().take((box_w - 3) as usize).collect();
+            buf.write_str(2, 3, &row, t.accent, bg_at(3));
+            hits.push(PopoverHit { rect: Rect::new(origin.x + 1, origin.y + 3, box_w - 2, 1), intent });
+        }
+        buf.write_str(2, box_h - 2, "←→ level  m mute  Esc", t.dim, t.window_bg);
         Rendered { layers: vec![layer(origin, buf)], hits, bounds: Some(Rect::new(origin.x, origin.y, box_w, box_h)) }
     }
 
@@ -958,4 +1064,50 @@ fn fill_box(buf: &mut CellBuffer, w: i32, h: i32) {
     buf.set(w - 1, 0, b('╮'));
     buf.set(0, h - 1, b('╰'));
     buf.set(w - 1, h - 1, b('╯'));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn volume_link_prefers_installed_mixer_and_ascii_charset() {
+        let tools = crate::traytools::TrayTools::new();
+        let only = |name: &'static str| move |p: &str| p == name;
+        let (label, intent) = volume_mixer(&tools, &only("pulsemixer"), false).unwrap();
+        assert_eq!(label, "Open pulsemixer");
+        assert!(matches!(intent, ControlIntent::OpenTool { ref command, .. } if command == "pulsemixer"));
+        // wiremix wins when present; on the ascii tier it gets the ASCII char set.
+        let (_, intent) = volume_mixer(&tools, &|_| true, true).unwrap();
+        assert_eq!(intent, ControlIntent::OpenTool { title: "Volume".into(), command: "wiremix".into(), args: vec!["-s".into(), "extracompat".into()] });
+    }
+
+    #[test]
+    fn volume_link_falls_back_to_store_and_config_can_remove_it() {
+        let none = volume_mixer(&crate::traytools::TrayTools::new(), &|_| false, false);
+        if cfg!(target_os = "linux") {
+            assert_eq!(none.unwrap().1, ControlIntent::OpenStoreSearch("wiremix".into()));
+        }
+        let mut tools = crate::traytools::TrayTools::new();
+        tools.insert("volume".into(), crate::traytools::ToolSpec::Many(Vec::new()));
+        assert_eq!(volume_mixer(&tools, &|_| true, false), None);
+    }
+
+    #[test]
+    fn volume_keys_step_level_move_rows_and_close() {
+        let mut tray = Tray::new();
+        tray.open_at(SegmentKind::Volume, 50);
+        assert_eq!(tray.volume_key(TrayKey::Left), Some(ControlIntent::VolumeDown));
+        assert_eq!(tray.volume_key(TrayKey::Right), Some(ControlIntent::VolumeUp));
+        assert_eq!(tray.volume_key(TrayKey::Mute), Some(ControlIntent::ToggleMute));
+        // Enter on the level row just closes.
+        assert_eq!(tray.volume_key(TrayKey::Enter), None);
+        assert_eq!(tray.open(), None);
+        tray.open_at(SegmentKind::Volume, 50);
+        tray.volume_key(TrayKey::Down);
+        tray.volume_key(TrayKey::Up);
+        assert_eq!(tray.volume_row(), 0);
+        tray.volume_key(TrayKey::Esc);
+        assert_eq!(tray.open(), None);
+    }
 }

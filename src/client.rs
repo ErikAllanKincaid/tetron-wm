@@ -283,6 +283,26 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                         if let Some(msg) = msg {
                             send(&mut out_stream, &msg)?;
                         }
+                    } else if f.tray_volume {
+                        // Volume popover (opened by click or leader =): Left / Right
+                        // level, Up / Down rows, Enter, m / Space mute, Esc. The
+                        // leader closes it; other keys are ignored while it is open.
+                        leader = false;
+                        use crate::tray::TrayKey as T;
+                        let key = match k.code {
+                            KeyCode::Left | KeyCode::Char('-') => Some(T::Left),
+                            KeyCode::Right | KeyCode::Char('=') | KeyCode::Char('+') => Some(T::Right),
+                            KeyCode::Up => Some(T::Up),
+                            KeyCode::Down => Some(T::Down),
+                            KeyCode::Enter => Some(T::Enter),
+                            KeyCode::Char('m') | KeyCode::Char('M') | KeyCode::Char(' ') => Some(T::Mute),
+                            KeyCode::Esc => Some(T::Esc),
+                            _ if is_leader => Some(T::Esc),
+                            _ => None,
+                        };
+                        if let Some(key) = key {
+                            send(&mut out_stream, &ClientMsg::TrayKey(key))?;
+                        }
                     } else if f.move_mode {
                         // Keyboard move mode is modal: arrows step 1 cell (Shift: 5),
                         // r toggles resize, Enter keeps, Esc undoes. Other keys
@@ -332,6 +352,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("focus_prev"), _) => { send(&mut out_stream, &ClientMsg::FocusPrev)?; cycling = true; }
                             (Some("windows"), _) => send(&mut out_stream, &ClientMsg::WindowPickerOpen)?,
                             (Some("move"), _) => send(&mut out_stream, &ClientMsg::MoveModeStart)?,
+                            (Some("volume"), _) => send(&mut out_stream, &ClientMsg::VolumeOpen)?,
                             (Some("close"), _) => send(&mut out_stream, &ClientMsg::CloseFocused)?,
                             (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
@@ -353,6 +374,11 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (_, KeyCode::Char(c @ '1'..='9')) => send(&mut out_stream, &ClientMsg::SendToCell(c as u8 - b'0'))?,
                             _ => {}
                         }
+                    } else if is_leader {
+                        // Before the Logs / Help / launcher / dir-picker branches:
+                        // those used to swallow the leader, so no leader shortcut
+                        // worked while one of them had focus.
+                        leader = true;
                     } else if f.logs_focused {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::LogsClose)?,
@@ -404,8 +430,6 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Char('n') | KeyCode::Char('N') => send(&mut out_stream, &ClientMsg::DirPickerNewFolder)?,
                             _ => {}
                         }
-                    } else if is_leader {
-                        leader = true;
                     } else if f.store_focused {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::StoreClose)?,
@@ -436,6 +460,13 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Down => send(&mut out_stream, &ClientMsg::SettingsDown)?,
                             KeyCode::Left => send(&mut out_stream, &ClientMsg::SettingsLeft)?,
                             KeyCode::Right => send(&mut out_stream, &ClientMsg::SettingsRight)?,
+                            // Tab / Shift+Tab move focus between the section list and
+                            // the rows (like mc's panels); Up / Down then move inside
+                            // the focused pane. PageDown / PageUp switch section
+                            // directly from either pane.
+                            KeyCode::Tab | KeyCode::BackTab => send(&mut out_stream, &ClientMsg::SettingsTogglePane)?,
+                            KeyCode::PageDown => send(&mut out_stream, &ClientMsg::SettingsNextSection)?,
+                            KeyCode::PageUp => send(&mut out_stream, &ClientMsg::SettingsPrevSection)?,
                             KeyCode::Enter | KeyCode::Char(' ') => send(&mut out_stream, &ClientMsg::SettingsToggle)?,
                             _ => {}
                         }

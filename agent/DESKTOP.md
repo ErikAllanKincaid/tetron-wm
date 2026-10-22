@@ -36,7 +36,10 @@ Other things worth knowing when helping the user:
 - Keyboard-only use: the leader is `Ctrl+Space` (press, release, then a key).
   Leader `Tab` / `Shift+Tab` cycles window focus, leader `f` opens a numbered
   window picker, leader `w` moves the focused window with the arrows (`r`
-  resizes, Enter keeps, Esc undoes). Leader `?` shows every shortcut.
+  resizes, Enter keeps, Esc undoes). Leader `=` opens the volume popover.
+  Leader `?` shows every shortcut.
+- Sound: Settings → Sound sets volume, mute and the output device (HDMI,
+  headphones, speakers) through PipeWire's `wpctl`.
 - Scroll the mouse wheel over any app window to read its scrollback; typing
   jumps back to the live bottom.
 - Updating tetron-wm is **Settings → Updates** (default channel downloads the

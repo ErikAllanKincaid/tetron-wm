@@ -56,7 +56,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("keys", "{}", "[keys] leader remaps: action = \"x\" or [\"x\", \"enter\"]"),
     ("tray_placement", "{}", "[tray_placement] segment -> bar | info | auto (defaults: cpu, mem, bluetooth info; rest auto)"),
     ("dock_badges", "built-in", "[dock_badges] app keyword -> badge color"),
-    ("tray_tools", "built-in", "[tray_tools] cpu/mem/battery/bluetooth/network -> Open-row commands"),
+    ("tray_tools", "built-in", "[tray_tools] cpu/mem/battery/bluetooth/network/volume -> Open-row commands"),
 ];
 
 /// (name, description) for every environment variable.

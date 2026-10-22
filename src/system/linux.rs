@@ -2,7 +2,7 @@
 //! `bluetoothctl`/`rfkill`. All commands go through [`run_capped`].
 
 use super::{
-    run_capped, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
+    run_capped, AudioOutput, BackendCaps, BluetoothInfo, BtDevice, ControlIntent, SystemControl, SystemMonitor,
     NetInfo, SystemReadout, VolumeInfo, Want, WifiInfo,
 };
 
@@ -90,6 +90,10 @@ impl SystemControl for LinuxBackend {
             ControlIntent::ToggleMute => {
                 run_capped("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"], 2);
             }
+            ControlIntent::SetOutput(id) => {
+                crate::dbg_log(&format!("sound: wpctl set-default {id}"));
+                run_capped("wpctl", &["set-default", &id.to_string()], 2);
+            }
             ControlIntent::WifiSetEnabled(on) => nm(&wifi_radio_argv(*on)),
             ControlIntent::WifiConnectKnown(ssid) => nm(&wifi_connect_argv(ssid)),
             ControlIntent::BtSetEnabled(on) => {
@@ -106,6 +110,69 @@ impl SystemControl for LinuxBackend {
             // session's tray state, never the OS backend.
             _ => {}
         }
+    }
+}
+
+/// Audio outputs from `wpctl status` (empty if wpctl is missing or fails).
+pub fn read_outputs() -> Vec<AudioOutput> {
+    run_capped("wpctl", &["status"], 2).map(|t| parse_wpctl_sinks(&t)).unwrap_or_default()
+}
+
+/// Parse the `Sinks:` list of the `Audio` section of `wpctl status`. A row is
+/// `│  *   60. Speaker   [vol: 0.46]`: `*` marks the default, then the id, the
+/// name, and a bracketed volume. The list ends at the next `├─` / `└─` heading.
+/// A device-name prefix shared by every output is cut so rows stay short.
+pub fn parse_wpctl_sinks(text: &str) -> Vec<AudioOutput> {
+    let mut out = Vec::new();
+    let mut in_audio = false;
+    let mut in_sinks = false;
+    for line in text.lines() {
+        // Top-level sections (Audio, Video, Settings) start in column 0.
+        if !line.starts_with(' ') && !line.is_empty() {
+            in_audio = line.trim() == "Audio";
+            in_sinks = false;
+            continue;
+        }
+        if !in_audio {
+            continue;
+        }
+        if line.contains('├') || line.contains('└') {
+            in_sinks = line.contains("Sinks:");
+            continue;
+        }
+        if !in_sinks {
+            continue;
+        }
+        let body = line.trim_start_matches([' ', '│']);
+        let default = body.starts_with('*');
+        let body = body.trim_start_matches('*').trim_start();
+        let Some((id, rest)) = body.split_once(". ") else { continue };
+        let Ok(id) = id.trim().parse::<u32>() else { continue };
+        let name = rest.split(" [vol:").next().unwrap_or(rest).trim().to_string();
+        out.push(AudioOutput { id, name, default });
+    }
+    strip_common_prefix(&mut out);
+    out
+}
+
+/// Remove the leading words every output name shares (the sound card name),
+/// keeping at least one word of each.
+fn strip_common_prefix(outs: &mut [AudioOutput]) {
+    if outs.len() < 2 {
+        return;
+    }
+    let words: Vec<Vec<&str>> = outs.iter().map(|o| o.name.split(' ').collect()).collect();
+    let min = words.iter().map(|w| w.len()).min().unwrap_or(0);
+    let mut n = 0;
+    while n + 1 < min && words.iter().all(|w| w[n] == words[0][n]) {
+        n += 1;
+    }
+    if n == 0 {
+        return;
+    }
+    let names: Vec<String> = words.iter().map(|w| w[n..].join(" ")).collect();
+    for (o, name) in outs.iter_mut().zip(names) {
+        o.name = name;
     }
 }
 
@@ -174,4 +241,51 @@ fn read_bt() -> BluetoothInfo {
         })
         .unwrap_or_default();
     BluetoothInfo { enabled, devices }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Trimmed `wpctl status` from a laptop with three HDMI outputs.
+    const STATUS: &str = "PipeWire 'pipewire-0' [1.4.2, user@host, cookie:1]
+ └─ Clients:
+        33. WirePlumber                         [1.4.2, user@host, pid:2027]
+
+Audio
+ ├─ Devices:
+ │      49. Raptor Lake-P/U/H cAVS              [alsa]
+ │  
+ ├─ Sinks:
+ │      56. Raptor Lake-P/U/H cAVS HDMI / DisplayPort 3 Output [vol: 1.00]
+ │      59. Raptor Lake-P/U/H cAVS Headphones   [vol: 1.00]
+ │  *   60. Raptor Lake-P/U/H cAVS Speaker      [vol: 0.46]
+ │  
+ ├─ Sources:
+ │  *   62. Raptor Lake-P/U/H cAVS SoundWire microphones [vol: 1.00 MUTED]
+ │  
+ └─ Streams:
+
+Video
+ ├─ Sinks:
+ │      90. Not audio                           [vol: 1.00]
+";
+
+    #[test]
+    fn parses_audio_sinks_only_with_default_and_short_names() {
+        let outs = parse_wpctl_sinks(STATUS);
+        let got: Vec<(u32, &str, bool)> = outs.iter().map(|o| (o.id, o.name.as_str(), o.default)).collect();
+        assert_eq!(got, vec![
+            (56, "HDMI / DisplayPort 3 Output", false),
+            (59, "Headphones", false),
+            (60, "Speaker", true),
+        ]);
+    }
+
+    #[test]
+    fn a_single_output_keeps_its_full_name() {
+        let one = "Audio\n ├─ Sinks:\n │  *   47. Built-in Audio Analog Stereo [vol: 0.40]\n ├─ Sources:\n";
+        assert_eq!(parse_wpctl_sinks(one)[0].name, "Built-in Audio Analog Stereo");
+        assert!(parse_wpctl_sinks("").is_empty());
+    }
 }
