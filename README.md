@@ -62,7 +62,7 @@ tetron-wm
 ```
 
 1. **Open the launcher.** Click the button at the top left, or press `Ctrl+Space` then `l`. The first entry is a **Shell**.
-2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), and `Ctrl+Space` then `f` lists every window to pick one by number.
+2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), `Ctrl+Space` then `f` lists every window to pick one by number, and `Ctrl+Space` then `w` moves the focused window with the arrow keys (`r` to resize, Enter when done).
 3. **Get apps.** Open the **Store** (`Ctrl+Space`, then `S`), search and install. If an app needs a toolchain you do not have, the installer notices and offers to set it up first.
 4. **Find things fast.** `Ctrl+Space` then `space` opens a search over every app.
 5. **See all shortcuts.** `Ctrl+Space` then `?`.
@@ -121,7 +121,7 @@ It asks before every step, is safe to re-run, and `--uninstall` puts your login 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
 - Why each piece is needed, with diagrams: [docs/tetron-wm_bare_console_guide.html](docs/tetron-wm_bare_console_guide.html)
 - Just kmscon: [scripts/install-kmscon.sh](scripts/install-kmscon.sh)
-- Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`).
+- Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard.
 
 ## Updating
 

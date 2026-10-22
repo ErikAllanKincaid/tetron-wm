@@ -21,6 +21,7 @@ The leader key exists so tetron-wm shortcuts never collide with your terminal, t
 | `tab` | `focus_next` | Focus and raise the next window in taskbar order, wrapping. Minimized windows are skipped (if all are minimized, one is restored). After it, bare `Tab` / `Shift+Tab` keep cycling without the leader; Enter or Esc ends the cycle, any other key ends it and goes to the app |
 | `backtab` | `focus_prev` | Same as `focus_next`, backwards (leader then `Shift+Tab`) |
 | `f` | `windows` | Window picker: a numbered list of every window, minimized ones included. Up/Down, `Tab`/`Shift+Tab` or `j`/`k` move, Enter or a digit `1` to `9` focuses (and restores) that window, Esc or `q` closes, a click picks a row |
+| `w` | `move` | Keyboard move mode for the focused window: the title shows a hint, arrows move it one cell (`Shift`+arrow five, where the terminal reports Shift), `r` switches to resizing (arrows move the right and bottom edges) and back, Enter keeps the result, Esc puts the window back exactly as it was (a maximized window comes back maximized), a click also ends it. Other keys are ignored while it is on |
 | `esc` | `close` | Close the focused window (app windows ask for confirmation first; built-in panels close at once) |
 | `[`, `left` | `snap_left` | Snap the focused window to the left half of the screen |
 | `]`, `right` | `snap_right` | Snap the focused window to the right half of the screen |
@@ -53,12 +54,12 @@ These keys are unused after the leader and safe to bind in `[keys]` or to claim 
 
 | Type | Free |
 | --- | --- |
-| lowercase | `a b d e g i j k o u w` |
+| lowercase | `a b d e g i j k o u` |
 | uppercase | `B D E F G H I J K L O P U V W X Y Z` |
 | digit | `0` |
 | symbols | `` ` - = ; ' . / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |
 
-`d` is reserved for the planned screen dump above, `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell), and `w` is reserved for the planned keyboard window move mode.
+`d` is reserved for the planned screen dump above, and `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell).
 
 ## Other rules
 

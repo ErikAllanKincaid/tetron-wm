@@ -168,6 +168,7 @@ minimize    = ["n", "N"]
 focus_next  = "tab"
 focus_prev  = "backtab"
 windows     = "f"
+move        = "w"
 close       = "esc"
 snap_left   = ["[", "left"]
 snap_right  = ["]", "right"]

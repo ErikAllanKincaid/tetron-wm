@@ -283,6 +283,25 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                         if let Some(msg) = msg {
                             send(&mut out_stream, &msg)?;
                         }
+                    } else if f.move_mode {
+                        // Keyboard move mode is modal: arrows step 1 cell (Shift: 5),
+                        // r toggles resize, Enter keeps, Esc undoes. Other keys
+                        // are swallowed so a stray key never reaches the app.
+                        leader = false;
+                        let n = if shift { 5 } else { 1 };
+                        let msg = match k.code {
+                            KeyCode::Left => Some(ClientMsg::MoveModeStep { dx: -n, dy: 0 }),
+                            KeyCode::Right => Some(ClientMsg::MoveModeStep { dx: n, dy: 0 }),
+                            KeyCode::Up => Some(ClientMsg::MoveModeStep { dx: 0, dy: -n }),
+                            KeyCode::Down => Some(ClientMsg::MoveModeStep { dx: 0, dy: n }),
+                            KeyCode::Char('r') | KeyCode::Char('R') => Some(ClientMsg::MoveModeToggleResize),
+                            KeyCode::Enter => Some(ClientMsg::MoveModeEnd { cancel: false }),
+                            KeyCode::Esc => Some(ClientMsg::MoveModeEnd { cancel: true }),
+                            _ => None,
+                        };
+                        if let Some(msg) = msg {
+                            send(&mut out_stream, &msg)?;
+                        }
                     } else if was_cycling && !is_leader && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Enter | KeyCode::Esc) {
                         // Sticky focus cycle (see `cycling`).
                         match k.code {
@@ -312,6 +331,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("focus_next"), _) => { send(&mut out_stream, &ClientMsg::FocusNext)?; cycling = true; }
                             (Some("focus_prev"), _) => { send(&mut out_stream, &ClientMsg::FocusPrev)?; cycling = true; }
                             (Some("windows"), _) => send(&mut out_stream, &ClientMsg::WindowPickerOpen)?,
+                            (Some("move"), _) => send(&mut out_stream, &ClientMsg::MoveModeStart)?,
                             (Some("close"), _) => send(&mut out_stream, &ClientMsg::CloseFocused)?,
                             (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,

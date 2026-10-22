@@ -136,6 +136,9 @@ pub struct Flags {
     /// The window picker (leader f) is open; the client routes arrows, Tab,
     /// digits, Enter and Esc to it.
     pub window_picker: bool,
+    /// The keyboard move / resize mode (leader w) is active; the client routes
+    /// arrows, r, Enter and Esc to it and swallows other keys.
+    pub move_mode: bool,
     /// The clipboard history popover is open; the client routes keys to it.
     pub clipmenu_open: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.

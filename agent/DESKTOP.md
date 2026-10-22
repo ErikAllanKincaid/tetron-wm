@@ -9,7 +9,7 @@ They are how you open windows and arrange the user's desktop.
     printed first, instead of a window that prints usage and dies. Passing
     args runs the command exactly as given.
 - `tetron-wm tile`                       tile all windows into the configured grid
-- `tetron-wm theme <name>`               switch theme (midnight|nord|gruvbox|dracula)
+- `tetron-wm theme <name>`               switch theme (newmoon|midnight|nord|gruvbox|dracula|pastoral)
 - `tetron-wm reload`                     reload the UI (apps keep running)
 - `tetron-wm msg '<json>'`               raw control message (ClientMsg JSON), e.g.
 
@@ -17,6 +17,7 @@ They are how you open windows and arrange the user's desktop.
 tetron-wm msg '"MaximizeFocused"'
 tetron-wm msg '{"SnapFocused":"Left"}'
 tetron-wm msg '{"SendToCell":3}'
+tetron-wm msg '"FocusNext"'          # focus the next window (also "FocusPrev")
 tetron-wm msg '{"Launch":{"name":"btop","command":"btop","args":[]}}'
 ```
 
@@ -32,6 +33,10 @@ Apps are installed via the in-app Store (600+ curated TUIs), or you can
 install them yourself with the user's package manager and then `tetron-wm launch`.
 
 Other things worth knowing when helping the user:
+- Keyboard-only use: the leader is `Ctrl+Space` (press, release, then a key).
+  Leader `Tab` / `Shift+Tab` cycles window focus, leader `f` opens a numbered
+  window picker, leader `w` moves the focused window with the arrows (`r`
+  resizes, Enter keeps, Esc undoes). Leader `?` shows every shortcut.
 - Scroll the mouse wheel over any app window to read its scrollback; typing
   jumps back to the live bottom.
 - Updating tetron-wm is **Settings → Updates** (default channel downloads the
