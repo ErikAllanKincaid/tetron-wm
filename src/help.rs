@@ -45,7 +45,8 @@ pub fn help_sections() -> &'static [HelpSection] {
             rows: &[
                 ("Space", "spotlight search"),
                 ("l / Enter", "app menu (launcher)"),
-                ("S / ,", "store / settings"),
+                ("S", "app store"),
+                (",", "settings"),
                 ("A", "activity monitor"),
             ],
             notes: &["In Settings: Tab switches between sections and rows."],

@@ -374,6 +374,11 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (_, KeyCode::Char(c @ '1'..='9')) => send(&mut out_stream, &ClientMsg::SendToCell(c as u8 - b'0'))?,
                             _ => {}
                         }
+                    } else if is_leader {
+                        // Before the Logs / Help / launcher / dir-picker branches:
+                        // those used to swallow the leader, so no leader shortcut
+                        // worked while one of them had focus.
+                        leader = true;
                     } else if f.logs_focused {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::LogsClose)?,
@@ -425,8 +430,6 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Char('n') | KeyCode::Char('N') => send(&mut out_stream, &ClientMsg::DirPickerNewFolder)?,
                             _ => {}
                         }
-                    } else if is_leader {
-                        leader = true;
                     } else if f.store_focused {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::StoreClose)?,
