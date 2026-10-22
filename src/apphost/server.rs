@@ -48,27 +48,121 @@ pub fn run() -> std::io::Result<()> {
     let mut local = LocalAppHost::new();
     let mut shutdown = false;
 
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else { continue };
-        serve_frontend(&mut local, stream, &mut shutdown);
-        if shutdown {
-            break;
+    // Frontends are served one at a time, so `ps` / `kill-app` use a separate
+    // control socket answered from inside the serve loop (and while idle).
+    let ctl_path = crate::protocol::apphost_ctl_socket_path();
+    let (ctl_tx, ctl_rx) = mpsc::channel::<CtlReq>();
+    let _ = std::fs::remove_file(&ctl_path);
+    match UnixListener::bind(&ctl_path) {
+        Ok(l) => {
+            let _ = std::fs::set_permissions(&ctl_path, Permissions::from_mode(0o600));
+            std::thread::spawn(move || serve_ctl(l, ctl_tx));
         }
-        crate::dbg_log("apphost: frontend detached; apps stay alive");
+        Err(e) => crate::dbg_log(&format!("apphost: control socket {}: {e}", ctl_path.display())),
     }
 
-    // Full shutdown: kill every app, then remove the socket.
+    let (fe_tx, fe_rx) = mpsc::channel::<UnixStream>();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            if fe_tx.send(stream).is_err() {
+                break;
+            }
+        }
+    });
+
+    loop {
+        answer_ctl(&mut local, &ctl_rx);
+        match fe_rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(stream) => {
+                serve_frontend(&mut local, stream, &mut shutdown, &ctl_rx);
+                if shutdown {
+                    break;
+                }
+                crate::dbg_log("apphost: frontend detached; apps stay alive");
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    // Full shutdown: kill every app, then remove the sockets.
     for id in local.list() {
         local.kill(id);
     }
     let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&ctl_path);
     crate::dbg_log("apphost: shut down");
     Ok(())
 }
 
+/// A control-socket request and where its reply goes.
+type CtlReq = (HostReq, mpsc::Sender<HostEvt>);
+
+/// Accept control connections: read one request, hand it to the main loop,
+/// write back its reply. A Kill gets no reply; the CLI does not wait for one.
+fn serve_ctl(listener: UnixListener, tx: mpsc::Sender<CtlReq>) {
+    for stream in listener.incoming().flatten() {
+        let Ok(mut writer) = stream.try_clone() else { continue };
+        let mut r = BufReader::new(stream);
+        let Ok(Some(req)) = recv::<HostReq, _>(&mut r) else { continue };
+        let (rtx, rrx) = mpsc::channel();
+        if tx.send((req, rtx)).is_err() {
+            return;
+        }
+        if let Ok(evt) = rrx.recv_timeout(Duration::from_secs(5)) {
+            let _ = send(&mut writer, &evt);
+        }
+    }
+}
+
+/// Answer pending control requests. Only `ListApps` and `Kill` are accepted;
+/// anything else (spawns, input) belongs on a frontend connection.
+fn answer_ctl(local: &mut LocalAppHost, rx: &mpsc::Receiver<CtlReq>) {
+    while let Ok((req, reply)) = rx.try_recv() {
+        match req {
+            HostReq::ListApps => {
+                let _ = reply.send(HostEvt::AppList { apps: app_list(local) });
+            }
+            HostReq::Kill { app } => {
+                crate::dbg_log(&format!("apphost: ctl kill app {app}"));
+                local.kill(AppId(app));
+            }
+            other => crate::dbg_log(&format!("apphost: ctl ignored {other:?}")),
+        }
+    }
+}
+
+/// Every hosted app, for `ps` / `kill-app`.
+fn app_list(local: &mut LocalAppHost) -> Vec<AppListEntry> {
+    let now = std::time::Instant::now();
+    let mut apps = Vec::new();
+    for id in local.list() {
+        let (cmd, args) = local
+            .launch_cmd(id)
+            .map(|(c, a)| (c.to_string(), a.to_vec()))
+            .unwrap_or_else(|| (String::new(), Vec::new()));
+        let (cols, rows) = local.dims(id).unwrap_or((0, 0));
+        let age_secs = local
+            .spawn_time(id)
+            .map(|t| now.duration_since(t).as_secs())
+            .unwrap_or(0);
+        apps.push(AppListEntry {
+            app: id.0,
+            cmd,
+            args,
+            pid: local.pid(id),
+            cols,
+            rows,
+            age_secs,
+            alive: local.is_alive(id),
+        });
+    }
+    apps
+}
+
 /// Serve a single connected frontend. Per-connection change state is fresh so
 /// the frontend always gets full grids on (re)connect.
-fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut bool) {
+fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut bool, ctl: &mpsc::Receiver<CtlReq>) {
     let Ok(reader_stream) = stream.try_clone() else { return };
     let mut writer = stream;
 
@@ -124,30 +218,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 Ok(HostReq::SetMeta { app, meta }) => local.set_meta(AppId(app), meta),
                 Ok(HostReq::Kill { app }) => local.kill(AppId(app)),
                 Ok(HostReq::ListApps) => {
-                    let now = std::time::Instant::now();
-                    let mut apps = Vec::new();
-                    for id in local.list() {
-                        let (cmd, args) = local
-                            .launch_cmd(id)
-                            .map(|(c, a)| (c.to_string(), a.to_vec()))
-                            .unwrap_or_else(|| (String::new(), Vec::new()));
-                        let (cols, rows) = local.dims(id).unwrap_or((0, 0));
-                        let age_secs = local
-                            .spawn_time(id)
-                            .map(|t| now.duration_since(t).as_secs())
-                            .unwrap_or(0);
-                        apps.push(AppListEntry {
-                            app: id.0,
-                            cmd,
-                            args,
-                            pid: local.pid(id),
-                            cols,
-                            rows,
-                            age_secs,
-                            alive: local.is_alive(id),
-                        });
-                    }
-                    if send(&mut writer, &HostEvt::AppList { apps }).is_err() {
+                    if send(&mut writer, &HostEvt::AppList { apps: app_list(local) }).is_err() {
                         return;
                     }
                 }
@@ -165,6 +236,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 Err(mpsc::TryRecvError::Disconnected) => return, // frontend gone
             }
         }
+        answer_ctl(local, ctl);
 
         // Push frames for every app whose grid / placements / images changed.
         for id in local.list() {
@@ -225,5 +297,40 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
 /// loopback test). Not part of the public API.
 #[doc(hidden)]
 pub fn server_serve_for_test(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut bool) {
-    serve_frontend(local, stream, shutdown);
+    let (_tx, rx) = mpsc::channel();
+    serve_frontend(local, stream, shutdown, &rx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctl_lists_and_kills_apps() {
+        let mut local = LocalAppHost::new();
+        let id = local.spawn("sleep", &["30".into()], None, 80, 24).unwrap();
+        let (tx, rx) = mpsc::channel::<CtlReq>();
+        let (rtx, rrx) = mpsc::channel();
+        tx.send((HostReq::ListApps, rtx)).unwrap();
+        answer_ctl(&mut local, &rx);
+        match rrx.try_recv() {
+            Ok(HostEvt::AppList { apps }) => {
+                assert_eq!(apps.len(), 1);
+                assert_eq!(apps[0].app, id.0);
+                assert_eq!(apps[0].cmd, "sleep");
+            }
+            other => panic!("expected AppList, got {other:?}"),
+        }
+        let (rtx, rrx) = mpsc::channel();
+        tx.send((HostReq::Kill { app: id.0 }, rtx)).unwrap();
+        answer_ctl(&mut local, &rx);
+        assert!(rrx.try_recv().is_err(), "Kill sends no reply");
+        for _ in 0..100 {
+            if !local.is_alive(id) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("app still alive after ctl Kill");
+    }
 }

@@ -302,3 +302,10 @@ pub fn daemon_ctl_path() -> PathBuf {
 pub fn apphost_socket_path() -> PathBuf {
     socket_dir().join("apphost.sock")
 }
+
+/// Path to the apphost's control socket: one request, one reply (`tetron-wm ps`,
+/// `kill-app`). Answered while a frontend holds `apphost.sock`, which the
+/// apphost serves one connection at a time.
+pub fn apphost_ctl_socket_path() -> PathBuf {
+    socket_dir().join("apphost-ctl.sock")
+}

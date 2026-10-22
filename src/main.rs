@@ -91,7 +91,7 @@ fn main() -> std::io::Result<()> {
             }
         },
         Some("launch") => {
-            let mut rest = std::env::args().skip(2);
+            let mut rest = rest.iter().cloned();
             let Some(command) = rest.next() else {
                 eprintln!("usage: tetron-wm launch <command> [args…]");
                 return Ok(());
@@ -101,7 +101,7 @@ fn main() -> std::io::Result<()> {
             ctl(&tetron_wm::session::ClientMsg::Launch { name, command, args })
         }
         Some("screenshot") => {
-            let path = match std::env::args().nth(2) {
+            let path = match rest.first() {
                 Some(p) => std::path::absolute(p)?,
                 None => {
                     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -113,7 +113,7 @@ fn main() -> std::io::Result<()> {
         }
         Some("tile") => ctl(&tetron_wm::session::ClientMsg::TileAll),
         Some("screensaver") => screensaver_cmd(&rest),
-        Some("theme") => match std::env::args().nth(2).as_deref() {
+        Some("theme") => match rest.first().map(String::as_str) {
             // List every theme name (built-ins + file themes).
             Some("--list") => {
                 for n in tetron_wm::theme::preset_names() {
@@ -123,7 +123,7 @@ fn main() -> std::io::Result<()> {
             }
             // Write a built-in palette out as an editable theme file to start from.
             Some("--dump") => {
-                let name = std::env::args().nth(3).unwrap_or_else(|| "midnight".into());
+                let name = rest.get(1).cloned().unwrap_or_else(|| "midnight".into());
                 match tetron_wm::theme::dump_builtin(&name) {
                     Ok(p) => println!("wrote {}", p.display()),
                     Err(e) => eprintln!("tetron-wm theme --dump: {e}"),
@@ -139,8 +139,8 @@ fn main() -> std::io::Result<()> {
                 Ok(())
             }
         },
-        Some("msg") => match std::env::args().nth(2) {
-            Some(json) => match serde_json::from_str::<tetron_wm::session::ClientMsg>(&json) {
+        Some("msg") => match rest.first() {
+            Some(json) => match serde_json::from_str::<tetron_wm::session::ClientMsg>(json) {
                 Ok(msg) => ctl(&msg),
                 Err(e) => {
                     eprintln!("tetron-wm msg: not a valid ClientMsg: {e}");
@@ -508,11 +508,42 @@ fn fetch_app_list() -> std::io::Result<Vec<tetron_wm::apphost::AppListEntry>> {
     // apphost is independent of the running binary's PROTO_VERSION (which
     // changes as the apphost grows new fields).
     const LIST_APPS_MIN_PROTO: u32 = 2;
+    // Preferred: the control socket, answered even while the daemon holds the
+    // main socket (the apphost serves one frontend connection at a time).
+    if let Ok(s) = UnixStream::connect(tetron_wm::protocol::apphost_ctl_socket_path()) {
+        s.set_read_timeout(Some(Duration::from_secs(6)))?;
+        send(&mut s.try_clone()?, &HostReq::ListApps)?;
+        let mut r = std::io::BufReader::new(s);
+        return match tetron_wm::apphost::proto::recv::<HostEvt, _>(&mut r) {
+            Ok(Some(HostEvt::AppList { apps })) => Ok(apps),
+            other => {
+                eprintln!("tetron-wm: apphost control socket did not answer ({other:?})");
+                std::process::exit(1);
+            }
+        };
+    }
+    // Fallback: an apphost without the control socket only answers here when
+    // no daemon is connected, so time out instead of waiting in its backlog.
     let path = tetron_wm::protocol::apphost_socket_path();
     let s = UnixStream::connect(&path).unwrap_or_else(|_| {
         eprintln!("tetron-wm: no apphost running (start it with `tetron-wm`)");
         std::process::exit(1);
     });
+    s.set_read_timeout(Some(Duration::from_secs(3)))?;
+    legacy_app_list(s, LIST_APPS_MIN_PROTO).inspect_err(|e| {
+        if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) {
+            eprintln!(
+                "tetron-wm: the app server is busy serving the desktop and predates 'ps' support \
+                 while attached; detach or restart the app server, then retry"
+            );
+            std::process::exit(1);
+        }
+    })
+}
+
+/// `ListApps` over the main apphost socket (apphosts without a control socket).
+fn legacy_app_list(s: UnixStream, min_proto: u32) -> std::io::Result<Vec<tetron_wm::apphost::AppListEntry>> {
+    use tetron_wm::apphost::proto::{send, HostEvt, HostReq};
     // The apphost sends a Roster on every accepted connection before it
     // processes any commands. Read it first so we can:
     //   1. Bail out cleanly against a pre-v2 apphost (one that doesn't
@@ -533,13 +564,13 @@ fn fetch_app_list() -> std::io::Result<Vec<tetron_wm::apphost::AppListEntry>> {
             std::process::exit(1);
         }
     };
-    if proto < LIST_APPS_MIN_PROTO && proto != 0 {
+    if proto < min_proto && proto != 0 {
         // A peer that explicitly declared proto=1 doesn't speak ListApps.
         // (proto=0 means the field is missing, i.e. the apphost predates
         // the `proto` field — likely the very first apphost release; we
         // still attempt the request and let the bound save us.)
         eprintln!(
-            "tetron-wm: apphost speaks protocol v{proto}; 'ps' / 'kill-app' require v{LIST_APPS_MIN_PROTO}+ \
+            "tetron-wm: apphost speaks protocol v{proto}; 'ps' / 'kill-app' require v{min_proto}+ \
              (update the apphost binary to enable)"
         );
         std::process::exit(1);
@@ -650,8 +681,10 @@ fn kill_app(args: &[String]) -> std::io::Result<()> {
     }
     // Reconnect for each Kill — the previous connection's reader consumed
     // the ListApps reply (and the side-reader can't share a socket safely),
-    // so the cleanest path is one short-lived connection per Kill.
-    let path = tetron_wm::protocol::apphost_socket_path();
+    // so the cleanest path is one short-lived connection per Kill. The control
+    // socket is answered while a daemon is attached; the main one is not.
+    let ctl_path = tetron_wm::protocol::apphost_ctl_socket_path();
+    let path = if ctl_path.exists() { ctl_path } else { tetron_wm::protocol::apphost_socket_path() };
     for id in &to_kill {
         let mut s = match UnixStream::connect(&path) {
             Ok(s) => s,
