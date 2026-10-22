@@ -71,6 +71,39 @@ pub fn resolve_path(path: &str) -> PathBuf {
     p
 }
 
+/// chafa symbol classes the console font can draw. `ascii` (the default style)
+/// must never emit a glyph a console font lacks: kernel VT fonts have only the
+/// space, full block and the ░ ▒ shades (no half blocks at all), while DejaVu
+/// (kmscon) has every half block and quadrant.
+/// Sextants and braille are absent from those fonts, and as kmscon fallbacks they
+/// are wider than a cell, so only the GUI styles (`nerd`/`emoji`) use `all-wide`.
+/// Whether the client is a bare VT comes from its reported caps (`display`),
+/// not the daemon's own `TERM`, which may belong to a different terminal.
+fn symbol_set() -> &'static str {
+    use crate::iconset::IconStyle;
+    match crate::iconset::style() {
+        IconStyle::Ascii if crate::display::get().vt => "space+solid+0x2591..0x2592",
+        // DejaVu Sans Mono (kmscon) has every half block and quadrant.
+        IconStyle::Ascii | IconStyle::Unicode | IconStyle::Auto => "half+quad+space+solid",
+        _ => "all-wide",
+    }
+}
+
+/// chafa's colour mode for the client's display. With a small palette chafa
+/// picks symbols and colours together (far better art than quantizing a
+/// truecolor render afterwards); a bare VT has only 8 background colours.
+/// Mono never gets here (`SessionCore::build_wallpaper` skips the wallpaper).
+fn color_mode(caps: crate::display::ClientCaps) -> &'static str {
+    use crate::display::ColorDepth;
+    match caps.colors {
+        ColorDepth::Mono => "2",
+        ColorDepth::Ansi16 if caps.vt => "8",
+        ColorDepth::Ansi16 => "16",
+        ColorDepth::Ansi256 => "240",
+        ColorDepth::TrueColor => "full",
+    }
+}
+
 /// Build a `w`×`h` cell wallpaper from `path` using chafa's symbol output,
 /// stretched to fill exactly. Returns `None` if chafa is missing/fails.
 ///
@@ -85,13 +118,12 @@ pub fn from_image(path: &str, w: i32, h: i32) -> Option<CellBuffer> {
     let size = format!("{w}x{h}");
     let args = [
         "-f", "symbols",
-        "-c", "full",
+        "-c", color_mode(crate::display::get()),
         // `all-wide`: every symbol EXCEPT the 2-column-wide ones. A wide glyph
         // (e.g. a CJK char chafa picks) would occupy two cells but our grid is
         // strictly one glyph per column, so it shifts the row and leaves black
         // gaps. Excluding wide keeps exactly w×h single-column cells.
-        "--symbols", "all-wide",
-        "--dither", "ordered", // break up color banding in smooth gradients
+        "--symbols", symbol_set(),
         "--stretch",
         "-s", &size,
         path,
@@ -195,7 +227,8 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
 }
 
 /// Apply one SGR parameter string, updating `fg`/`bg` (truecolor `38;2;r;g;b` /
-/// `48;2;r;g;b`, plus reset/default). Non-color attributes are ignored.
+/// `48;2;r;g;b`, 256-colour `38;5;n`, the 16 ANSI colours `30-37/90-97` and
+/// `40-47/100-107`, plus reset/default). Non-color attributes are ignored.
 fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
     let toks: Vec<&str> = params.split(';').collect();
     let num = |t: Option<&&str>| t.and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
@@ -223,7 +256,41 @@ fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
                 *bg = Rgba::rgb(num(toks.get(i + 2)), num(toks.get(i + 3)), num(toks.get(i + 4)));
                 i += 5;
             }
-            _ => i += 1,
+            "38" if toks.get(i + 1) == Some(&"5") => {
+                *fg = xterm256(num(toks.get(i + 2)));
+                i += 3;
+            }
+            "48" if toks.get(i + 1) == Some(&"5") => {
+                *bg = xterm256(num(toks.get(i + 2)));
+                i += 3;
+            }
+            t => {
+                // The 16 ANSI colours, from chafa's `-c 8` / `-c 16` modes.
+                match t.parse::<u8>() {
+                    Ok(n @ 30..=37) => *fg = crate::display::VGA16[(n - 30) as usize],
+                    Ok(n @ 90..=97) => *fg = crate::display::VGA16[(n - 90 + 8) as usize],
+                    Ok(n @ 40..=47) => *bg = crate::display::VGA16[(n - 40) as usize],
+                    Ok(n @ 100..=107) => *bg = crate::display::VGA16[(n - 100 + 8) as usize],
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+    }
+}
+
+/// The RGB of an xterm 256-colour index (16 system colours, 6x6x6 cube, grey ramp).
+fn xterm256(n: u8) -> Rgba {
+    match n {
+        0..=15 => crate::display::VGA16[n as usize],
+        16..=231 => {
+            let i = n - 16;
+            let v = |q: u8| if q == 0 { 0 } else { 55 + 40 * q };
+            Rgba::rgb(v(i / 36), v((i / 6) % 6), v(i % 6))
+        }
+        _ => {
+            let g = 8 + 10 * (n - 232);
+            Rgba::rgb(g, g, g)
         }
     }
 }
@@ -231,6 +298,16 @@ fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sgr_parses_16_and_256_colour_forms() {
+        let (mut fg, mut bg) = (Rgba::rgb(1, 1, 1), Rgba::rgb(1, 1, 1));
+        let def = Rgba::rgb(0, 0, 0);
+        apply_sgr("0;94;41", &mut fg, &mut bg, def);
+        assert_eq!((fg, bg), (crate::display::VGA16[12], crate::display::VGA16[1]));
+        apply_sgr("38;5;196;48;5;232", &mut fg, &mut bg, def);
+        assert_eq!((fg, bg), (Rgba::rgb(255, 0, 0), Rgba::rgb(8, 8, 8)));
+    }
 
     #[test]
     fn embedded_default_is_a_small_jpeg() {

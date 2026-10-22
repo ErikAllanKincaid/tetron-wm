@@ -34,6 +34,9 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
 
     let mut out_stream = stream.try_clone()?;
     send(&mut out_stream, &ClientMsg::Resize { w, h, takeover })?;
+    // Tell the daemon what this display can show, so it adapts the theme and
+    // wallpaper (an older daemon ignores the message).
+    send(&mut out_stream, &ClientMsg::Caps(caps.client_caps()))?;
 
     // A per-system theme rides over ssh as TETRON_WM_THEME: apply it to this
     // daemon's config as soon as we attach.

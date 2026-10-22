@@ -480,6 +480,10 @@ pub enum ClientMsg {
     /// Apply (and persist) a theme by name. Sent by the client on attach when
     /// `TETRON_WM_THEME` is set — how a per-system theme rides over ssh.
     SetTheme(String),
+    /// What the client's display can show (colour depth, bare VT, graphics).
+    /// Sent once right after the attach `Resize`; an older daemon drops it as
+    /// an unknown variant, which is harmless. See `crate::display`.
+    Caps(crate::display::ClientCaps),
     /// Logs viewer: scroll one line / one page.
     LogsUp,
     LogsDown,
@@ -3012,6 +3016,16 @@ or a remote-side error — its authorized_keys was left untouched)",
                     }
                 }
             }
+            ClientMsg::Caps(caps) => {
+                // The theme adapts on the next frame by itself (theme::current
+                // reads the depth); the wallpaper bakes in chafa's colour mode
+                // and symbol set, so rebuild it when the display changed.
+                // `icon_style = "auto"` follows the display too (ascii on a VT).
+                if crate::display::set(caps) {
+                    crate::iconset::refresh();
+                    self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
+                }
+            }
             ClientMsg::SetTheme(name) => {
                 crate::dbg_log(&format!("theme: set '{name}' (client attach / TETRON_WM_THEME)"));
                 crate::theme::set(&name);
@@ -4863,6 +4877,11 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// to the config dir). A missing file or missing `chafa` returns `None`
     /// (desktop stays solid) and logs why.
     fn build_wallpaper(w: i32, h: i32, cfg: &Config) -> Option<crate::buffer::CellBuffer> {
+        // Black and white: an image becomes noise behind the icons once its
+        // colours are gone, so keep the plain desktop.
+        if crate::display::depth() == crate::display::ColorDepth::Mono {
+            return None;
+        }
         let path: std::path::PathBuf = match std::env::var("TETRON_WM_WALLPAPER") {
             Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
             _ => {

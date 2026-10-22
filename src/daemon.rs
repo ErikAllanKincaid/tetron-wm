@@ -314,6 +314,9 @@ fn serve_client(
     // A client attaching always ends the screensaver, so a reattach never shows
     // a black screen with no way to tell why.
     core.screensaver_off();
+    // Forget the previous client's display: a client that reports none (an
+    // older build) gets the full-colour default, not a stale mono/16 palette.
+    core.apply(ClientMsg::Caps(crate::display::ClientCaps::default()));
     status.attach_gen.fetch_add(1, Relaxed);
     status.attached.store(true, Relaxed);
     let next = serve_client_inner(core, comp, client, ctl, ctl_queue, conns, status);
@@ -510,7 +513,7 @@ fn serve_client_inner(
 /// socket messages (`tetron-wm screensaver ...`, `launch`, ...) take another path
 /// and never wake it.
 fn wake_or_pass(core: &mut SessionCore, msg: ClientMsg) -> Option<ClientMsg> {
-    if core.screensaver_active() && !matches!(msg, ClientMsg::Resize { .. }) {
+    if core.screensaver_active() && !matches!(msg, ClientMsg::Resize { .. } | ClientMsg::Caps(_)) {
         core.screensaver_off();
         return None;
     }
