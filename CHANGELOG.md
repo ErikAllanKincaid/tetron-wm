@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Added
+- README lists recommended extra packages, and `docs/DEPENDENCIES_tetron-wm_recommended_installs.md` explains per feature which outside program tetron-wm uses, what happens without it, and the macOS equivalent.
 - Settings has a Sound section: output volume (Left / Right, the mouse wheel, or a click on the bar), mute (Space), the output device (Left / Right cycles the machine's outputs, for example HDMI to a monitor, headphones or speakers; PipeWire `wpctl set-default`), and the mixer link from the volume popover. These act on the machine at once and are not saved to the config.
 - Volume from the keyboard. Leader `=` opens the menubar volume popover; Left / Right (or `-` / `=` / `+`) change the volume, `m` or Space mutes, Esc closes. The keys also work when the popover was opened with a click. The popover gains a row that opens a mixer program: the first installed of wiremix (in ASCII mode on a bare console), pulsemixer, ncpamixer and alsamixer, configurable as `[tray_tools] volume`; with none installed, Linux offers `Get wiremix (Store)`. New `[keys]` action `volume`.
 - Keyboard move and resize. Leader then `w` puts the focused window in move mode, with a key hint in its title: arrows move it one cell (`Shift`+arrow five), `r` switches to resizing the right and bottom edges, Enter keeps the result and Esc puts the window back exactly as it was, maximized or snapped state included. New `[keys]` action `move`.
