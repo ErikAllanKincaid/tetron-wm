@@ -32,6 +32,9 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("launcher", &["l", "enter"], "app menu (launcher)"),
     ("maximize", &["m", "M"], "maximize focused window"),
     ("minimize", &["n", "N"], "minimize focused window"),
+    ("focus_next", &["tab"], "focus the next window (Tab again keeps cycling)"),
+    ("focus_prev", &["backtab"], "focus the previous window (Shift+Tab)"),
+    ("windows", &["f"], "window picker: numbered list of all windows"),
     ("close", &["esc"], "close focused window (asks first for app windows)"),
     ("snap_left", &["[", "left"], "snap left half"),
     ("snap_right", &["]", "right"], "snap right half"),
@@ -52,7 +55,8 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("shutdown", &["Q"], "quit tetron-wm (closes every app)"),
 ];
 
-/// Parse one key name: a single character, or `space`, `enter`, `tab`, `esc`,
+/// Parse one key name: a single character, or `space`, `enter`, `tab`,
+/// `backtab` (Shift+Tab), `esc`,
 /// `left`, `right`, `up`, `down`, `backspace`.
 pub fn parse_key(s: &str) -> Option<KeyCode> {
     let mut chars = s.chars();
@@ -63,6 +67,7 @@ pub fn parse_key(s: &str) -> Option<KeyCode> {
         "space" => KeyCode::Char(' '),
         "enter" | "return" => KeyCode::Enter,
         "tab" => KeyCode::Tab,
+        "backtab" | "shift+tab" => KeyCode::BackTab,
         "esc" | "escape" => KeyCode::Esc,
         "left" => KeyCode::Left,
         "right" => KeyCode::Right,

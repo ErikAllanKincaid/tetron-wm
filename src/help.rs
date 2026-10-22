@@ -20,6 +20,8 @@ pub fn help_sections() -> &'static [HelpSection] {
         HelpSection {
             title: "Windows",
             rows: &[
+                ("Tab/S-Tab", "next / previous window (Tab repeats)"),
+                ("f", "window picker (1-9 or Enter)"),
                 ("m / n", "maximize / minimize"),
                 ("Esc", "close window (asks first for apps)"),
                 ("[ / ]", "snap left / right half"),

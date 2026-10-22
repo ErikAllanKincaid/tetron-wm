@@ -1189,3 +1189,75 @@ fn pointer_follows_mouse_passed_through_to_an_app() {
     }));
     assert_eq!(core.build_frame().cursor, Some(Point::new(30, 10)));
 }
+
+/// Launch three sleeping shells named a, b, c; returns their ids in order.
+fn three_windows(core: &mut SessionCore) -> Vec<tetron_wm::window::WindowId> {
+    let mut ids = Vec::new();
+    for n in ["a", "b", "c"] {
+        core.apply(ClientMsg::Launch { name: n.into(), command: "sh".into(), args: vec!["-c".into(), "sleep 2".into()] });
+        ids.push(core.focused().unwrap());
+    }
+    ids
+}
+
+#[test]
+fn focus_next_and_prev_cycle_in_taskbar_order_and_wrap() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    let ids = three_windows(&mut core);
+    assert_eq!(core.focused(), Some(ids[2]));
+    core.apply(ClientMsg::FocusNext);
+    assert_eq!(core.focused(), Some(ids[0]), "wraps from last to first");
+    core.apply(ClientMsg::FocusNext);
+    assert_eq!(core.focused(), Some(ids[1]));
+    core.apply(ClientMsg::FocusPrev);
+    core.apply(ClientMsg::FocusPrev);
+    assert_eq!(core.focused(), Some(ids[2]), "wraps from first to last");
+    core.shutdown();
+}
+
+#[test]
+fn focus_next_skips_minimized_unless_all_are() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    let ids = three_windows(&mut core);
+    // Minimize b: cycling from c goes a, c, a ... never b.
+    core.apply(ClientMsg::FocusPrev);
+    assert_eq!(core.focused(), Some(ids[1]));
+    core.apply(ClientMsg::MinimizeFocused);
+    for _ in 0..4 {
+        core.apply(ClientMsg::FocusNext);
+        assert_ne!(core.focused(), Some(ids[1]));
+    }
+    // Minimize everything: the step then restores a window.
+    for _ in 0..3 {
+        core.apply(ClientMsg::MinimizeFocused);
+    }
+    core.apply(ClientMsg::FocusNext);
+    assert!(core.focused().is_some(), "all minimized: Tab restores one");
+    core.shutdown();
+}
+
+#[test]
+fn window_picker_lists_all_and_restores_the_pick() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    let ids = three_windows(&mut core);
+    core.apply(ClientMsg::FocusNext); // a
+    core.apply(ClientMsg::MinimizeFocused);
+    core.apply(ClientMsg::WindowPickerOpen);
+    assert!(core.window_picker_open());
+    // Digit 1 is a, minimized: picking restores and focuses it.
+    core.apply(ClientMsg::WindowPickerNumber(1));
+    assert!(!core.window_picker_open());
+    assert_eq!(core.focused(), Some(ids[0]));
+    // Arrow + Enter: open highlights the focused row (a), one down is b.
+    core.apply(ClientMsg::WindowPickerOpen);
+    core.apply(ClientMsg::WindowPickerStep(1));
+    core.apply(ClientMsg::WindowPickerEnter);
+    assert_eq!(core.focused(), Some(ids[1]));
+    // Esc closes without changing focus.
+    core.apply(ClientMsg::WindowPickerOpen);
+    core.apply(ClientMsg::WindowPickerStep(1));
+    core.apply(ClientMsg::WindowPickerEsc);
+    assert!(!core.window_picker_open());
+    assert_eq!(core.focused(), Some(ids[1]));
+    core.shutdown();
+}

@@ -133,6 +133,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     crate::gpm::start(flags.clone(), out_stream.try_clone()?);
 
     let mut leader = false;
+    // Set after leader Tab / Shift+Tab: further bare Tab / Shift+Tab keep
+    // stepping focus without the leader, Enter / Esc end the cycle (consumed),
+    // and any other key ends it and is handled normally.
+    let mut cycling = false;
     let mut last_click: Option<(Point, std::time::Instant)> = None;
     let mut grab: Option<Grab> = None;
     loop {
@@ -146,6 +150,8 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
                     let ctrl_alt = ctrl && k.modifiers.contains(KeyModifiers::ALT);
                     let is_leader = keymap.is_leader(k.code, k.modifiers);
+                    // Every key ends a focus cycle unless its branch re-arms it.
+                    let was_cycling = std::mem::take(&mut cycling);
                     let shift = k.modifiers.contains(KeyModifiers::SHIFT);
                     // kmscon and the Linux VT send the Backspace key as Ctrl-H
                     // (0x08), not DEL (0x7f)/KeyCode::Backspace, so none of
@@ -262,6 +268,28 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                         if let Some(key) = key {
                             send(&mut out_stream, &ClientMsg::ClipMenuKey(key))?;
                         }
+                    } else if f.window_picker {
+                        // Window picker is modal: arrows / Tab / j k move, Enter or
+                        // a digit picks, Esc / q closes, other keys are ignored.
+                        leader = false;
+                        let msg = match k.code {
+                            KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => Some(ClientMsg::WindowPickerStep(-1)),
+                            KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => Some(ClientMsg::WindowPickerStep(1)),
+                            KeyCode::Enter => Some(ClientMsg::WindowPickerEnter),
+                            KeyCode::Esc | KeyCode::Char('q') => Some(ClientMsg::WindowPickerEsc),
+                            KeyCode::Char(c @ '1'..='9') => Some(ClientMsg::WindowPickerNumber(c as u8 - b'0')),
+                            _ => None,
+                        };
+                        if let Some(msg) = msg {
+                            send(&mut out_stream, &msg)?;
+                        }
+                    } else if was_cycling && !is_leader && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Enter | KeyCode::Esc) {
+                        // Sticky focus cycle (see `cycling`).
+                        match k.code {
+                            KeyCode::Tab => { send(&mut out_stream, &ClientMsg::FocusNext)?; cycling = true; }
+                            KeyCode::BackTab => { send(&mut out_stream, &ClientMsg::FocusPrev)?; cycling = true; }
+                            _ => {}
+                        }
                     } else if f.power_dialog {
                         // Power confirm / forget dialog: Enter/y confirms, Esc/n cancels.
                         leader = false;
@@ -281,6 +309,9 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("launcher"), _) => send(&mut out_stream, &ClientMsg::ToggleMenu)?,
                             (Some("maximize"), _) => send(&mut out_stream, &ClientMsg::MaximizeFocused)?,
                             (Some("minimize"), _) => send(&mut out_stream, &ClientMsg::MinimizeFocused)?,
+                            (Some("focus_next"), _) => { send(&mut out_stream, &ClientMsg::FocusNext)?; cycling = true; }
+                            (Some("focus_prev"), _) => { send(&mut out_stream, &ClientMsg::FocusPrev)?; cycling = true; }
+                            (Some("windows"), _) => send(&mut out_stream, &ClientMsg::WindowPickerOpen)?,
                             (Some("close"), _) => send(&mut out_stream, &ClientMsg::CloseFocused)?,
                             (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,
@@ -486,6 +517,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                     }
                 }
                 Event::Mouse(me) => {
+                    // A click ends a keyboard focus cycle (Tab goes to the app again).
+                    if matches!(me.kind, crossterm::event::MouseEventKind::Down(_)) {
+                        cycling = false;
+                    }
                     let p = Point::new(me.column as i32, me.row as i32);
                     let mods = crate::mouse::MouseMods {
                         shift: me.modifiers.contains(KeyModifiers::SHIFT),
