@@ -76,7 +76,7 @@ impl Compositor {
     pub fn height(&self) -> i32 { self.h }
 
     /// Composite `layers` (sorted by z here — caller need not pre-sort) onto the back buffer,
-    /// then overlay the cursor at `cursor` (if any) by toggling `attrs.inverse`.
+    /// then overlay the cursor at `cursor` (if any), see [`cursor_cell`].
     ///
     /// Returns a shared reference to the resulting back buffer.
     pub fn composite(&mut self, layers: &[Layer], cursor: Option<Point>) -> &CellBuffer {
@@ -131,12 +131,10 @@ impl Compositor {
             }
         }
 
-        // Overlay cursor by toggling the inverse attribute.
+        // Overlay the mouse cursor.
         if let Some(p) = cursor {
             if let Some(c) = self.back.get(p.x, p.y) {
-                let mut c = *c;
-                c.attrs.inverse = !c.attrs.inverse;
-                self.back.set(p.x, p.y, c);
+                self.back.set(p.x, p.y, cursor_cell(*c));
             }
         }
 
@@ -222,6 +220,26 @@ fn blend_cell(src: Cell, dst: Cell, opacity: f32) -> Cell {
     }
 }
 
+/// The mouse cursor drawn over cell `c`: a solid white cell on a dark
+/// background, black on a light one, keeping the character under it.
+///
+/// It used to invert the cell (swap fg and bg). That vanishes whenever the two
+/// colours are close, on block or shade glyphs (swapping the halves of `▀`
+/// draws the same picture: chafa wallpaper, carbonyl, image art), and on a
+/// kernel VT, which has no bright backgrounds, so inverted bright text became
+/// black on black (USER tests on a bare VT, 16 colours). An explicit
+/// black/white cell shows at every colour depth, mono included.
+pub fn cursor_cell(c: Cell) -> Cell {
+    use crate::theme::luminance;
+    // A transparent bg composites over black.
+    let bg = if c.bg.a == 0 { Rgba::rgb(0, 0, 0) } else { c.bg };
+    let (white, black) = (Rgba::rgb(255, 255, 255), Rgba::rgb(0, 0, 0));
+    let (fg, bg) = if luminance(bg) < 0.3 { (black, white) } else { (white, black) };
+    // A block glyph would paint over the cursor colour with its own shape.
+    let ch = if matches!(c.ch as u32, 0x2580..=0x259F) { ' ' } else { c.ch };
+    Cell { ch, fg, bg, attrs: crate::cell::CellAttrs::default() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,7 +270,7 @@ mod tests {
             y: 2,
             cell: Cell { ch: '\0', fg: Rgba::rgb(1, 2, 3), bg: Rgba::TRANSPARENT, attrs: Default::default() },
         };
-        let caps = crate::terminal::Caps { truecolor: true, pixel_mouse: true, kitty_graphics: true };
+        let caps = crate::terminal::Caps { depth: crate::display::ColorDepth::TrueColor, vt: false, pixel_mouse: true, kitty_graphics: true };
         let out = crate::terminal::frame_to_ansi(&[change], &caps);
         assert!(out.is_empty() || !out.contains("\u{1b}[3;6H"), "continuation cell should not be painted");
     }

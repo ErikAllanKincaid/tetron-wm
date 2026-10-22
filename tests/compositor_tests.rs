@@ -36,8 +36,24 @@ fn cursor_overlays_inverse() {
     let mut comp = Compositor::new(2,1);
     let base = CellBuffer::new(2,1);
     let frame = comp.composite(&[Layer{z:0,origin:Point::new(0,0),buf:base,opacity:1.0,scissor:None}], Some(Point::new(1,0)));
-    assert!(frame.get(1,0).unwrap().attrs.inverse);
+    // The cursor cell must look different from its untouched neighbour.
+    assert_ne!(frame.get(1,0).unwrap(), frame.get(0,0).unwrap());
     assert!(!frame.get(0,0).unwrap().attrs.inverse);
+}
+
+#[test]
+fn cursor_stays_visible_on_blocks_dark_and_light_cells() {
+    use tetron_wm::compositor::cursor_cell;
+    let (white, black) = (Rgba::rgb(255, 255, 255), Rgba::rgb(0, 0, 0));
+    // A half block (wallpaper art) becomes a solid cell.
+    let c = cursor_cell(Cell { ch: '\u{2580}', fg: Rgba::rgb(0, 170, 170), bg: Rgba::rgb(0, 0, 170), ..Default::default() });
+    assert_eq!((c.ch, c.bg), (' ', white));
+    // Dim text on black (the mc case): white cell, black letter.
+    let c = cursor_cell(Cell { ch: 'a', fg: Rgba::rgb(85, 85, 85), bg: black, ..Default::default() });
+    assert_eq!((c.ch, c.fg, c.bg), ('a', black, white));
+    // A light cell gets a black cursor.
+    let c = cursor_cell(Cell { ch: ' ', fg: black, bg: Rgba::rgb(170, 170, 170), ..Default::default() });
+    assert_eq!(c.bg, black);
 }
 
 #[test]

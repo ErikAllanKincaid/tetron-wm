@@ -5365,6 +5365,10 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Forward a passthrough mouse event to the focused app's PTY.
     fn forward_mouse_to_app(&mut self, m: crate::mouse::MouseInput) {
+        // The pointer we draw must follow the mouse here too: on a bare VT (gpm)
+        // it is the only pointer on screen, and without this it stayed behind
+        // at the edge of any focused mouse-capturing app (mc, fresh, htop).
+        self.cursor = Point::new(m.col, m.row);
         let Some(area) = self.app_mouse_area() else { return };
         if m.col < area.x || m.col >= area.x + area.w || m.row < area.y || m.row >= area.y + area.h {
             return;

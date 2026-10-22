@@ -925,7 +925,7 @@ fn find_on_layer(core: &mut SessionCore, z: i32, needle: &str) -> Option<Point> 
 #[test]
 fn info_menu_opens_from_the_bar_and_its_links_work() {
     let mut core = SessionCore::new(100, 30, Config::default());
-    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").expect("the ⓘ segment is on the menubar");
+    let icon = find_on_layer(&mut core, 1000, tetron_wm::glyphs::get(tetron_wm::glyphs::Glyph::Info)).expect("the ⓘ segment is on the menubar");
     assert_eq!(icon.y, 0);
     core.apply(ClientMsg::MouseDown(icon));
     // The popover shows the session facts and the links.
@@ -945,7 +945,7 @@ fn info_menu_opens_from_the_bar_and_its_links_work() {
 #[test]
 fn info_menu_settings_link_opens_settings() {
     let mut core = SessionCore::new(100, 30, Config::default());
-    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    let icon = find_on_layer(&mut core, 1000, tetron_wm::glyphs::get(tetron_wm::glyphs::Glyph::Info)).unwrap();
     core.apply(ClientMsg::MouseDown(icon));
     let link = find_on_layer(&mut core, 5000, "Settings").expect("Settings link");
     core.apply(ClientMsg::MouseDown(Point::new(link.x + 2, link.y)));
@@ -973,7 +973,7 @@ fn poller_interest_follows_what_the_ui_shows() {
     let kick0 = interest.kick_gen();
 
     // Open the Info menu, then the Bluetooth row: its popover needs the data.
-    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    let icon = find_on_layer(&mut core, 1000, tetron_wm::glyphs::get(tetron_wm::glyphs::Glyph::Info)).unwrap();
     core.apply(ClientMsg::MouseDown(icon));
     core.build_frame();
     assert!(!interest.want().bluetooth, "the Info row alone needs no Bluetooth data");
@@ -1139,7 +1139,7 @@ fn screensaver_follows_a_resize_and_repaints_when_due() {
 fn screensaver_is_started_from_the_launcher_and_the_info_menu() {
     let mut core = SessionCore::new(100, 30, Config::default());
     // Info menu link.
-    let icon = find_on_layer(&mut core, 1000, "\u{24D8}").unwrap();
+    let icon = find_on_layer(&mut core, 1000, tetron_wm::glyphs::get(tetron_wm::glyphs::Glyph::Info)).unwrap();
     core.apply(ClientMsg::MouseDown(icon));
     let link = find_on_layer(&mut core, 5000, "Screensaver").expect("Screensaver link in the Info menu");
     core.apply(ClientMsg::MouseDown(Point::new(link.x + 2, link.y)));
@@ -1178,4 +1178,14 @@ fn wheel_scrolls_the_working_directory_picker() {
     core.apply(ClientMsg::ScrollAt { p, lines: 2 });
     assert_eq!(core.dirpicker_selected().unwrap(), top, "wheel up came back");
     core.shutdown();
+}
+
+#[test]
+fn pointer_follows_mouse_passed_through_to_an_app() {
+    use tetron_wm::mouse::{MouseAction, MouseButton, MouseInput, MouseMods};
+    let mut core = SessionCore::new(80, 24, Config::default());
+    core.apply(ClientMsg::MouseInput(MouseInput {
+        col: 30, row: 10, button: MouseButton::None, action: MouseAction::Move, mods: MouseMods::default(),
+    }));
+    assert_eq!(core.build_frame().cursor, Some(Point::new(30, 10)));
 }
