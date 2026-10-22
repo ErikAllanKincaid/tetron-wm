@@ -286,17 +286,13 @@ impl Settings {
         if self.edit.is_some() || self.text.is_some() {
             return; // don't leave a half-typed form via arrow keys
         }
-        if self.section > 0 {
-            self.enter_section(self.section - 1);
-        }
+        self.enter_section((self.section + SECTIONS.len() - 1) % SECTIONS.len());
     }
     pub fn next_section(&mut self) {
         if self.edit.is_some() || self.text.is_some() {
             return;
         }
-        if self.section + 1 < SECTIONS.len() {
-            self.enter_section(self.section + 1);
-        }
+        self.enter_section((self.section + 1) % SECTIONS.len());
     }
 
     /// Append a character to the active text field (Apps add form, or the
@@ -725,6 +721,13 @@ impl Settings {
         }
         for y in 0..h {
             buf.set(SIDEBAR_W, y, Cell { ch: '\u{2502}', fg: pal_dim(), bg: pal_bg(), attrs: Default::default() });
+        }
+        // Keyboard hint for the section list, at the sidebar's foot (below the
+        // list, so it never covers a section name).
+        let foot = 1 + SECTIONS.len() as i32 + 1;
+        if h - 2 >= foot {
+            buf.write_str(1, h - 2, "Tab: next", pal_dim(), pal_bg());
+            buf.write_str(1, h - 1, "Shift+Tab: prev", pal_dim(), pal_bg());
         }
 
         let cx = SIDEBAR_W + 2;
@@ -1579,5 +1582,15 @@ mod tests {
         s.move_down();
         s.right(); // no outputs: nothing to switch to
         assert_eq!(s.take_action(), None);
+    }
+
+    #[test]
+    fn section_keys_wrap_both_ways() {
+        let mut s = Settings::new(Config::default());
+        s.prev_section();
+        assert_eq!(SECTIONS[s.section], "About", "Shift+Tab from the first wraps to the last");
+        s.next_section();
+        assert_eq!(s.section, 0);
+        assert!(screen(&s).contains("Tab: next"));
     }
 }

@@ -67,3 +67,4 @@ These keys are unused after the leader and safe to bind in `[keys]` or to claim 
 - tetron-wm never binds terminal control keys in its own UI: no Ctrl+C, Ctrl+D, Ctrl+P and no function keys. Direct shortcuts use Alt+letter, Insert and Delete, or the leader.
 - Leader then `Esc` closes the focused window, but while a dialog or popover is open it is that dialog's key instead (cancel or close), and it never closes a window then.
 - Dialogs have their own keys while open: Enter or `y` confirms and Esc or `n` cancels (power and forget dialogs); the clipboard history popover takes typing to filter, then `Alt+c` or leader `c` to copy without pasting, `Alt+p` or leader `p` or `Insert` to pin, and `Alt+d` or leader `d` or `Delete` to remove an entry.
+- Settings: `Tab` / `Shift+Tab` (or PageDown / PageUp) switch section, Up / Down pick a row, Left / Right change it, Enter or Space toggles or activates, Esc closes.
