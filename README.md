@@ -43,7 +43,7 @@ tetron-wm works on its own; these make the most of it. Ubuntu or Debian:
 sudo apt install chafa sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils
 ```
 
-They add the image wallpaper (chafa), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
+The suite installer above offers to install them for you (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper (chafa), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
 
 Want a bare Linux machine that boots straight into the desktop? Use the suite installer, which can also set up the kmscon console, autologin and autostart, and can undo all of it. See [Bare console](#bare-console-no-x11-or-wayland).
 

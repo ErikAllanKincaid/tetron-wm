@@ -19,6 +19,12 @@
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
+#      extras         — recommended tools: chafa, sshpass, htop, btop, upower,   [Linux, macOS]
+#                       alsa-utils, and xclip / wl-clipboard on a desktop
+#      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
+#                       BlueZ (Bluetooth). Default NO: they change how the
+#                       machine manages sound, network and Bluetooth
+#                       (docs/DEPENDENCIES_tetron-wm_recommended_installs.md)
 #   3. kmscon         — the truecolor + mouse console for a bare VT             [Linux]
 #   4. console        — run kmscon on a VT in place of the kernel getty         [Linux + systemd]
 #      autologin      — that VT logs your user in without a password prompt
@@ -36,6 +42,8 @@
 #   --all            wm + config + kmscon + console + autologin + autostart (=appliance)
 #   --wm / --no-wm             force the tetron-wm step on/off
 #   --config / --no-config     force the config-dir step on/off
+#   --extras / --no-extras     force the recommended-tools step on/off
+#   --services / --no-services force the system-services step on/off
 #   --kmscon / --no-kmscon     force the kmscon step on/off
 #   --console / --no-console   run kmscon on a VT (replaces getty there)
 #   --vt N                     which VT (default 1, the console that opens at boot)
@@ -75,7 +83,7 @@ fetch() {
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 ASSUME_YES=0
-WANT_WM=""; WANT_CONFIG=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""
+WANT_WM=""; WANT_CONFIG=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""
 VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -84,6 +92,8 @@ while [ $# -gt 0 ]; do
     --all)        PROFILE=appliance ;;
     --wm)         WANT_WM=y ;;     --no-wm)     WANT_WM=n ;;
     --config)     WANT_CONFIG=y ;; --no-config) WANT_CONFIG=n ;;
+    --extras)     WANT_EXTRAS=y ;; --no-extras) WANT_EXTRAS=n ;;
+    --services)   WANT_SERVICES=y ;; --no-services) WANT_SERVICES=n ;;
     --kmscon)     WANT_KMSCON=y ;; --no-kmscon) WANT_KMSCON=n ;;
     --console)    WANT_CONSOLE=y ;;   --no-console)   WANT_CONSOLE=n ;;
     --autologin)  WANT_AUTOLOGIN=y ;; --no-autologin) WANT_AUTOLOGIN=n ;;
@@ -179,6 +189,63 @@ ensure_truecolor() {
   local tmp; tmp="$(mktemp)"
   awk 'BEGIN{ins=0} /^\[/ && ins==0 {print "truecolor = true"; ins=1} {print} END{if(ins==0) print "truecolor = true"}' "$f" > "$tmp" \
     && mv "$tmp" "$f" && log "set truecolor = true in config.toml (kmscon supports it; no COLORTERM)"
+}
+
+# ── Step 2b: recommended extras and system services ────────────────────────────
+# Each entry is "command:debian-pkg:fedora-pkg:arch-pkg:brew-pkg" (an empty
+# field = not offered there). Only entries whose command is missing install,
+# so re-running converges. What each one is for: the DEPENDENCIES doc.
+EXTRAS="chafa:chafa:chafa:chafa:chafa
+sshpass:sshpass:sshpass:sshpass:
+htop:htop:htop:htop:htop
+btop:btop:btop:btop:btop
+upower:upower:upower:upower:
+alsamixer:alsa-utils:alsa-utils:alsa-utils:
+blueutil::::blueutil"
+# Desktop clipboard sync, only on a machine with a desktop session.
+EXTRAS_GUI="xclip:xclip:xclip:xclip:
+wl-copy:wl-clipboard:wl-clipboard:wl-clipboard:"
+SERVICES="wpctl:wireplumber:wireplumber:wireplumber:
+nmcli:network-manager:NetworkManager:networkmanager:
+bluetoothctl:bluez:bluez:bluez-utils:"
+
+# The package manager column to read: 2 apt, 3 dnf, 4 pacman, 5 brew.
+pm_col() {
+  if have apt-get; then echo 2; elif have dnf; then echo 3; elif have pacman; then echo 4
+  elif have brew; then echo 5; else echo 0; fi
+}
+
+# Packages from a list (above) whose command is missing, for this package manager.
+missing_pkgs() {
+  local col line cmd pkg out=""; col="$(pm_col)"
+  [ "$col" = 0 ] && return 0
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    cmd="${line%%:*}"; pkg="$(printf '%s' "$line" | cut -d: -f"$col")"
+    if [ -n "$pkg" ] && ! have "$cmd"; then out="$out $pkg"; fi
+  done <<EOF_LIST
+$1
+EOF_LIST
+  printf '%s' "${out# }"
+}
+
+pm_install() {  # $1 = space-separated packages
+  [ -n "$1" ] || return 0
+  log "installing: $1"
+  # shellcheck disable=SC2086
+  case "$(pm_col)" in
+    2) $SUDO apt-get install -y $1 ;;
+    3) $SUDO dnf install -y $1 ;;
+    4) $SUDO pacman -S --needed --noconfirm $1 ;;
+    5) brew install $1 ;;
+  esac || warn "some packages did not install: $1 (see docs/DEPENDENCIES_tetron-wm_recommended_installs.md)"
+}
+
+extras_list() {
+  local l="$EXTRAS"
+  is_graphical && l="$l
+$EXTRAS_GUI"
+  missing_pkgs "$l"
 }
 
 # ── Step 3: kmscon ─────────────────────────────────────────────────────────────
@@ -445,6 +512,20 @@ main() {
 
   resolve WANT_WM     "Install tetron-wm (latest release)?" y
   resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/, wallpapers/)?" y
+  # Only ask about packages that are actually missing; nothing to ask = skip.
+  local extras services=""
+  extras="$(extras_list)"
+  [ "$IS_LINUX" = 1 ] && services="$(missing_pkgs "$SERVICES")"
+  if [ -n "$extras" ]; then
+    resolve WANT_EXTRAS "Install recommended tools ($extras)?" y
+  else
+    WANT_EXTRAS=n
+  fi
+  if [ -n "$services" ]; then
+    resolve WANT_SERVICES "Install system services for the tray ($services)? They change how this machine manages sound, network or Bluetooth" n
+  else
+    WANT_SERVICES=n
+  fi
   if [ "$IS_LINUX" = 1 ]; then
     local kdef=y; is_graphical && kdef=n
     resolve WANT_KMSCON "Install kmscon (truecolor + mouse console; compiles from source except on Debian trixie)?" "$kdef"
@@ -465,11 +546,13 @@ main() {
 
   echo
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${extras:+ ($extras)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
     return 0
   fi
   [ "$WANT_WM" = y ]        && install_wm
   [ "$WANT_CONFIG" = y ]    && seed_config
+  [ "$WANT_EXTRAS" = y ]    && pm_install "$extras"
+  [ "$WANT_SERVICES" = y ]  && pm_install "$services"
   [ "$WANT_KMSCON" = y ]    && install_kmscon
   [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"
   [ "$WANT_AUTOSTART" = y ] && setup_autostart "$VT"

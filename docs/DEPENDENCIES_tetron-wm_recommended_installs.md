@@ -16,7 +16,7 @@ macOS with [Homebrew](https://brew.sh):
 brew install chafa blueutil htop btop
 ```
 
-The suite installer (`contrib/install-tetron-wm-suite.sh`, see the [README](../README.md#install)) offers chafa, gpm, sshpass and the Nerd Font for you, after a prompt.
+The suite installer (`contrib/install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, sshpass, htop, btop, upower, alsa-utils, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
 
 ## By feature
 
