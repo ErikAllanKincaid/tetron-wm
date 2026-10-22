@@ -117,7 +117,7 @@ impl Store {
         buf.fill(Cell { ch: ' ', fg: pal_fg(), bg: pal_bg(), attrs: Default::default() });
 
         // Search bar (row 0).
-        buf.write_str(1, 0, &format!("\u{2315} {}\u{2588}", self.query), pal_accent(), pal_bg());
+        buf.write_str(1, 0, &format!("{} {}\u{2588}", crate::glyphs::get(crate::glyphs::Glyph::Search), self.query), pal_accent(), pal_bg());
         let count = self.filtered().len();
         let meta = format!("{count} apps");
         buf.write_str((w - meta.len() as i32 - 1).max(0), 0, &meta, pal_dim(), pal_bg());
@@ -196,7 +196,7 @@ impl Store {
             // Verified-recipe badge.
             if let Some(r) = catalog::recipe(&app.name) {
                 if r.verified {
-                    buf.write_str(dx + 1, h - 3, &format!("\u{2713} verified \u{00B7} {}", r.method), GREEN, pal_panel());
+                    buf.write_str(dx + 1, h - 3, &format!("{} verified \u{00B7} {}", crate::glyphs::get(crate::glyphs::Glyph::Check), r.method), GREEN, pal_panel());
                 }
             }
             // Action hint.
@@ -278,7 +278,7 @@ pub fn install_command(app: &CatalogApp) -> String {
             return format!(
                 "clear; {pre}echo 'Installing {name} …'; echo; {cmd}; echo; echo '────────'; \
 echo 'Done. If it succeeded, {name} is now in your launcher.'; \
-echo 'Close this window (\u{2715}) when finished.'; exec \"$SHELL\"",
+echo 'Close this window (x) when finished.'; exec \"$SHELL\"",
                 name = app.name,
                 cmd = r.install,
             );
@@ -297,7 +297,7 @@ echo 'Close this window (\u{2715}) when finished.'; exec \"$SHELL\"",
 || true; \
 echo; echo '────────'; \
 echo 'If nothing installed automatically, get {name} from:'; echo '  {home}'; \
-echo; echo 'Close this window (✕) when done.'; exec \"$SHELL\"",
+echo; echo 'Close this window (x) when done.'; exec \"$SHELL\"",
         name = app.name,
         bin = app.bin,
         gopath = gopath,
@@ -326,8 +326,8 @@ fn draw_list_row(buf: &mut CellBuffer, x: i32, y: i32, w: i32, name: &str, flags
     for dx in 0..w {
         buf.set(x + dx, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() });
     }
-    let mark = if installed { "\u{2713} " } else { "  " };
-    buf.write_str(x, y, mark, GREEN, bg);
+    let mark = if installed { format!("{} ", crate::glyphs::get(crate::glyphs::Glyph::Check)) } else { "  ".to_string() };
+    buf.write_str(x, y, &mark, GREEN, bg);
     let badge_w = if cli { CLI_BADGE.len() as i32 + 1 } else { 0 };
     let name_w = (w - 3 - badge_w).max(1) as usize;
     buf.write_str(x + 2, y, truncate(name, name_w), pal_fg(), bg);

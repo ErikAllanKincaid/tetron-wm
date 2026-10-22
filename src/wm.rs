@@ -325,14 +325,15 @@ pub fn render_window(win: &Window, content: &CellBuffer, focused: bool, shadows:
     buf.write_str(2, 0, &title, t.title_fg, tbg);
     // Titlebar control buttons. Wide windows get minimize / maximize / close;
     // very narrow windows get just a close glyph (matching `Window::control_at`).
+    let close_glyph = crate::glyphs::ch(crate::glyphs::Glyph::Close);
     if r.w >= 9 {
         let (minc, maxc, closec) = win.control_columns();
-        let max_glyph = if win.state == WindowState::Maximized { '\u{2750}' } else { '\u{25A2}' };
+        let max_glyph = crate::glyphs::ch(if win.state == WindowState::Maximized { crate::glyphs::Glyph::Restore } else { crate::glyphs::Glyph::Maximize });
         buf.set(minc,   0, Cell { ch: '\u{2013}', fg: t.ctrl_fg,  bg: tbg, attrs: Default::default() });
         buf.set(maxc,   0, Cell { ch: max_glyph,  fg: t.ctrl_fg,  bg: tbg, attrs: Default::default() });
-        buf.set(closec, 0, Cell { ch: '\u{2715}', fg: t.close_fg, bg: tbg, attrs: Default::default() });
+        buf.set(closec, 0, Cell { ch: close_glyph, fg: t.close_fg, bg: tbg, attrs: Default::default() });
     } else if r.w >= 2 {
-        buf.set(r.w - 2, 0, Cell { ch: '\u{2715}', fg: t.close_fg, bg: tbg, attrs: Default::default() });
+        buf.set(r.w - 2, 0, Cell { ch: close_glyph, fg: t.close_fg, bg: tbg, attrs: Default::default() });
     }
 
     // Right border (rows 1..h). Transparent background so the border is

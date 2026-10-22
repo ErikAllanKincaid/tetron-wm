@@ -23,6 +23,8 @@ pub struct Theme {
     pub dim: Rgba,
     pub accent: Rgba,
     pub active_bg: Rgba,
+    /// Explicit 16-colour choices per role (see [`Vt16`]); usually empty.
+    pub vt16: Vt16,
 }
 
 const fn rgb(r: u8, g: u8, b: u8) -> Rgba {
@@ -48,6 +50,7 @@ impl Theme {
             dim: rgb(120, 130, 150),
             accent: rgb(108, 182, 255),
             active_bg: rgb(45, 58, 85),
+            vt16: Vt16::NONE,
         }
     }
 
@@ -69,6 +72,7 @@ impl Theme {
             dim: rgb(120, 130, 150),
             accent: rgb(136, 192, 208),
             active_bg: rgb(76, 86, 106),
+            vt16: Vt16::NONE,
         }
     }
 
@@ -90,6 +94,8 @@ impl Theme {
             dim: rgb(146, 131, 116),
             accent: rgb(250, 189, 47),
             active_bg: rgb(80, 73, 69),
+            // USER choice 2026-10-21: warm brown desktop.
+            vt16: Vt16 { desktop_bg: Some(3), ..Vt16::NONE },
         }
     }
 
@@ -111,6 +117,7 @@ impl Theme {
             dim: rgb(139, 145, 175),
             accent: rgb(189, 147, 249),
             active_bg: rgb(98, 114, 164),
+            vt16: Vt16::NONE,
         }
     }
 
@@ -139,6 +146,8 @@ impl Theme {
             dim: rgb(110, 106, 94),
             accent: rgb(46, 125, 50),
             active_bg: rgb(215, 233, 205),
+            // USER choice 2026-10-21: green desktop and selection, cyan focused title.
+            vt16: Vt16 { desktop_bg: Some(2), title_focus: Some(6), active_bg: Some(2), ..Vt16::NONE },
         }
     }
 
@@ -161,6 +170,7 @@ impl Theme {
             dim: rgb(120, 130, 150),
             accent: rgb(108, 182, 255),
             active_bg: rgb(45, 58, 85),
+            vt16: Vt16::NONE,
         }
     }
 
@@ -213,9 +223,197 @@ fn slot() -> &'static RwLock<Theme> {
     THEME.get_or_init(|| RwLock::new(Theme::midnight()))
 }
 
-/// Snapshot the current desktop theme.
+/// Snapshot the current desktop theme, adapted to the attached client's colour
+/// depth (see [`adapt`]). Every widget reads colours through here, so this is
+/// the one place where 16-colour and black-and-white rendering is decided.
 pub fn current() -> Theme {
-    *slot().read().unwrap()
+    adapt(*slot().read().unwrap(), crate::display::depth())
+}
+
+// ── Low colour depths ────────────────────────────────────────────────────────
+//
+// A theme is designed in truecolor. Quantizing it to 16 colours collapses the
+// subtle dark backgrounds (desktop, window, selection) onto black, so the
+// selection disappears; in black and white every colour is gone. Instead of
+// quantizing, map each palette *role* to a colour chosen for that depth, so the
+// distinctions the UI relies on (desktop vs window, focused vs blurred,
+// selected vs not) survive. The client still guards every fg/bg pair
+// (`terminal::readable_fg16`), so a widget that pairs roles unusually stays
+// legible.
+
+/// The theme to render with at colour depth `depth`. Truecolor and 256 colours
+/// keep the theme as designed (the 256-colour quantizer has a fine grey ramp).
+pub fn adapt(t: Theme, depth: crate::display::ColorDepth) -> Theme {
+    use crate::display::ColorDepth;
+    match depth {
+        ColorDepth::TrueColor | ColorDepth::Ansi256 => t,
+        ColorDepth::Ansi16 => vt16(t),
+        ColorDepth::Mono => mono(t),
+    }
+}
+
+/// Whether a theme is light (dark text on a light window background).
+fn is_light(t: &Theme) -> bool {
+    luminance(t.window_bg) > 0.4
+}
+
+/// Per-theme 16-colour choices: a palette index (0-15, ANSI order, see
+/// `display::VGA16`) per role, overriding what [`vt16`] derives. Set on
+/// built-in presets and by a theme file's `[vt16]` table. Background roles can
+/// only use 0-7 (a bare VT has 8 backgrounds); 8-15 there fold to 0-7.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default)]
+pub struct Vt16 {
+    pub desktop_bg: Option<u8>,
+    pub window_bg: Option<u8>,
+    pub title_focus: Option<u8>,
+    pub title_blur: Option<u8>,
+    pub title_fg: Option<u8>,
+    pub border: Option<u8>,
+    pub ctrl_fg: Option<u8>,
+    pub close_fg: Option<u8>,
+    pub menubar_bg: Option<u8>,
+    pub dock_bg: Option<u8>,
+    pub text: Option<u8>,
+    pub dim: Option<u8>,
+    pub accent: Option<u8>,
+    pub active_bg: Option<u8>,
+}
+
+impl Vt16 {
+    /// No overrides: everything derived.
+    pub const NONE: Vt16 = Vt16 {
+        desktop_bg: None, window_bg: None, title_focus: None, title_blur: None,
+        title_fg: None, border: None, ctrl_fg: None, close_fg: None,
+        menubar_bg: None, dock_bg: None, text: None, dim: None, accent: None,
+        active_bg: None,
+    };
+}
+
+/// Spread of a colour's channels: 0 for greys, large for clearly coloured.
+fn chroma(c: Rgba) -> u8 {
+    c.r.max(c.g).max(c.b) - c.r.min(c.g).min(c.b)
+}
+
+/// Below this chroma a theme colour counts as a neutral (grey, near black, near
+/// white) and takes the generic role colour instead of its nearest hue.
+const HUE_CHROMA: u8 = 40;
+
+/// 16-colour palette by role, using only exact VGA colours (so the client's
+/// quantizer maps them 1:1) and only the 8 backgrounds a bare VT can show.
+///
+/// Three layers, later wins:
+/// 1. a generic table for dark or light themes (window and text colours always
+///    come from here: dark themes black windows, light themes grey);
+/// 2. the theme's own hue for clearly coloured roles (desktop, title bars,
+///    menubar, selection, accent, close), e.g. a teal desktop stays cyan;
+/// 3. the theme's explicit [`Vt16`] choices.
+///
+/// Then the distinctions the UI relies on are enforced: the selection differs
+/// from the window and the desktop, the focused title from the blurred one.
+fn vt16(t: Theme) -> Theme {
+    let v = |i: u8| crate::display::VGA16[i as usize];
+    let near = |c: Rgba, set: &[u8]| -> u8 {
+        let d = |a: u8, b: u8| (a as i32 - b as i32).pow(2);
+        *set.iter().min_by_key(|&&i| { let p = v(i); d(p.r, c.r) + d(p.g, c.g) + d(p.b, c.b) }).unwrap()
+    };
+    // The coloured entries: backgrounds 1-6, text 1-6 and 9-14.
+    const BG_HUES: [u8; 6] = [1, 2, 3, 4, 5, 6];
+    const FG_HUES: [u8; 12] = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14];
+    let hue_bg = |c: Rgba| (chroma(c) >= HUE_CHROMA).then(|| near(c, &BG_HUES));
+    let light = is_light(&t);
+    // Text on a light theme sits on grey/white: only the dark hues read there.
+    let fg_hues: &[u8] = if light { &BG_HUES } else { &FG_HUES };
+    let hue_fg = |c: Rgba| (chroma(c) >= HUE_CHROMA).then(|| near(c, fg_hues));
+
+    // 1. Generic table.
+    let (mut desktop, window, mut focus, blur, title_fg, border, ctrl, mut close, mut menubar, mut dock, text, dim, mut accent, mut active) =
+        if light {
+            (6, 7, 4, 7, 15, 0, 0, 1, 7, 7, 0, 8, 4, 4)
+        } else {
+            // Bright accent from the bright hues only, so it reads on black.
+            let acc = if chroma(t.accent) >= HUE_CHROMA { near(t.accent, &[9, 10, 11, 12, 13, 14]) } else { 14 };
+            (0, 0, 7, 0, 0, 7, 7, 9, 0, 0, 7, 8, acc, 6)
+        };
+    // 2. The theme's own hues.
+    desktop = hue_bg(t.desktop_bg).unwrap_or(desktop);
+    focus = hue_bg(t.title_focus).unwrap_or(focus);
+    menubar = hue_bg(t.menubar_bg).unwrap_or(menubar);
+    dock = hue_bg(t.dock_bg).unwrap_or(dock);
+    active = hue_bg(t.active_bg).unwrap_or(active);
+    if light {
+        accent = hue_fg(t.accent).unwrap_or(accent);
+    }
+    // `close` stays red (danger) unless a theme overrides it explicitly.
+    // 3. Explicit choices (backgrounds folded to the 8 a VT can show).
+    let o = t.vt16;
+    let bg = |cur: u8, x: Option<u8>| x.map(|i| (i & 15) % 8).unwrap_or(cur);
+    let fg = |cur: u8, x: Option<u8>| x.map(|i| i & 15).unwrap_or(cur);
+    desktop = bg(desktop, o.desktop_bg);
+    let window = bg(window, o.window_bg);
+    focus = bg(focus, o.title_focus);
+    let blur = bg(blur, o.title_blur);
+    menubar = bg(menubar, o.menubar_bg);
+    dock = bg(dock, o.dock_bg);
+    active = bg(active, o.active_bg);
+    let (title_fg, border, ctrl) = (fg(title_fg, o.title_fg), fg(border, o.border), fg(ctrl, o.ctrl_fg));
+    close = fg(close, o.close_fg);
+    let (text, dim) = (fg(text, o.text), fg(dim, o.dim));
+    accent = fg(accent, o.accent);
+    // Distinctions the UI relies on, unless the theme chose the role itself.
+    if o.active_bg.is_none() && (active == window || active == desktop) {
+        active = [6, 4, 2, 5, 3, 1].into_iter().find(|&i| i != window && i != desktop).unwrap();
+    }
+    if o.title_focus.is_none() && focus == blur {
+        focus = [7, 6, 4, 2].into_iter().find(|&i| i != blur).unwrap();
+    }
+    Theme {
+        desktop_bg: v(desktop),
+        window_bg: v(window),
+        title_focus: v(focus),
+        title_blur: v(blur),
+        title_fg: v(title_fg),
+        border: v(border),
+        shadow: t.shadow,
+        ctrl_fg: v(ctrl),
+        close_fg: v(close),
+        menubar_bg: v(menubar),
+        dock_bg: v(dock),
+        text: v(text),
+        dim: v(dim),
+        accent: v(accent),
+        active_bg: v(active),
+        vt16: t.vt16,
+    }
+}
+
+/// Black-and-white palette. The client emits no colour in mono mode; it turns
+/// a light background into reverse video, a dark fg into dim and a near-white
+/// fg into bold (`terminal::push_colors`). So every role is a grey chosen to
+/// land on the right side of those thresholds: highlights (selection, focused
+/// title) are white backgrounds, secondary text is mid grey, the accent is
+/// pure white. Light themes map the same way: the terminal's own default
+/// colours decide what "black" and "white" look like.
+fn mono(t: Theme) -> Theme {
+    let g = |v: u8| rgb(v, v, v);
+    Theme {
+        desktop_bg: g(0),
+        window_bg: g(0),
+        title_focus: g(230),
+        title_blur: g(0),
+        title_fg: g(192),
+        border: g(192),
+        shadow: t.shadow,
+        ctrl_fg: g(192),
+        close_fg: g(255),
+        menubar_bg: g(0),
+        dock_bg: g(0),
+        text: g(192),
+        dim: g(110),
+        accent: g(255),
+        active_bg: g(230),
+        vt16: t.vt16,
+    }
 }
 
 /// Replace the current desktop theme (applied on the next rendered frame).
@@ -291,6 +489,8 @@ struct ThemeFile {
     dim: Option<String>,
     accent: Option<String>,
     active_bg: Option<String>,
+    /// Optional 16-colour choices: `[vt16]` with `role = 0..15`.
+    vt16: Option<Vt16>,
 }
 
 /// Apply one optional color string over a default, logging (and keeping the
@@ -327,6 +527,7 @@ impl ThemeFile {
             dim: field("dim", base.dim, &self.dim),
             accent: field("accent", base.accent, &self.accent),
             active_bg: field("active_bg", base.active_bg, &self.active_bg),
+            vt16: self.vt16.unwrap_or(base.vt16),
         };
         (self.name, t)
     }
@@ -386,7 +587,14 @@ pub fn to_file_toml(t: &Theme, name: &str) -> String {
          text        = \"{}\"\n\
          dim         = \"{}\"\n\
          accent      = \"{}\"\n\
-         active_bg   = \"{}\"\n",
+         active_bg   = \"{}\"\n\n\
+         # 16-colour console (bare Linux VT): derived automatically from the\n\
+         # colours above. Uncomment to pin a role to a palette index 0-15\n\
+         # (0 black, 1 red, 2 green, 3 brown, 4 blue, 5 magenta, 6 cyan, 7 grey,\n\
+         # 8-15 their bright forms; backgrounds can only use 0-7).\n\
+         # [vt16]\n\
+         # desktop_bg = 6\n\
+         # title_focus = 4\n",
         hex(t.desktop_bg), hex(t.window_bg), hex(t.title_focus), hex(t.title_blur),
         hex(t.title_fg), hex(t.border), hex(t.shadow), hex(t.ctrl_fg), hex(t.close_fg),
         hex(t.menubar_bg), hex(t.dock_bg), hex(t.text), hex(t.dim), hex(t.accent),
@@ -395,7 +603,7 @@ pub fn to_file_toml(t: &Theme, name: &str) -> String {
 }
 
 /// WCAG relative luminance (sRGB linearized).
-fn luminance(c: Rgba) -> f64 {
+pub fn luminance(c: Rgba) -> f64 {
     let lin = |v: u8| {
         let s = v as f64 / 255.0;
         if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
@@ -572,5 +780,112 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].0, "solar");
         assert_eq!(loaded[0].1.accent, Rgba { r: 0xab, g: 0xcd, b: 0xef, a: 255 });
+    }
+}
+
+#[cfg(test)]
+mod depth_tests {
+    use super::*;
+    use crate::display::{ColorDepth, VGA16};
+
+    /// Print the 16-colour role table of every built-in, plus any theme files
+    /// listed in `TETRON_WM_VT16_DUMP` (space-separated paths). A design aid:
+    /// `TETRON_WM_VT16_DUMP="a.toml b.toml" cargo test vt16_table -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn vt16_table() {
+        let idx = |c: Rgba| VGA16.iter().position(|p| *p == c).unwrap();
+        let mut themes: Vec<(String, Theme)> = PRESETS.iter().map(|n| (n.to_string(), Theme::named(n))).collect();
+        for p in std::env::var("TETRON_WM_VT16_DUMP").unwrap_or_default().split_whitespace() {
+            let (n, t) = parse_theme_toml(&std::fs::read_to_string(p).unwrap()).unwrap();
+            themes.push((n.unwrap_or_else(|| p.into()), t));
+        }
+        println!("theme       desk win focus blur tfg menu dock text dim acc sel close");
+        for (n, t) in themes {
+            let a = adapt(t, ColorDepth::Ansi16);
+            println!("{n:<11} {:>4} {:>3} {:>5} {:>4} {:>3} {:>4} {:>4} {:>4} {:>3} {:>3} {:>3} {:>5}",
+                idx(a.desktop_bg), idx(a.window_bg), idx(a.title_focus), idx(a.title_blur), idx(a.title_fg),
+                idx(a.menubar_bg), idx(a.dock_bg), idx(a.text), idx(a.dim), idx(a.accent), idx(a.active_bg), idx(a.close_fg));
+        }
+    }
+
+    fn all_roles(t: &Theme) -> [Rgba; 14] {
+        [t.desktop_bg, t.window_bg, t.title_focus, t.title_blur, t.title_fg, t.border,
+         t.ctrl_fg, t.close_fg, t.menubar_bg, t.dock_bg, t.text, t.dim, t.accent, t.active_bg]
+    }
+
+    #[test]
+    fn full_colour_depths_keep_the_theme() {
+        let t = Theme::midnight();
+        assert_eq!(adapt(t, ColorDepth::TrueColor).desktop_bg, t.desktop_bg);
+        assert_eq!(adapt(t, ColorDepth::Ansi256).active_bg, t.active_bg);
+    }
+
+    /// The bug this exists for: quantized midnight drew desktop, window and
+    /// selection all on black. Every built-in, light or dark, must keep the
+    /// selection apart from desktop and window (dark themes deliberately share a
+    /// black desktop and window) and keep body text readable.
+    #[test]
+    fn vt16_keeps_desktop_window_and_selection_apart() {
+        for name in PRESETS {
+            let t = adapt(Theme::named(name), ColorDepth::Ansi16);
+            for c in all_roles(&t) {
+                assert!(VGA16.contains(&c), "{name}: {c:?} is not an exact VGA colour");
+            }
+            for bg in [t.desktop_bg, t.window_bg, t.active_bg, t.title_focus, t.menubar_bg] {
+                assert!(VGA16[..8].contains(&bg), "{name}: bright background {bg:?} (a VT has 8)");
+            }
+            assert_ne!(t.active_bg, t.window_bg, "{name}");
+            if Theme::named(name).vt16.active_bg.is_none() {
+                assert_ne!(t.active_bg, t.desktop_bg, "{name}"); // a pinned choice may match
+            }
+            assert!(contrast(t.text, t.window_bg) >= 4.5, "{name}: text on window");
+            assert!(contrast(t.dim, t.window_bg) >= 2.0, "{name}: dim on window");
+            assert!(contrast(t.title_fg, t.title_focus) >= 2.0, "{name}: focused title");
+            // Focused and blurred titles differ; two neutrals must also differ
+            // in brightness (a hue against a neutral is distinct by itself).
+            assert_ne!(t.title_focus, t.title_blur, "{name}: focused vs blurred title");
+            let neutral = |c: Rgba| chroma(c) == 0;
+            if neutral(t.title_focus) && neutral(t.title_blur) {
+                assert!(contrast(t.title_focus, t.title_blur) >= 3.0, "{name}: focused vs blurred title");
+            }
+        }
+    }
+
+    #[test]
+    fn vt16_keeps_a_themes_own_hues_and_honours_overrides() {
+        let idx = |c: Rgba| VGA16.iter().position(|p| *p == c).unwrap();
+        // A Windows 3.1 style file theme: teal desktop, navy titles, red close.
+        let (_, t) = parse_theme_toml(concat!(
+            "desktop_bg = \"#008080\"\nwindow_bg = \"#ffffff\"\ntitle_focus = \"#000080\"\n",
+            "title_blur = \"#808080\"\ntext = \"#000000\"\nclose_fg = \"#cc0000\"\n",
+            "active_bg = \"#c0c0c0\"\n",
+        )).unwrap();
+        let a = adapt(t, ColorDepth::Ansi16);
+        assert_eq!((idx(a.desktop_bg), idx(a.title_focus), idx(a.close_fg)), (6, 4, 1)); // close: generic red
+        // Light theme: grey windows, and the grey selection falls back to blue.
+        assert_eq!((idx(a.window_bg), idx(a.active_bg)), (7, 4));
+        // Dark themes keep black windows whatever their tint.
+        assert_eq!(idx(adapt(Theme::nord(), ColorDepth::Ansi16).window_bg), 0);
+        // Built-in overrides (USER choices).
+        let p = adapt(Theme::pastoral(), ColorDepth::Ansi16);
+        assert_eq!((idx(p.desktop_bg), idx(p.title_focus), idx(p.active_bg)), (2, 6, 2));
+        assert_eq!(idx(adapt(Theme::gruvbox(), ColorDepth::Ansi16).desktop_bg), 3);
+        // A file `[vt16]` table wins; a bright background folds to the dark half.
+        let (_, t) = parse_theme_toml("[vt16]\ndesktop_bg = 12\naccent = 11\n").unwrap();
+        let a = adapt(t, ColorDepth::Ansi16);
+        assert_eq!((idx(a.desktop_bg), idx(a.accent)), (4, 11));
+    }
+
+    #[test]
+    fn mono_highlights_are_light_and_plain_backgrounds_dark() {
+        for name in PRESETS {
+            let t = adapt(Theme::named(name), ColorDepth::Mono);
+            assert!(luminance(t.active_bg) >= 0.2 && luminance(t.title_focus) >= 0.2, "{name}");
+            for bg in [t.desktop_bg, t.window_bg, t.menubar_bg, t.dock_bg, t.title_blur] {
+                assert!(luminance(bg) < 0.2, "{name}");
+            }
+            assert!(luminance(t.dim) < 0.3 && luminance(t.text) >= 0.3, "{name}: dim must read as dim");
+        }
     }
 }

@@ -47,7 +47,8 @@ const MODE_X: i32 = 9; // the launcher button is 8 cells wide (GO_LABEL_W), + a 
 const ASSIST_X: i32 = 13;
 
 /// Label for the assistant button (opens the AI chat panel).
-const ASSIST_LABEL: &str = " \u{2726} "; // ✦
+/// Three cells wide in every icon style.
+fn assist_label() -> String { format!(" {} ", crate::glyphs::get(crate::glyphs::Glyph::Assistant)) }
 
 /// Column of the "+" new-shell button (reuses the old focused-app slot).
 const NEW_SHELL_X: i32 = 17;
@@ -57,8 +58,8 @@ const NEW_SHELL_X: i32 = 17;
 pub const TASKBAR_X: i32 = 21;
 
 /// Menubar view-mode toggle glyphs (shows the CURRENT mode; click to switch).
-const MODE_DESKTOP: &str = " \u{229E} "; // ⊞  windowed desktop
-const MODE_SIMPLE: &str = " \u{25A6} ";  // ▦  full-screen single app
+fn mode_desktop() -> String { format!(" {} ", crate::glyphs::get(crate::glyphs::Glyph::ModeDesktop)) } // windowed desktop
+fn mode_simple() -> String { format!(" {} ", crate::glyphs::get(crate::glyphs::Glyph::ModeSimple)) }   // full-screen single app
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -104,9 +105,9 @@ pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::S
     // `label` is normalised again here, so any string keeps the button 8 cells.
     let go = format!(" {} ", launcher_label(label, crate::protocol::DEFAULT_SESSION));
     buf.write_str(0, 0, &go, t.accent, t.active_bg);
-    let mode = if simple { MODE_SIMPLE } else { MODE_DESKTOP };
-    buf.write_str(MODE_X, 0, mode, t.accent, t.active_bg);
-    buf.write_str(ASSIST_X, 0, ASSIST_LABEL, t.accent, t.active_bg);
+    let mode = if simple { mode_simple() } else { mode_desktop() };
+    buf.write_str(MODE_X, 0, &mode, t.accent, t.active_bg);
+    buf.write_str(ASSIST_X, 0, &assist_label(), t.accent, t.active_bg);
     // The "+" new-shell button, just right of the assistant.
     buf.write_str(NEW_SHELL_X, 0, NEW_SHELL_LABEL, crate::cell::Rgba::rgb(255, 255, 255), t.accent);
     // Status-tray segments occupy the right side, out to the screen edge (the
@@ -147,12 +148,12 @@ pub fn menubar_brand_region() -> Rect {
 
 /// Screen-space hit region for the menubar view-mode toggle (just right of the brand).
 pub fn menubar_mode_region() -> Rect {
-    Rect::new(MODE_X, 0, MODE_DESKTOP.chars().count() as i32, 1)
+    Rect::new(MODE_X, 0, mode_desktop().chars().count() as i32, 1)
 }
 
 /// Screen-space hit region for the assistant (✦) button — opens the AI chat panel.
 pub fn menubar_assistant_region() -> Rect {
-    Rect::new(ASSIST_X, 0, ASSIST_LABEL.chars().count() as i32, 1)
+    Rect::new(ASSIST_X, 0, assist_label().chars().count() as i32, 1)
 }
 
 /// The "new shell" quick-launch button in the menubar (" + ").
@@ -277,9 +278,10 @@ fn count_suffix(n: usize) -> String {
 /// Compact group-count suffix with no leading space (used in the badge-only
 /// pill, e.g. `"²"` or `"·12"`).
 fn count_badge_suffix(n: usize) -> String {
-    const SUP: [char; 10] = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹'];
+    // Only ¹ ² ³ exist in console fonts; larger counts use the middle-dot form.
+    const SUP: [char; 4] = ['0','¹','²','³'];
     if n <= 1 { String::new() }
-    else if n <= 9 { SUP[n].to_string() }
+    else if n <= 3 { SUP[n].to_string() }
     else { format!("\u{00B7}{n}") }
 }
 

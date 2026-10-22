@@ -110,9 +110,10 @@ pub struct Config {
     #[serde(default = "default_true")]
     pub wallpaper_enabled: bool,
     /// Glyph set for file-type icons where the Kitty graphics image icons can't
-    /// render (kmscon, a bare VT, plain SSH): "ascii" (default, renders in every
-    /// font), "nerd" (Nerd Font glyphs -- needs one installed, tetron-os ships
-    /// it), or "emoji". See `iconset::IconStyle`.
+    /// render (kmscon, a bare VT, plain SSH): "auto" (default: ascii on a bare
+    /// VT, unicode elsewhere), "ascii" (renders in every font), "unicode"
+    /// (DejaVu Sans Mono symbols), "nerd" (Nerd Font glyphs -- needs one
+    /// installed, tetron-os ships it), or "emoji". See `iconset::IconStyle`.
     #[serde(default)]
     pub icon_style: crate::iconset::IconStyle,
     /// Root directory the working-directory picker opens at (default `~`).

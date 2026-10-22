@@ -97,9 +97,9 @@ fn taskbar_overflows_to_badge_only_then_marker_in_narrow_width() {
 #[test]
 fn menubar_shows_mode_toggle_glyph() {
     let desktop = row_text(&render_menubar(40, &[], &[], false, "tetron"), 40);
-    assert!(desktop.contains('\u{229E}'), "desktop mode shows ⊞, got {desktop:?}");
+    assert!(desktop.contains(tetron_wm::glyphs::ch(tetron_wm::glyphs::Glyph::ModeDesktop)), "desktop mode shows ⊞, got {desktop:?}");
     let simple = row_text(&render_menubar(40, &[], &[], true, "tetron"), 40);
-    assert!(simple.contains('\u{25A6}'), "simple mode shows ▦, got {simple:?}");
+    assert!(simple.contains(tetron_wm::glyphs::ch(tetron_wm::glyphs::Glyph::ModeSimple)), "simple mode shows ▦, got {simple:?}");
     // region sits just right of the brand
     let r = menubar_mode_region();
     assert_eq!(r.y, 0);
@@ -150,7 +150,7 @@ fn a_custom_label_never_moves_the_buttons_to_its_right() {
     let mode_at = |label: &str| {
         let layer = render_menubar(60, &[], &[], false, label);
         let row = row_text(&layer, 60);
-        row.chars().position(|c| c == '\u{229E}').unwrap()
+        row.chars().position(|c| c == tetron_wm::glyphs::ch(tetron_wm::glyphs::Glyph::ModeDesktop)).unwrap()
     };
     let base = mode_at("tetron");
     for label in ["go", "Menu", "waytoolong", "", "@x"] {

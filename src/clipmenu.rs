@@ -261,11 +261,11 @@ impl ClipMenu {
             for x in 1..bw - 1 {
                 buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });
             }
-            buf.write_str(2, y, if e.pinned { "\u{2605}" } else { "\u{2606}" }, t.accent, bg);
+            buf.write_str(2, y, if e.pinned { crate::glyphs::get(crate::glyphs::Glyph::Pinned) } else { crate::glyphs::get(crate::glyphs::Glyph::Unpinned) }, t.accent, bg);
             buf.write_str(4, y, e.source.tag(), t.border, bg);
             let room = (r.w - 14).max(4) as usize;
             buf.write_str(9, y, &crate::clipboard::preview(&e.text, room), fg, bg);
-            buf.write_str(bw - 4, y, "\u{2715}", t.close_fg, bg);
+            buf.write_str(bw - 4, y, crate::glyphs::get(crate::glyphs::Glyph::Close), t.close_fg, bg);
         }
         if l.total > l.rows.len() {
             if l.offset > 0 {

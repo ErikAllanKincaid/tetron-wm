@@ -4,11 +4,15 @@
 //! used when the terminal supports them. Where it does not -- kmscon, a bare
 //! Linux VT, plain SSH to a non-graphics terminal -- the file manager and the
 //! desktop fall back to a single glyph per file type. The `icon_style` config
-//! key picks which glyph set, set process-globally at daemon startup (like the
-//! theme):
-//!   - `ascii`  (default): BMP geometric/symbol shapes, present in essentially
-//!     every console/monospace font and monochrome so they take the
-//!     theme color. Renders everywhere.
+//! key picks which glyph set, set process-globally on the daemon (like the
+//! theme). This module and `glyphs.rs` are the only places glyph choices live.
+//!   - `auto` (default): `ascii` on a bare kernel VT, `unicode` everywhere
+//!     else. Resolved from the attached client's display (`crate::display`)
+//!     and re-resolved when another client attaches.
+//!   - `ascii`: only characters in `glyphs::CONSOLE_SAFE` (the kernel console
+//!     PSF fonts and DejaVu Sans Mono). Renders everywhere.
+//!   - `unicode`: richer single-cell symbols from `glyphs::UNICODE_SAFE`, all
+//!     present in DejaVu Sans Mono (kmscon's font and the usual GUI fallback).
 //!   - `nerd`:  Nerd Font file-type glyphs -- the nicest console result, but
 //!     Private-Use-Area, so tofu without a Nerd Font installed.
 //!     tetron-os ships one and sets this.
@@ -22,9 +26,14 @@ use std::sync::{OnceLock, RwLock};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum IconStyle {
-    /// BMP geometric shapes -- renders in every font. The default.
+    /// `unicode` unless the client is a bare VT, then `ascii`. The default.
+    /// Only a preference: [`style`] never returns it.
     #[default]
+    Auto,
+    /// Console-safe shapes -- renders in every font, including kernel PSFs.
     Ascii,
+    /// Richer symbols present in DejaVu Sans Mono (kmscon, GUI terminals).
+    Unicode,
     /// Nerd Font file-type glyphs -- needs a Nerd Font (tetron-os ships one).
     Nerd,
     /// Color emoji -- GUI terminals only.
@@ -34,17 +43,31 @@ pub enum IconStyle {
 /// The glyph for `role` in a specific `style`.
 pub fn glyph_for(role: Role, style: IconStyle) -> char {
     match style {
-        IconStyle::Ascii => match role {
+        IconStyle::Unicode => match role {
+            // Only glyphs in `glyphs::UNICODE_SAFE`.
+            Role::Directory => '\u{25A4}',  // ▤ square with lines
+            Role::Executable => '\u{2699}', // ⚙ gear
+            Role::Text => '\u{2610}',       // ☐ ballot box
+            Role::Code => '\u{25C7}',       // ◇ diamond
+            Role::Image => '\u{25C9}',      // ◉ fisheye
+            Role::Audio => '\u{266A}',      // ♪ note
+            Role::Video => '\u{25B6}',      // ▶ play
+            Role::Archive => '\u{25A3}',    // ▣ boxed square
+            Role::Pdf => '\u{25A6}',        // ▦ crosshatch
+            Role::Other => '\u{25AB}',      // ▫ small square
+        },
+        IconStyle::Ascii | IconStyle::Auto => match role {
+            // Only glyphs in `glyphs::CONSOLE_SAFE` (kernel console fonts have few shapes).
             Role::Directory => '\u{25A0}',  // ■ filled square
             Role::Executable => '\u{25CF}', // ● filled circle
-            Role::Text => '\u{25A4}',       // ▤ square with horizontal lines
-            Role::Code => '\u{25C7}',       // ◇ unfilled diamond
-            Role::Image => '\u{25C6}',      // ◆ filled diamond
-            Role::Audio => '\u{266A}',      // ♪ eighth note
+            Role::Text => '\u{2610}',       // ☐ ballot box
+            Role::Code => '\u{25B8}',       // ▸ small triangle
+            Role::Image => '\u{25B2}',      // ▲ up triangle
+            Role::Audio => '\u{25AE}',      // ▮ vertical bar
             Role::Video => '\u{25B6}',      // ▶ play
-            Role::Archive => '\u{25A3}',    // ▣ square within a square
-            Role::Pdf => '\u{25A6}',        // ▦ square with grid
-            Role::Other => '\u{25A1}',      // □ unfilled square
+            Role::Archive => '\u{25BC}',    // ▼ down triangle
+            Role::Pdf => '\u{2588}',        // █ full block
+            Role::Other => '\u{00B7}',      // · middle dot
         },
         IconStyle::Nerd => match role {
             Role::Directory => '\u{F07B}',  //  folder
@@ -93,19 +116,33 @@ pub enum Status {
 pub fn status_for(s: Status, style: IconStyle) -> char {
     use Status::*;
     match style {
-        // BMP symbols — render in essentially every console/monospace font.
-        IconStyle::Ascii => match s {
-            Cpu => '\u{2299}',             // ⊙
+        // Only glyphs in `glyphs::UNICODE_SAFE`.
+        IconStyle::Unicode => match s {
+            Cpu => '\u{2699}',             // ⚙
             Mem => '\u{25A4}',             // ▤
             BatteryCharging => '\u{21AF}', // ↯
-            Battery => '\u{25AF}',         // ▯
-            VolMute => '\u{2717}',         // ✗
+            Battery => '\u{25AE}',         // ▮
+            VolMute => '\u{2715}',         // ✕
             VolLow => '\u{266A}',          // ♪
             VolHigh => '\u{266B}',         // ♫
-            Bluetooth => '\u{224B}',       // ≋ (not ⏻, the power symbol)
+            Bluetooth => 'B',
             Net => '\u{21C4}',             // ⇄
-            Bell => '\u{237E}',            // ⍾ bell symbol
-            Clipboard => '\u{2398}',       // ⎘
+            Bell => '\u{2022}',            // •
+            Clipboard => '\u{00A7}',       // §
+        },
+        // BMP symbols — render in essentially every console/monospace font.
+        IconStyle::Ascii | IconStyle::Auto => match s {
+            Cpu => '\u{2299}',             // ⊙
+            Mem => '\u{2592}',             // ▒
+            BatteryCharging => '\u{25B2}', // ▲
+            Battery => '\u{25AE}',         // ▮
+            VolMute => '\u{2717}',         // ✗
+            VolLow => '\u{25B8}',          // ▸
+            VolHigh => '\u{25B6}',         // ▶
+            Bluetooth => 'B',
+            Net => '\u{2193}',             // ↓
+            Bell => '\u{2022}',            // •
+            Clipboard => '\u{00A7}',       // §
         },
         // Nerd Font (FontAwesome) glyphs — needs a Nerd Font installed.
         IconStyle::Nerd => match s {
@@ -141,7 +178,8 @@ pub fn status_for(s: Status, style: IconStyle) -> char {
 /// emoji only when the style is `emoji`, so ascii consoles never see tofu.
 pub fn warning_label(style: IconStyle) -> &'static str {
     match style {
-        IconStyle::Ascii => "[!]",
+        IconStyle::Ascii | IconStyle::Auto => "[!]",
+        IconStyle::Unicode => "\u{26A0}",
         IconStyle::Nerd => "\u{F071}",
         IconStyle::Emoji => "\u{26A0}\u{FE0F}",
     }
@@ -149,36 +187,78 @@ pub fn warning_label(style: IconStyle) -> &'static str {
 
 /// The status glyph in the active style.
 pub fn status(s: Status) -> char {
-    status_for(s, *slot().read().unwrap())
+    status_for(s, style())
 }
 
-fn slot() -> &'static RwLock<IconStyle> {
-    static STYLE: OnceLock<RwLock<IconStyle>> = OnceLock::new();
-    STYLE.get_or_init(|| RwLock::new(IconStyle::Ascii))
+/// (configured preference, resolved style). The preference may be `Auto`; the
+/// resolved style never is.
+fn slot() -> &'static RwLock<(IconStyle, IconStyle)> {
+    static STYLE: OnceLock<RwLock<(IconStyle, IconStyle)>> = OnceLock::new();
+    STYLE.get_or_init(|| RwLock::new((IconStyle::Ascii, IconStyle::Ascii)))
+}
+
+/// The concrete style for preference `pref` on display `caps`: `auto` is
+/// `ascii` on a bare VT (PSF fonts) and `unicode` elsewhere.
+pub fn resolve(pref: IconStyle, caps: crate::display::ClientCaps) -> IconStyle {
+    match pref {
+        IconStyle::Auto if caps.vt => IconStyle::Ascii,
+        IconStyle::Auto => IconStyle::Unicode,
+        s => s,
+    }
 }
 
 /// The warning label in the active style.
 pub fn warning() -> &'static str {
-    warning_label(*slot().read().unwrap())
+    warning_label(style())
 }
 
-/// Set the active icon style (daemon startup, from config).
-pub fn set(style: IconStyle) {
-    *slot().write().unwrap() = style;
+/// The active (resolved) icon style. Never `Auto`.
+pub fn style() -> IconStyle {
+    slot().read().unwrap().1
+}
+
+/// Set the configured icon style (daemon startup, config change) and resolve
+/// it against the attached client's display.
+pub fn set(pref: IconStyle) {
+    *slot().write().unwrap() = (pref, resolve(pref, crate::display::get()));
+}
+
+/// Re-resolve the configured style after the client's display changed.
+/// Returns whether the resolved style changed.
+pub fn refresh() -> bool {
+    let mut s = slot().write().unwrap();
+    let next = resolve(s.0, crate::display::get());
+    let changed = next != s.1;
+    s.1 = next;
+    changed
 }
 
 /// The glyph for `role` in the active style.
 pub fn glyph(role: Role) -> char {
-    glyph_for(role, *slot().read().unwrap())
+    glyph_for(role, style())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const ALL_STYLES: [IconStyle; 5] =
+        [IconStyle::Auto, IconStyle::Ascii, IconStyle::Unicode, IconStyle::Nerd, IconStyle::Emoji];
+
+    #[test]
+    fn auto_is_ascii_on_a_vt_and_unicode_elsewhere() {
+        use crate::display::ClientCaps;
+        let vt = ClientCaps { vt: true, ..Default::default() };
+        assert_eq!(resolve(IconStyle::Auto, vt), IconStyle::Ascii);
+        assert_eq!(resolve(IconStyle::Auto, ClientCaps::default()), IconStyle::Unicode);
+        // An explicit choice is never overridden.
+        assert_eq!(resolve(IconStyle::Nerd, vt), IconStyle::Nerd);
+        assert_eq!(resolve(IconStyle::Ascii, ClientCaps::default()), IconStyle::Ascii);
+    }
+
     #[test]
     fn every_role_has_a_glyph_in_every_style() {
-        for style in [IconStyle::Ascii, IconStyle::Nerd, IconStyle::Emoji] {
+        for style in ALL_STYLES {
             for role in [
                 Role::Directory, Role::Image, Role::Video, Role::Audio, Role::Text,
                 Role::Code, Role::Archive, Role::Pdf, Role::Executable, Role::Other,
@@ -205,7 +285,7 @@ mod tests {
 
     #[test]
     fn every_status_has_a_glyph_in_every_style() {
-        for style in [IconStyle::Ascii, IconStyle::Nerd, IconStyle::Emoji] {
+        for style in ALL_STYLES {
             for s in STATUSES {
                 assert_ne!(status_for(s, style), '\0', "{style:?}/{s:?}");
             }

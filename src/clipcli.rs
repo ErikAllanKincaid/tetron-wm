@@ -55,7 +55,7 @@ const CLIP_USAGE: &str = "usage: tetron-wm clip <command>\n\
   setup-mc                     make mcedit use this clipboard (~/.config/mc/ini)";
 
 fn preview(text: &str, n: usize) -> String {
-    let one: String = text.chars().map(|c| if c == '\n' { '\u{23CE}' } else { c }).collect();
+    let one: String = text.chars().map(|c| if c == '\n' { crate::glyphs::ch(crate::glyphs::Glyph::Newline) } else { c }).collect();
     if one.chars().count() > n { format!("{}…", one.chars().take(n).collect::<String>()) } else { one }
 }
 

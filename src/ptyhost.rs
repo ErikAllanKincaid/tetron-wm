@@ -45,6 +45,18 @@ impl EventListener for PtyResponder {
                     let _ = w.flush();
                 }
             }
+            Event::ColorRequest(index, fmt) => {
+                // An app asked for a colour (OSC 10/11/12 or OSC 4): answer with
+                // the theme's, so apps that pick a light or dark scheme from the
+                // terminal background (vim `background`, editors, prompts) match
+                // the desktop theme. Unanswered, they time out and guess.
+                let rgb = query_color(index, &crate::theme::current());
+                let reply = fmt(alacritty_terminal::vte::ansi::Rgb { r: rgb.r, g: rgb.g, b: rgb.b });
+                if let Ok(mut w) = self.writer.lock() {
+                    let _ = w.write_all(reply.as_bytes());
+                    let _ = w.flush();
+                }
+            }
             Event::Bell => {
                 self.bells.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
@@ -481,6 +493,17 @@ fn resolve_program(cmd: &str) -> String {
     cmd.to_string()
 }
 
+/// The colour reported for a colour query: palette entries 0-255 as drawn,
+/// then the terminal's default foreground (256), background (257) and cursor
+/// (258) from the theme, the same defaults `snapshot` paints with.
+fn query_color(index: usize, th: &crate::theme::Theme) -> Rgba {
+    match index {
+        0..=255 => idx_to_rgb(index as u8),
+        257 => th.window_bg,
+        _ => th.text,
+    }
+}
+
 /// Resolve an alacritty cell color into our [`Rgba`].
 fn resolve_color(c: AColor, default: Rgba) -> Rgba {
     match c {
@@ -541,8 +564,40 @@ fn idx_to_rgb(i: u8) -> Rgba {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use alacritty_terminal::vte::ansi::Processor;
+
+    #[test]
+    fn colour_queries_report_the_theme_defaults() {
+        let th = crate::theme::Theme::midnight();
+        assert_eq!(query_color(257, &th), th.window_bg);
+        assert_eq!(query_color(256, &th), th.text);
+        assert_eq!(query_color(1, &th), idx_to_rgb(1));
+    }
+
+    /// An OSC 11 background query reaches `PtyResponder` as `ColorRequest(257)`
+    /// and the reply carries the theme's window background.
+    #[test]
+    fn emulator_background_query_is_answered_with_the_theme() {
+        #[derive(Clone)]
+        struct Colors(Arc<Mutex<Vec<String>>>);
+        impl EventListener for Colors {
+            fn send_event(&self, e: Event) {
+                if let Event::ColorRequest(i, fmt) = e {
+                    let c = query_color(i, &crate::theme::Theme::midnight());
+                    self.0.lock().unwrap().push(fmt(alacritty_terminal::vte::ansi::Rgb { r: c.r, g: c.g, b: c.b }));
+                }
+            }
+        }
+        let rec = Colors(Arc::new(Mutex::new(Vec::new())));
+        let mut term = Term::new(Config::default(), &TermSize::new(80, 24), rec.clone());
+        let mut parser = Processor::<StdSyncHandler>::new();
+        parser.advance(&mut term, b"\x1b]11;?\x07");
+        let out = rec.0.lock().unwrap();
+        // midnight window_bg (17,20,29) as 16-bit-per-channel X11 rgb.
+        assert!(out.iter().any(|s| s.contains("11;rgb:1111/1414/1d1d")), "{:?}", *out);
+    }
 
     /// Records the emulator's write-back replies.
     #[derive(Clone)]
