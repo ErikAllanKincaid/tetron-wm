@@ -20,7 +20,7 @@ Your apps run in the background, so you can close the terminal, drop an ssh conn
 Prebuilt binary for Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). No Rust needed.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 It installs to `/usr/local/bin` and uses `sudo` for that. To install into your home instead:
@@ -40,7 +40,7 @@ cargo install --git https://github.com/ErikAllanKincaid/tetron-wm
 tetron-wm works on its own; these make the most of it. Ubuntu or Debian:
 
 ```sh
-sudo apt install chafa sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils
+sudo apt install chafa sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils fonts-dejavu-core
 ```
 
 The suite installer above offers to install them for you (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper (chafa), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
@@ -123,14 +123,14 @@ Common first changes:
 tetron-wm draws everything as cells, so it also runs on a raw Linux console. For colors and mouse there, use the maintained [kmscon](https://github.com/Aetf/kmscon) fork. One script can set it all up, including autologin and starting tetron-wm at boot:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/contrib/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` or `appliance`, and use `--dry-run` to preview the plan.
 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
 - Why each piece is needed, with diagrams: [docs/tetron-wm_bare_console_guide.html](docs/tetron-wm_bare_console_guide.html)
-- Just kmscon: [scripts/install-kmscon.sh](scripts/install-kmscon.sh)
+- Just kmscon: [install-kmscon.sh](install-kmscon.sh)
 - Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard.
 
 ## Updating

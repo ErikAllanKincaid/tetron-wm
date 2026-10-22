@@ -44,7 +44,7 @@ terminal and tetron-wm just runs in it.
 
 ## Path A — easy (scripted)
 
-Shortcut: `contrib/install-tetron-wm-suite.sh` does all of Path A and the
+Shortcut: `install-tetron-wm-suite.sh` does all of Path A and the
 autologin and autostart from "Persist on tty1" in one prompted run
 (`--profile appliance`, `--dry-run` to preview, `--uninstall` to undo). The
 steps below are what it automates.
@@ -75,7 +75,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile   # bash: ~/.bash_pro
 From a checkout of this repo:
 
 ```sh
-scripts/install-kmscon.sh
+./install-kmscon.sh
 ```
 
 It apt-installs the maintained pair from **trixie-backports** on Debian, or
@@ -320,7 +320,7 @@ wallpaper.
 | Boxes/tofu with `icon_style = "nerd"` | redo B4 / `fc-cache -f`, or use `ascii`. |
 | Wallpaper glyph tofu on kmscon | console font lacks the sextant glyphs chafa uses — font coverage, not a bug; the DejaVu/Terminus fonts help. |
 | tty1 login broken | from another VT/SSH: `sudo systemctl disable --now kmsconvt@tty1 && sudo systemctl enable --now getty@tty1`. |
-| Desktop appears on tty1 but with no truecolor/mouse (debug log `term=linux`) | kmscon crashed and systemd fell back to `getty@tty1`. Check `journalctl -u kmsconvt@tty1 -b`. A `mod-*.so: undefined symbol` + `SEGV` means a **stale kmscon module** from an older build: `sudo rm -f /usr/local/lib/*/kmscon/mod-*.so` then re-run `scripts/install-kmscon.sh --source` (it now wipes old modules before reinstalling). |
+| Desktop appears on tty1 but with no truecolor/mouse (debug log `term=linux`) | kmscon crashed and systemd fell back to `getty@tty1`. Check `journalctl -u kmsconvt@tty1 -b`. A `mod-*.so: undefined symbol` + `SEGV` means a **stale kmscon module** from an older build: `sudo rm -f /usr/local/lib/*/kmscon/mod-*.so` then re-run `install-kmscon.sh --source` (it now wipes old modules before reinstalling). |
 | Debug the desktop | `~/tetron-wm-debug.log`, or the in-app Logs viewer. |
 
 ---
@@ -328,7 +328,7 @@ wallpaper.
 ## References
 
 - Illustrated walkthrough (the "why"): [`tetron-wm_bare_console_guide.html`](tetron-wm_bare_console_guide.html)
-- Installers: `install.sh`, `scripts/install-kmscon.sh`, `contrib/install-tetron-wm-suite.sh` (this repo)
+- Installers: `install.sh`, `install-kmscon.sh`, `install-tetron-wm-suite.sh` (this repo)
 - Config: [`CONFIG.md`](CONFIG.md) (reference and recipes), [`config.example.toml`](../config.example.toml)
 - Maintained kmscon fork: https://github.com/Aetf/kmscon , https://github.com/Aetf/libtsm
 - Nerd Fonts: https://github.com/ryanoasis/nerd-fonts · chafa: https://hpjansson.org/chafa/

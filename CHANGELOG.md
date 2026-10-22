@@ -8,6 +8,7 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Added
 - The suite installer offers the recommended tools (chafa, sshpass, htop, btop, upower, alsa-utils, and xclip or wl-clipboard on a desktop; default yes) and, as a separate question that defaults to no, the system services PipeWire, NetworkManager and BlueZ. Only missing packages are installed, with apt, dnf, pacman or Homebrew. Flags `--extras` / `--no-extras`, `--services` / `--no-services`; `--dry-run` lists what would be installed.
+- The suite installer's recommended tools include the DejaVu Sans Mono font when it is missing (checked with `fc-list`), so the default icon set has every symbol it draws on Linux terminals as well as kmscon.
 - README lists recommended extra packages, and `docs/DEPENDENCIES_tetron-wm_recommended_installs.md` explains per feature which outside program tetron-wm uses, what happens without it, and the macOS equivalent.
 - Settings has a Sound section: output volume (Left / Right, the mouse wheel, or a click on the bar), mute (Space), the output device (Left / Right cycles the machine's outputs, for example HDMI to a monitor, headphones or speakers; PipeWire `wpctl set-default`), and the mixer link from the volume popover. These act on the machine at once and are not saved to the config.
 - Volume from the keyboard. Leader `=` opens the menubar volume popover; Left / Right (or `-` / `=` / `+`) change the volume, `m` or Space mutes, Esc closes. The keys also work when the popover was opened with a click. The popover gains a row that opens a mixer program: the first installed of wiremix (in ASCII mode on a bare console), pulsemixer, ncpamixer and alsamixer, configurable as `[tray_tools] volume`; with none installed, Linux offers `Get wiremix (Store)`. New `[keys]` action `volume`.
@@ -29,6 +30,9 @@ carry user-visible feature work and the occasional breaking config change.
 - Wallpaper (chafa) on the `ascii` style uses space, full block and shades on the kernel VT (`TERM=linux`, whose fonts have no half blocks) and half blocks plus quadrants elsewhere. Previously `all-wide` emitted about 230 different glyphs, over 60% of cells in glyphs DejaVu lacks, so kmscon showed tofu or clipped cells. Dropped the `--dither` flag, which chafa ignores in truecolor.
 - Window-count badges above 3 use the `·N` form (superscripts above ³ are missing from console fonts).
 - The launcher warning label on variant entries (Claude Code skip-permissions) now follows `icon_style`: `[!]` for ascii (default), a Nerd Font glyph for nerd, the emoji only for emoji.
+
+### Changed
+- The suite installer and the kmscon installer moved to the repo root next to `install.sh`: `install-tetron-wm-suite.sh` and `install-kmscon.sh`. The old paths (`contrib/install-tetron-wm-suite.sh`, `scripts/install-kmscon.sh`) remain as small redirects, so existing links and one-liners keep working.
 
 ## [0.14.14] — 2026-10-19
 
