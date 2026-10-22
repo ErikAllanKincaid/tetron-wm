@@ -1272,6 +1272,22 @@ impl SessionCore {
             Some(crate::settings::SettingsAction::RevertColors) => {
                 self.push_terminal_colors();
             }
+            // Sound section: the same intents the tray popover uses, so the
+            // menubar and Settings can never disagree.
+            Some(crate::settings::SettingsAction::VolumeDown) => self.apply_intent(crate::system::ControlIntent::VolumeDown),
+            Some(crate::settings::SettingsAction::VolumeUp) => self.apply_intent(crate::system::ControlIntent::VolumeUp),
+            Some(crate::settings::SettingsAction::VolumeSet(l)) => self.apply_intent(crate::system::ControlIntent::VolumeSet(l)),
+            Some(crate::settings::SettingsAction::ToggleMute) => self.apply_intent(crate::system::ControlIntent::ToggleMute),
+            Some(crate::settings::SettingsAction::SetOutput(id)) => {
+                self.apply_intent(crate::system::ControlIntent::SetOutput(id));
+                self.refresh_sound_outputs();
+            }
+            Some(crate::settings::SettingsAction::OpenMixer) => {
+                if let Some((_, intent)) = crate::tray::volume_mixer_now(&self.cfg.tray_tools) {
+                    self.apply_intent(intent);
+                }
+            }
+            Some(crate::settings::SettingsAction::RefreshSound) => self.refresh_sound_outputs(),
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
             }
@@ -1289,6 +1305,15 @@ impl SessionCore {
                 self.launch("update tetron-wm".into(), "sh".into(), vec!["-lc".into(), cmd]);
             }
             None => {}
+        }
+    }
+
+    /// Re-read the audio outputs into the focused Settings panel (Sound section).
+    fn refresh_sound_outputs(&mut self) {
+        let outs = crate::system::audio_outputs();
+        crate::dbg_log(&format!("sound: {} outputs, default {:?}", outs.len(), outs.iter().find(|o| o.default).map(|o| &o.name)));
+        if let Some(s) = self.focused_settings_mut() {
+            s.set_outputs(outs);
         }
     }
 
@@ -2774,10 +2799,10 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::OpenSettings => self.open_settings(),
             ClientMsg::SettingsUp => { if let Some(s) = self.focused_settings_mut() { s.move_up(); } }
             ClientMsg::SettingsDown => { if let Some(s) = self.focused_settings_mut() { s.move_down(); } }
-            ClientMsg::SettingsPrevSection => { if let Some(s) = self.focused_settings_mut() { s.prev_section(); } }
-            ClientMsg::SettingsNextSection => { if let Some(s) = self.focused_settings_mut() { s.next_section(); } }
-            ClientMsg::SettingsLeft => { if let Some(s) = self.focused_settings_mut() { s.left(); } self.sync_settings(); }
-            ClientMsg::SettingsRight => { if let Some(s) = self.focused_settings_mut() { s.right(); } self.sync_settings(); }
+            ClientMsg::SettingsPrevSection => { if let Some(s) = self.focused_settings_mut() { s.prev_section(); } self.drain_settings_action(); }
+            ClientMsg::SettingsNextSection => { if let Some(s) = self.focused_settings_mut() { s.next_section(); } self.drain_settings_action(); }
+            ClientMsg::SettingsLeft => { if let Some(s) = self.focused_settings_mut() { s.left(); } self.drain_settings_action(); self.sync_settings(); }
+            ClientMsg::SettingsRight => { if let Some(s) = self.focused_settings_mut() { s.right(); } self.drain_settings_action(); self.sync_settings(); }
             ClientMsg::SettingsToggle => {
                 if let Some(s) = self.focused_settings_mut() {
                     s.toggle();
@@ -3185,11 +3210,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::ScrollAt { p, lines } => {
-                // Wheel over the Volume tray segment adjusts the system volume;
-                // otherwise it scrolls the window under the pointer.
-                match self.volume_scroll_intent(p, lines) {
-                    Some(intent) => self.apply_intent(intent),
-                    None => self.scroll_app_at(p, lines),
+                // Wheel over the Volume tray segment, or over the volume row of
+                // Settings → Sound, adjusts the system volume; otherwise it
+                // scrolls the window under the pointer.
+                if let Some(intent) = self.volume_scroll_intent(p, lines) {
+                    self.apply_intent(intent);
+                } else if self.settings_wheel(p, lines) {
+                    self.drain_settings_action();
+                } else {
+                    self.scroll_app_at(p, lines);
                 }
             }
             ClientMsg::PowerFormChar(c) => self.power_menu.form_char(c),
@@ -3325,9 +3354,30 @@ or a remote-side error — its authorized_keys was left untouched)",
         let mut panel = Settings::new(self.cfg.clone());
         panel.set_apphost_outdated(self.apphost_outdated);
         panel.set_colors_live(self.apphost.proto_version() >= 4);
+        panel.set_sound_source(self.tray_state.clone());
         self.contents.insert(id, WinContent::Settings(Box::new(panel)));
         self.titles.push((id, "Settings".into()));
         self.settings_win = Some(id);
+    }
+
+    /// Wheel at screen point `p`: if the topmost window there is the Settings
+    /// panel and the point is its Sound volume row, it arms a volume action and
+    /// takes focus so the drain finds it.
+    fn settings_wheel(&mut self, p: Point, lines: i32) -> bool {
+        let Some(id) = self.wm.topmost_at(p) else { return false };
+        let Some(cr) = self.wm.get(id).map(|w| w.content_rect()) else { return false };
+        if !cr.contains(p) {
+            return false;
+        }
+        let local = Point::new(p.x - cr.x, p.y - cr.y);
+        let used = match self.contents.get_mut(&id) {
+            Some(WinContent::Settings(s)) => s.wheel_at(local, lines),
+            _ => false,
+        };
+        if used {
+            self.wm.raise(id);
+        }
+        used
     }
 
     /// `true` when the focused window hosts the settings panel.

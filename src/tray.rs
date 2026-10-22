@@ -423,6 +423,31 @@ pub struct Tray {
     vol_sel: usize,
 }
 
+/// The mixer row shared by the volume popover and Settings → Sound: the first
+/// installed program of `[tray_tools] volume` (wiremix gets `-s extracompat`
+/// when `ascii`, the bare-console glyph tier), else on Linux a Store search
+/// for wiremix. An empty `volume` list in the config removes the row.
+pub fn volume_mixer(
+    tools: &crate::traytools::TrayTools,
+    installed: &dyn Fn(&str) -> bool,
+    ascii: bool,
+) -> Option<(String, ControlIntent)> {
+    if let Some(mut a) = segment_app(SegmentKind::Volume, tools, installed) {
+        if ascii && a.command == "wiremix" && a.args.is_empty() {
+            a.args = vec!["-s".into(), "extracompat".into()];
+        }
+        return Some((a.label, ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args }));
+    }
+    let removed = tools.get("volume").is_some_and(|s| s.lines().is_empty());
+    (cfg!(target_os = "linux") && !removed)
+        .then(|| ("Get wiremix (Store)".to_string(), ControlIntent::OpenStoreSearch("wiremix".into())))
+}
+
+/// The volume mixer row for the live config and glyph tier.
+pub fn volume_mixer_now(tools: &crate::traytools::TrayTools) -> Option<(String, ControlIntent)> {
+    volume_mixer(tools, &crate::catalog::is_installed, crate::iconset::style() == crate::iconset::IconStyle::Ascii)
+}
+
 /// A key routed to the open volume popover (the client sends these while the
 /// `tray_volume` flag is set, however the popover was opened).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -469,19 +494,7 @@ impl Tray {
     /// is installed (an empty `volume` list in the config removes the row).
     /// On the ascii icon tier (bare console) wiremix gets its ASCII char set.
     pub fn volume_link(&self) -> Option<(String, ControlIntent)> {
-        self.volume_link_with(&crate::catalog::is_installed, crate::iconset::style() == crate::iconset::IconStyle::Ascii)
-    }
-
-    fn volume_link_with(&self, installed: &dyn Fn(&str) -> bool, ascii: bool) -> Option<(String, ControlIntent)> {
-        if let Some(mut a) = segment_app(SegmentKind::Volume, &self.tools, installed) {
-            if ascii && a.command == "wiremix" && a.args.is_empty() {
-                a.args = vec!["-s".into(), "extracompat".into()];
-            }
-            return Some((a.label, ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args }));
-        }
-        let removed = self.tools.get("volume").is_some_and(|s| s.lines().is_empty());
-        (cfg!(target_os = "linux") && !removed)
-            .then(|| ("Get wiremix (Store)".to_string(), ControlIntent::OpenStoreSearch("wiremix".into())))
+        volume_mixer_now(&self.tools)
     }
 
     /// The highlighted volume popover row (0 level, 1 link), for tests.
@@ -1059,27 +1072,25 @@ mod tests {
 
     #[test]
     fn volume_link_prefers_installed_mixer_and_ascii_charset() {
-        let tray = Tray::new();
+        let tools = crate::traytools::TrayTools::new();
         let only = |name: &'static str| move |p: &str| p == name;
-        let (label, intent) = tray.volume_link_with(&only("pulsemixer"), false).unwrap();
+        let (label, intent) = volume_mixer(&tools, &only("pulsemixer"), false).unwrap();
         assert_eq!(label, "Open pulsemixer");
         assert!(matches!(intent, ControlIntent::OpenTool { ref command, .. } if command == "pulsemixer"));
         // wiremix wins when present; on the ascii tier it gets the ASCII char set.
-        let (_, intent) = tray.volume_link_with(&|_| true, true).unwrap();
+        let (_, intent) = volume_mixer(&tools, &|_| true, true).unwrap();
         assert_eq!(intent, ControlIntent::OpenTool { title: "Volume".into(), command: "wiremix".into(), args: vec!["-s".into(), "extracompat".into()] });
     }
 
     #[test]
     fn volume_link_falls_back_to_store_and_config_can_remove_it() {
-        let mut tray = Tray::new();
-        let none = tray.volume_link_with(&|_| false, false);
+        let none = volume_mixer(&crate::traytools::TrayTools::new(), &|_| false, false);
         if cfg!(target_os = "linux") {
             assert_eq!(none.unwrap().1, ControlIntent::OpenStoreSearch("wiremix".into()));
         }
         let mut tools = crate::traytools::TrayTools::new();
         tools.insert("volume".into(), crate::traytools::ToolSpec::Many(Vec::new()));
-        tray.set_tools(tools);
-        assert_eq!(tray.volume_link_with(&|_| true, false), None);
+        assert_eq!(volume_mixer(&tools, &|_| true, false), None);
     }
 
     #[test]

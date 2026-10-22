@@ -20,7 +20,10 @@ const RED: Rgba = Rgba { r: 255, g: 107, b: 107, a: 255 };
 const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
 
 const SIDEBAR_W: i32 = 18;
-const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "About"];
+const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "Sound", "About"];
+
+/// Index of the Sound section in [`SECTIONS`].
+const SOUND: usize = 8;
 
 /// Roles listed in the Default Apps section (config key, label).
 const DEFAULT_APP_ROLES: &[(&str, &str)] = &[
@@ -53,6 +56,18 @@ pub enum SettingsAction {
     PreviewColors,
     /// Put the saved terminal colors back after a preview.
     RevertColors,
+    /// Sound section: change the system volume / mute / default output now
+    /// (machine state, never written to the config).
+    VolumeDown,
+    VolumeUp,
+    VolumeSet(u8),
+    ToggleMute,
+    SetOutput(u32),
+    /// Sound section: open the mixer program (or the Store when none).
+    OpenMixer,
+    /// Sound section was entered: re-read the output list (a shell-out, so it
+    /// runs on this action, not on every frame).
+    RefreshSound,
 }
 
 /// Terminal color presets: (name, background, foreground). `None` = follow the
@@ -120,6 +135,11 @@ pub struct Settings {
     previewing: bool,
     /// The apphost can apply colors live (protocol v4+).
     colors_live: bool,
+    /// The poller's live system snapshot, for the Sound section's volume and
+    /// mute (shared with the tray, so both always show the same level).
+    sound: Option<std::sync::Arc<std::sync::RwLock<crate::system::SystemState>>>,
+    /// Audio outputs as of the last [`SettingsAction::RefreshSound`].
+    outputs: Vec<crate::system::AudioOutput>,
 }
 
 impl Settings {
@@ -129,6 +149,7 @@ impl Settings {
         Self {
             apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
+            sound: None, outputs: Vec::new(),
         }
     }
 
@@ -152,6 +173,46 @@ impl Settings {
     /// not, the Terminal section says a restart is needed.
     pub fn set_colors_live(&mut self, live: bool) {
         self.colors_live = live;
+    }
+
+    /// Give the panel the live system snapshot (volume, mute, caps).
+    pub fn set_sound_source(&mut self, st: std::sync::Arc<std::sync::RwLock<crate::system::SystemState>>) {
+        self.sound = Some(st);
+    }
+
+    /// Replace the audio output list (after a refresh or an output switch).
+    pub fn set_outputs(&mut self, outputs: Vec<crate::system::AudioOutput>) {
+        self.outputs = outputs;
+    }
+
+    /// Volume, mute and whether volume control works, from the live snapshot.
+    fn sound_now(&self) -> (u8, bool, bool) {
+        self.sound
+            .as_ref()
+            .and_then(|s| s.read().ok().map(|st| (st.volume.level, st.volume.muted, st.caps.volume)))
+            .unwrap_or((0, false, false))
+    }
+
+    /// Switch to section `i`, asking the session to refresh the outputs when
+    /// it is Sound.
+    fn enter_section(&mut self, i: usize) {
+        self.section = i;
+        self.sel = 0;
+        if i == SOUND {
+            self.action = Some(SettingsAction::RefreshSound);
+        }
+    }
+
+    /// Mouse wheel at a content-local point: on the Sound section's volume row
+    /// it steps the volume (`lines` > 0 = wheel up = louder). Returns whether
+    /// the wheel was used here.
+    pub fn wheel_at(&mut self, local: Point, lines: i32) -> bool {
+        if self.section != SOUND || local.y != 3 || local.x < SIDEBAR_W || lines == 0 {
+            return false;
+        }
+        self.sel = 0;
+        self.action = Some(if lines > 0 { SettingsAction::VolumeUp } else { SettingsAction::VolumeDown });
+        true
     }
 
     /// The terminal colors being edited (background, foreground), unsaved.
@@ -194,6 +255,7 @@ impl Settings {
             5 => 2,                            // assistant: open-as mode, agent
             6 => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
             7 => 6,                            // terminal: preset, background, foreground, preview, save, revert
+            SOUND => 4,                        // sound: volume, mute, output, mixer
             _ => 0,                            // About
         }
     }
@@ -225,8 +287,7 @@ impl Settings {
             return; // don't leave a half-typed form via arrow keys
         }
         if self.section > 0 {
-            self.section -= 1;
-            self.sel = 0;
+            self.enter_section(self.section - 1);
         }
     }
     pub fn next_section(&mut self) {
@@ -234,8 +295,7 @@ impl Settings {
             return;
         }
         if self.section + 1 < SECTIONS.len() {
-            self.section += 1;
-            self.sel = 0;
+            self.enter_section(self.section + 1);
         }
     }
 
@@ -460,6 +520,27 @@ impl Settings {
                 }
                 self.previewing = false;
             }
+            // Sound section: machine state, applied by the session right away.
+            (SOUND, 0) if dir != 0 => {
+                self.action = Some(if dir < 0 { SettingsAction::VolumeDown } else { SettingsAction::VolumeUp });
+            }
+            (SOUND, 1) => {
+                let (_, muted, _) = self.sound_now();
+                if flip(muted, dir) != muted {
+                    self.action = Some(SettingsAction::ToggleMute);
+                }
+            }
+            (SOUND, 2) if !self.outputs.is_empty() => {
+                let n = self.outputs.len();
+                let cur = self.outputs.iter().position(|o| o.default).unwrap_or(0);
+                let next = if dir < 0 { (cur + n - 1) % n } else { (cur + 1) % n };
+                // Show the switch at once; the refresh after it confirms.
+                for (i, o) in self.outputs.iter_mut().enumerate() {
+                    o.default = i == next;
+                }
+                self.action = Some(SettingsAction::SetOutput(self.outputs[next].id));
+            }
+            (SOUND, 3) if dir == 0 => self.action = Some(SettingsAction::OpenMixer),
             (4, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -601,12 +682,24 @@ impl Settings {
         if p.x < SIDEBAR_W {
             let i = (p.y - 1) as usize;
             if i < SECTIONS.len() {
-                self.section = i;
-                self.sel = 0;
+                self.enter_section(i);
             }
-            return false;
+            // `true` only when an action (the Sound refresh) needs draining.
+            return self.action.is_some();
         }
         let row = p.y - 3;
+        // Sound volume row: ◂ steps down, ▸ steps up, a click on the bar sets
+        // the level there (cell k of 10 = (k + 1) * 10 %).
+        if self.section == SOUND && row == 0 {
+            self.sel = 0;
+            let vx = SIDEBAR_W + 2 + 30;
+            self.action = match p.x - vx {
+                x if x < 2 => Some(SettingsAction::VolumeDown),
+                x if x < 12 => Some(SettingsAction::VolumeSet(((x - 1) * 10) as u8)),
+                _ => Some(SettingsAction::VolumeUp),
+            };
+            return true;
+        }
         if row >= 0 && (row as usize) < self.item_count() {
             self.sel = row as usize;
             self.toggle();
@@ -732,6 +825,7 @@ impl Settings {
                 buf.write_str(cx, 17, "More: clipboard_ignore_apps in config.toml.", pal_dim(), pal_bg());
             }
             7 => self.render_terminal(&mut buf, cx),
+            SOUND => self.render_sound(&mut buf, cx),
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
                 buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", pal_dim(), pal_bg());
@@ -790,6 +884,40 @@ impl Settings {
         }
         note(buf, "Empty value = follow the desktop theme.", pal_dim());
         note(buf, "Running terminals repaint on Preview; no restart.", pal_dim());
+    }
+
+    /// Render the Sound section: volume bar, mute, output picker, mixer link,
+    /// and the note that these rows act on the machine immediately.
+    fn render_sound(&self, buf: &mut CellBuffer, cx: i32) {
+        let (level, muted, available) = self.sound_now();
+        let filled = (level as usize).div_ceil(10).min(10);
+        let bar: String = (0..10)
+            .map(|i| if i < filled { crate::glyphs::ch(crate::glyphs::Glyph::BarOn) } else { crate::glyphs::ch(crate::glyphs::Glyph::BarOff) })
+            .collect();
+        self.row(buf, cx, 3, 0, "Output volume", format!("\u{25C2} {bar} \u{25B8} {level}%"));
+        self.row(buf, cx, 4, 1, "Mute", toggle_val(muted));
+        let output = match self.outputs.iter().find(|o| o.default) {
+            Some(o) => format!("\u{25C2} {} \u{25B8}", truncate(&o.name, 30)),
+            None if self.outputs.is_empty() => "(none found)".into(),
+            None => "\u{25C2} (unknown) \u{25B8}".into(),
+        };
+        self.row(buf, cx, 5, 2, "Output device", output);
+        let mixer = crate::tray::volume_mixer_now(&self.cfg.tray_tools).map(|(l, _)| l).unwrap_or_else(|| "(none)".into());
+        self.row(buf, cx, 6, 3, "Mixer", mixer);
+        let mut y = 8;
+        if !available {
+            buf.write_str(cx, y, "No volume control: wpctl (PipeWire) not found.", RED, pal_bg());
+            y += 1;
+        }
+        for note in [
+            "These apply now and are not saved to config.toml.",
+            "They act on this machine (over ssh: the remote one).",
+            "Left/Right change a row, Space mutes, Enter opens the mixer.",
+            "Leader = opens the same controls from the menubar.",
+        ] {
+            buf.write_str(cx, y, note, pal_dim(), pal_bg());
+            y += 1;
+        }
     }
 
     /// Render the Apps section: either the add form or the custom-app list.
@@ -1384,5 +1512,72 @@ mod tests {
         assert_eq!(s.config().assistant_command.as_deref(), Some("opencode"));
         s.left(); // wraps backward to hermes
         assert_eq!(s.config().assistant_command.as_deref(), Some("hermes"));
+    }
+
+    fn to_sound(s: &mut Settings) {
+        while s.section != SOUND {
+            s.next_section();
+        }
+    }
+
+    fn outs() -> Vec<crate::system::AudioOutput> {
+        let o = |id, name: &str, default| crate::system::AudioOutput { id, name: name.into(), default };
+        vec![o(56, "HDMI / DisplayPort 3 Output", false), o(59, "Headphones", false), o(60, "Speaker", true)]
+    }
+
+    #[test]
+    fn entering_sound_asks_for_outputs_and_rows_map_to_actions() {
+        let mut s = Settings::new(Config::default());
+        to_sound(&mut s);
+        assert_eq!(s.take_action(), Some(SettingsAction::RefreshSound));
+        s.set_outputs(outs());
+        assert!(screen(&s).contains("Speaker"));
+        s.left();
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeDown));
+        s.right();
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeUp));
+        s.toggle(); // Enter on the volume row does nothing
+        assert_eq!(s.take_action(), None);
+        s.move_down();
+        s.toggle(); // Space on Mute
+        assert_eq!(s.take_action(), Some(SettingsAction::ToggleMute));
+        s.move_down();
+        s.right(); // Speaker -> wraps to HDMI 3
+        assert_eq!(s.take_action(), Some(SettingsAction::SetOutput(56)));
+        assert!(screen(&s).contains("HDMI / DisplayPort 3 Output"));
+        s.left();
+        assert_eq!(s.take_action(), Some(SettingsAction::SetOutput(60)));
+        s.move_down();
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::OpenMixer));
+    }
+
+    #[test]
+    fn sound_volume_row_click_and_wheel() {
+        let mut s = Settings::new(Config::default());
+        to_sound(&mut s);
+        s.take_action();
+        let vx = SIDEBAR_W + 2 + 30;
+        assert!(s.handle_click(Point::new(vx, 3), 100, 30));
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeDown));
+        s.handle_click(Point::new(vx + 6, 3), 100, 30); // 5th bar cell
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeSet(50)));
+        s.handle_click(Point::new(vx + 13, 3), 100, 30);
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeUp));
+        assert!(s.wheel_at(Point::new(vx, 3), 1));
+        assert_eq!(s.take_action(), Some(SettingsAction::VolumeUp));
+        assert!(!s.wheel_at(Point::new(vx, 4), 1), "only the volume row takes the wheel");
+    }
+
+    #[test]
+    fn sound_without_outputs_says_so() {
+        let mut s = Settings::new(Config::default());
+        to_sound(&mut s);
+        s.take_action();
+        assert!(screen(&s).contains("(none found)"));
+        s.move_down();
+        s.move_down();
+        s.right(); // no outputs: nothing to switch to
+        assert_eq!(s.take_action(), None);
     }
 }

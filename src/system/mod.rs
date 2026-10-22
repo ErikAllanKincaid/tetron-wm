@@ -209,9 +209,37 @@ pub enum ControlIntent {
     OpenSettings,
     /// Info menu: start the screensaver.
     StartScreensaver,
+    /// Make this audio output (PipeWire sink id) the system default, for the
+    /// Settings Sound section's output picker (HDMI, headphones, speakers).
+    SetOutput(u32),
     /// Open the Store with this search typed in (the volume popover's "Get
     /// wiremix" row when no mixer is installed). Handled by the session.
     OpenStoreSearch(String),
+}
+
+/// One audio output (a PipeWire sink) for the Settings output picker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AudioOutput {
+    pub id: u32,
+    /// Display name with the device prefix all outputs share removed
+    /// ("HDMI / DisplayPort 3 Output", not "Raptor Lake-P/U/H cAVS HDMI ...").
+    pub name: String,
+    /// This is the current default output.
+    pub default: bool,
+}
+
+/// The machine's audio outputs. Shells out (timeout-guarded), so call it on a
+/// user action (opening the Sound section, switching output), never per frame.
+/// Empty where unsupported (macOS, no PipeWire).
+pub fn audio_outputs() -> Vec<AudioOutput> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::read_outputs()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Vec::new()
+    }
 }
 
 /// The OS-specific slice of [`SystemState`] produced by a [`SystemMonitor`].
