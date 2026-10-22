@@ -20,7 +20,8 @@
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
 #      extras         — recommended tools: chafa, sshpass, htop, btop, upower,   [Linux, macOS]
-#                       alsa-utils, and xclip / wl-clipboard on a desktop
+#                       alsa-utils, the DejaVu Sans Mono font, and xclip /
+#                       wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
 #                       machine manages sound, network and Bluetooth
@@ -195,12 +196,15 @@ ensure_truecolor() {
 # Each entry is "command:debian-pkg:fedora-pkg:arch-pkg:brew-pkg" (an empty
 # field = not offered there). Only entries whose command is missing install,
 # so re-running converges. What each one is for: the DEPENDENCIES doc.
+# A "font=NAME" command field means "is this font installed" instead (see
+# present); DejaVu Sans Mono backs the default icon tier and kmscon.
 EXTRAS="chafa:chafa:chafa:chafa:chafa
 sshpass:sshpass:sshpass:sshpass:
 htop:htop:htop:htop:htop
 btop:btop:btop:btop:btop
 upower:upower:upower:upower:
 alsamixer:alsa-utils:alsa-utils:alsa-utils:
+font=DejaVu Sans Mono:fonts-dejavu-core:dejavu-sans-mono-fonts:ttf-dejavu:
 blueutil::::blueutil"
 # Desktop clipboard sync, only on a machine with a desktop session.
 EXTRAS_GUI="xclip:xclip:xclip:xclip:
@@ -215,14 +219,26 @@ pm_col() {
   elif have brew; then echo 5; else echo 0; fi
 }
 
-# Packages from a list (above) whose command is missing, for this package manager.
+# Is a list entry's check satisfied: a command on PATH, or for "font=NAME"
+# that font. fontconfig answers when present; without it (a minimal box),
+# look for the DejaVu file in the usual distro font dirs.
+present() {
+  case "$1" in
+    font=*)
+      if have fc-list; then fc-list "${1#font=}" 2>/dev/null | grep -q .
+      else ls /usr/share/fonts/*/*/DejaVuSansMono.ttf /usr/share/fonts/*/DejaVuSansMono.ttf >/dev/null 2>&1; fi ;;
+    *) have "$1" ;;
+  esac
+}
+
+# Packages from a list (above) whose check fails, for this package manager.
 missing_pkgs() {
   local col line cmd pkg out=""; col="$(pm_col)"
   [ "$col" = 0 ] && return 0
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     cmd="${line%%:*}"; pkg="$(printf '%s' "$line" | cut -d: -f"$col")"
-    if [ -n "$pkg" ] && ! have "$cmd"; then out="$out $pkg"; fi
+    if [ -n "$pkg" ] && ! present "$cmd"; then out="$out $pkg"; fi
   done <<EOF_LIST
 $1
 EOF_LIST
