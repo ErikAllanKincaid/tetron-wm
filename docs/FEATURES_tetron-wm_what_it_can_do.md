@@ -8,6 +8,8 @@ Keys below are leader sequences: press `Ctrl+Space`, release, then the key. The 
 
 - **Floating windows.** Each window runs a real terminal application in its own pseudo-terminal, drawn by a full terminal emulator, so demanding apps such as btop render correctly.
 - **Mouse everywhere.** Drag a titlebar to move, an edge to resize, use the titlebar buttons to minimize, maximize and close. The mouse also passes through to apps that ask for it (btop, yazi, lazygit, vim with `mouse=a`).
+- **Keyboard window switching.** Leader `Tab` focuses the next window (leader `Shift+Tab` the previous), then plain `Tab` / `Shift+Tab` keep cycling until Enter, Esc or another key. Leader `f` opens a numbered list of every window, minimized ones included: press its number or use the arrows and Enter.
+- **Keyboard move and resize.** Leader `w` moves the focused window with the arrow keys (`Shift`+arrow for 5 cells), `r` switches to resizing, Enter keeps the result and Esc puts the window back. With these, a console without a mouse can still arrange every window.
 - **Scrollback.** The wheel over a window scrolls its history (10,000 lines). Typing returns you to the live bottom. `Shift+PageUp` and `Shift+PageDown` work too.
 - **Safe close.** Closing an app window asks first, since it ends the process. Built-in panels (Store, Settings, Files) close without asking.
 - **Rename.** Double-click a window title or press leader `r`. A renamed window stays grouped with its app.
@@ -51,7 +53,8 @@ Keys below are leader sequences: press `Ctrl+Space`, release, then the key. The 
 - **Themes.** Six built in (newmoon, midnight, nord, gruvbox, dracula, pastoral). Drop your own `*.toml` into `~/.config/tetron-wm/themes/`. Switch live in Settings → Appearance or with `tetron-wm theme NAME`.
 - **Terminal colors.** `terminal_bg` and `terminal_fg` decouple app colors from the desktop, for example a light desktop with dark terminals.
 - **Wallpaper.** Any image, rendered to colored cells with [chafa](https://hpjansson.org/chafa/), so it works on any terminal including a bare console.
-- **Icon style.** `ascii`, `nerd` or `emoji` glyphs for file icons where graphics are not available.
+- **Icon style.** `auto` (the default) draws `ascii` glyphs on a bare Linux console, whose fonts lack most symbols, and `unicode` everywhere else. `nerd` and `emoji` are there for terminals with those fonts.
+- **Color depth.** Detected from the terminal: truecolor, 256, 16 on the bare console, black and white with `NO_COLOR`. Force it with `TETRON_WM_COLORS=mono|16|256|truecolor`. Themes adapt by role, so the desktop, windows and selection stay distinct even in 16 colors, and a theme file can pin its 16-color choices with a `[vt16]` table.
 - **Screensaver.** On demand only: leader `z`, the launcher, or `tetron-wm screensaver`. Any key or mouse movement wakes it.
 - **Screenshots.** Leader `s` or `tetron-wm screenshot` saves a PNG of the whole screen.
 
