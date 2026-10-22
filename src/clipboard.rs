@@ -1,8 +1,7 @@
 //! Clipboard history: a capped, de-duplicated ring of everything copied inside
 //! tetron-wm (OSC 52 stores from apps, Ctrl+Shift+C, mouse selections, the
 //! `clip` CLI, the GUI bridge). Pure state with load/save helpers; the session
-//! decides when to record and when to write the file. See
-//! `DO-NOT-COMMIT/IDEAS_tetron-wm_clipboard_manager.md`.
+//! decides when to record and when to write the file.
 
 use serde::{Deserialize, Serialize};
 use std::io::Write;

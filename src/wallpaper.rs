@@ -2,9 +2,6 @@
 //! gated behind the `TETRON_WM_WALLPAPER=<image>` env var so it changes nothing
 //! unless asked. Converts an image to a w×h grid of colored cells (works on any
 //! terminal incl. a kmscon console, since the output is cells, not graphics).
-//!
-//! The design notes (IDEAS_tetron-wm_configurable_wallpaper.md) moved out of
-//! the repo into DO-NOT-COMMIT/ with the other internal plans.
 
 use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
