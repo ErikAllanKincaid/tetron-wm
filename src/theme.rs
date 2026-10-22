@@ -146,8 +146,10 @@ impl Theme {
             dim: rgb(110, 106, 94),
             accent: rgb(46, 125, 50),
             active_bg: rgb(215, 233, 205),
-            // USER choice 2026-10-21: green desktop and selection, cyan focused title.
-            vt16: Vt16 { desktop_bg: Some(2), title_focus: Some(6), active_bg: Some(2), ..Vt16::NONE },
+            // USER choice 2026-10-21: grey desktop (a whole green screen is too
+            // intense; a green wallpaper is the way to get one), green focused
+            // title and selection.
+            vt16: Vt16 { desktop_bg: Some(7), title_focus: Some(2), active_bg: Some(2), ..Vt16::NONE },
         }
     }
 
@@ -869,7 +871,7 @@ mod depth_tests {
         assert_eq!(idx(adapt(Theme::nord(), ColorDepth::Ansi16).window_bg), 0);
         // Built-in overrides (USER choices).
         let p = adapt(Theme::pastoral(), ColorDepth::Ansi16);
-        assert_eq!((idx(p.desktop_bg), idx(p.title_focus), idx(p.active_bg)), (2, 6, 2));
+        assert_eq!((idx(p.desktop_bg), idx(p.title_focus), idx(p.active_bg)), (7, 2, 2));
         assert_eq!(idx(adapt(Theme::gruvbox(), ColorDepth::Ansi16).desktop_bg), 3);
         // A file `[vt16]` table wins; a bright background folds to the dark half.
         let (_, t) = parse_theme_toml("[vt16]\ndesktop_bg = 12\naccent = 11\n").unwrap();
