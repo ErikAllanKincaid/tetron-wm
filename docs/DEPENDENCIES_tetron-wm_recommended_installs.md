@@ -16,7 +16,7 @@ macOS with [Homebrew](https://brew.sh):
 brew install chafa blueutil htop btop
 ```
 
-The suite installer (`contrib/install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, sshpass, htop, btop, upower, alsa-utils, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
+The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, sshpass, htop, btop, upower, alsa-utils, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
 
 ## By feature
 
@@ -24,7 +24,7 @@ The suite installer (`contrib/install-tetron-wm-suite.sh`, see the [README](../R
 | --- | --- | --- | --- |
 | Image wallpaper | `chafa` | Plain colored desktop | Renders the picture as colored cells, so it works on every terminal. [chafa](https://hpjansson.org/chafa/) |
 | Mouse on a bare Linux console | `gpm` | No mouse on a raw VT | Not needed under kmscon or in a GUI terminal. `sudo apt install gpm && sudo systemctl enable --now gpm` |
-| Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `scripts/install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
+| Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
 | Volume (menubar, leader `=`, Settings → Sound) | `wpctl` (PipeWire, package `wireplumber`) | Volume shows no level and can not change; Settings says so | Also lists and switches outputs (HDMI, headphones, speakers). macOS uses its built-in `osascript`. |
 | Volume mixer row | `wiremix`, else `pulsemixer`, `ncpamixer`, `alsamixer` | Row offers "Get wiremix (Store)" | wiremix is in the Store, or `cargo install wiremix` (needs `libpipewire-0.3-dev`, `pkg-config`, `clang`). `alsamixer` comes with `alsa-utils`. Change the order with `[tray_tools] volume`. |
 | Wi-Fi segment | `nmcli` (NetworkManager) | No Wi-Fi control; the network address still shows | macOS uses `networksetup`. The popover's Open row prefers `wlctl`, `nmtui`, `iwctl`. |

@@ -30,6 +30,9 @@ carry user-visible feature work and the occasional breaking config change.
 - Window-count badges above 3 use the `·N` form (superscripts above ³ are missing from console fonts).
 - The launcher warning label on variant entries (Claude Code skip-permissions) now follows `icon_style`: `[!]` for ascii (default), a Nerd Font glyph for nerd, the emoji only for emoji.
 
+### Changed
+- The suite installer and the kmscon installer moved to the repo root next to `install.sh`: `install-tetron-wm-suite.sh` and `install-kmscon.sh`. The old paths (`contrib/install-tetron-wm-suite.sh`, `scripts/install-kmscon.sh`) remain as small redirects, so existing links and one-liners keep working.
+
 ## [0.14.14] — 2026-10-19
 
 ### Added
