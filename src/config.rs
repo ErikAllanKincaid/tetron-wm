@@ -96,13 +96,14 @@ pub struct Config {
     /// Desktop wallpaper image. An absolute path, a `~`-path, or a path relative
     /// to the config dir (`~/.config/tetron-wm/`, checking a `wallpapers/` subdir
     /// first). Rendered to colored cells via `chafa` (so it works on any terminal,
-    /// including a kmscon console) and composited behind the windows. Unset/empty
-    /// = a solid desktop (the theme `desktop_bg`). Needs `chafa` installed; if it
-    /// is missing or the image fails to load, the desktop falls back to solid.
+    /// including a kmscon console) and composited behind the windows. Quotes, a
+    /// `file://` URL and a leading `$HOME` are accepted (see
+    /// `wallpaper::clean_spec`). Needs `chafa` installed; if it is missing or
+    /// the image fails to load, the desktop falls back to solid.
     /// The `TETRON_WM_WALLPAPER` env var overrides this key (for quick testing).
-    /// Defaults to `wallpaper.jpg` (resolved under `~/.config/tetron-wm/wallpapers/`),
-    /// so dropping a `wallpaper.jpg` there is all it takes; absent, the built-in
-    /// default image is used (set `wallpaper_enabled = false` for a solid desktop).
+    /// Defaults to `default`, the built-in image (empty means the same). A
+    /// missing file also falls back to the built-in image, so the desktop is
+    /// only solid with `wallpaper_enabled = false`.
     #[serde(default = "default_wallpaper", skip_serializing_if = "Option::is_none")]
     pub wallpaper: Option<String>,
     /// Master on/off for the wallpaper. When false, the desktop is solid even if
@@ -348,8 +349,8 @@ impl Default for Config {
 
 fn default_true() -> bool { true }
 
-/// Default wallpaper filename, resolved under `~/.config/tetron-wm/wallpapers/`.
-fn default_wallpaper() -> Option<String> { Some("wallpaper.jpg".into()) }
+/// Default wallpaper: the `default` keyword, meaning the built-in image.
+fn default_wallpaper() -> Option<String> { Some(crate::wallpaper::DEFAULT_NAME.into()) }
 
 /// Default desktop shortcuts: none. The desktop shows only the real contents of
 /// `~/Desktop`; pins are opt-in via `[[desktop_pins]]`.

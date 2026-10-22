@@ -467,20 +467,20 @@ EOF
 
   <section>
     <h2><span class="num">05</span>Add a wallpaper</h2>
-    <p>tetron-wm's default config already points at
-      <span class="mono-inline">wallpapers/wallpaper.jpg</span> under its config dir, so dropping a
-      file there is all it takes:</p>
+    <p>tetron-wm shows a built-in wallpaper out of the box
+      (<span class="mono-inline">wallpaper = "default"</span>). To use your own, drop a file in the
+      wallpapers folder and put its name in Settings → Appearance → Wallpaper file; a full path works too:</p>
     <figure class="code">
       <figcaption>~/.config/tetron-wm/wallpapers/</figcaption>
       <div class="codebox"><pre><span class="p">$</span> mkdir -p ~/.config/tetron-wm/wallpapers
-<span class="p">$</span> cp /path/to/your-image.jpg ~/.config/tetron-wm/wallpapers/wallpaper.jpg</pre></div>
+<span class="p">$</span> cp /path/to/your-image.jpg ~/.config/tetron-wm/wallpapers/</pre></div>
     </figure>
     <p>Everything else is optional and also lives in
       <span class="mono-inline">~/.config/tetron-wm/config.toml</span> (or Settings → Appearance
       inside the running desktop):</p>
     <figure class="code">
       <figcaption>config.toml — the knobs that matter on a console</figcaption>
-      <div class="codebox"><pre>wallpaper = "wallpaper.jpg"
+      <div class="codebox"><pre>wallpaper = "your-image.jpg"   <span class="c"># or "default" for the built-in one</span>
 wallpaper_enabled = true
 <span class="c"># truecolor = true        # if kmscon colors look 256-ish</span>
 <span class="c"># icon_style = "ascii"    # default; "nerd" needs a Nerd Font; "emoji" also works</span>

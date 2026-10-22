@@ -102,6 +102,10 @@ struct TextEdit {
     target: TextTarget,
     buf: String,
     error: bool,
+    /// The pre-filled text acts as selected: the first typed or pasted
+    /// character replaces it and Backspace clears it. Set when the wallpaper
+    /// box opens on the `default` keyword, so a path can be typed straight in.
+    fresh: bool,
 }
 
 /// In-progress custom-app entry shown in the Apps section's add form.
@@ -143,6 +147,9 @@ pub struct Settings {
     /// Keyboard focus is on the section list (left pane) rather than the rows.
     /// Tab switches panes, like mc; Up / Down move inside the focused one.
     in_sidebar: bool,
+    /// Problem with the wallpaper setting (missing file, no chafa), shown under
+    /// the Appearance rows. Refreshed on open and on each commit, not per frame.
+    wallpaper_note: Option<String>,
 }
 
 impl Settings {
@@ -152,8 +159,14 @@ impl Settings {
         Self {
             apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
-            sound: None, outputs: Vec::new(), in_sidebar: false,
-        }
+            sound: None, outputs: Vec::new(), in_sidebar: false, wallpaper_note: None,
+        }.with_wallpaper_note()
+    }
+
+    /// Recompute [`Self::wallpaper_note`] from the current config.
+    fn with_wallpaper_note(mut self) -> Self {
+        self.wallpaper_note = crate::wallpaper::note(self.cfg.wallpaper.as_deref());
+        self
     }
 
     /// Take a pending action requested by the user (cleared on read).
@@ -339,9 +352,26 @@ impl Settings {
             {
                 return;
             }
+            if std::mem::take(&mut t.fresh) {
+                t.buf.clear();
+            }
             t.buf.push(c);
             t.error = false;
         }
+    }
+
+    /// Paste `text` into the open text field (the Apps add form or a text
+    /// box), one character at a time so the field limits still apply. Line
+    /// breaks and other control characters are dropped. Returns false when no
+    /// field is open, so the caller can paste elsewhere.
+    pub fn paste(&mut self, text: &str) -> bool {
+        if self.edit.is_none() && self.text.is_none() {
+            return false;
+        }
+        for c in text.chars().filter(|c| !c.is_control()) {
+            self.type_char(c);
+        }
+        true
     }
 
     /// Delete the last character of the active text field.
@@ -352,7 +382,11 @@ impl Settings {
                 _ => { e.command.pop(); }
             }
         } else if let Some(t) = self.text.as_mut() {
-            t.buf.pop();
+            if std::mem::take(&mut t.fresh) {
+                t.buf.clear();
+            } else {
+                t.buf.pop();
+            }
             t.error = false;
         }
     }
@@ -432,7 +466,10 @@ impl Settings {
             // Wallpaper filename: Enter opens the text box (pre-filled with the
             // current value); ←/→ do nothing (it is free text, not a cycler).
             (1, 3) if dir == 0 => {
-                self.text = Some(TextEdit { target: TextTarget::Wallpaper, buf: self.cfg.wallpaper.clone().unwrap_or_default(), error: false });
+                let cur = self.cfg.wallpaper.as_deref().map(str::trim).unwrap_or_default();
+                let cur = if cur.is_empty() { crate::wallpaper::DEFAULT_NAME } else { cur };
+                let fresh = cur == crate::wallpaper::DEFAULT_NAME;
+                self.text = Some(TextEdit { target: TextTarget::Wallpaper, buf: cur.to_string(), error: false, fresh });
             }
             // Icon label scrim on/off: "on" keeps the default (or a configured
             // color); "off" stores "none" so labels sit directly on the wallpaper.
@@ -450,7 +487,7 @@ impl Settings {
             // Launcher label: Enter opens the text box (up to 6 characters, or
             // `@session`); ←/→ do nothing, it is free text.
             (1, 7) if dir == 0 => {
-                self.text = Some(TextEdit { target: TextTarget::LauncherLabel, buf: self.cfg.launcher_label.clone(), error: false });
+                self.text = Some(TextEdit { target: TextTarget::LauncherLabel, buf: self.cfg.launcher_label.clone(), error: false, fresh: false });
             }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
@@ -530,10 +567,10 @@ impl Settings {
                 self.stage_fg = fg.map(String::from);
             }
             (7, 1) if dir == 0 => {
-                self.text = Some(TextEdit { target: TextTarget::TermBg, buf: self.stage_bg.clone().unwrap_or_default(), error: false });
+                self.text = Some(TextEdit { target: TextTarget::TermBg, buf: self.stage_bg.clone().unwrap_or_default(), error: false, fresh: false });
             }
             (7, 2) if dir == 0 => {
-                self.text = Some(TextEdit { target: TextTarget::TermFg, buf: self.stage_fg.clone().unwrap_or_default(), error: false });
+                self.text = Some(TextEdit { target: TextTarget::TermFg, buf: self.stage_fg.clone().unwrap_or_default(), error: false, fresh: false });
             }
             (7, 3) if dir == 0 => {
                 self.action = Some(SettingsAction::PreviewColors);
@@ -655,8 +692,13 @@ impl Settings {
         let Some(mut e) = self.text.take() else { return };
         let s = e.buf.trim().to_string();
         match e.target {
+            // Empty becomes `default` (the built-in image), so the field
+            // always shows a name that can be typed back. Pasted quotes,
+            // `file://` and `$HOME` are cleaned before saving.
             TextTarget::Wallpaper => {
-                self.cfg.wallpaper = if s.is_empty() { None } else { Some(s) };
+                let s = crate::wallpaper::clean_spec(&s);
+                self.cfg.wallpaper = Some(if s.is_empty() { crate::wallpaper::DEFAULT_NAME.to_string() } else { s });
+                self.wallpaper_note = crate::wallpaper::note(self.cfg.wallpaper.as_deref());
             }
             // Empty = the default; otherwise at most 6 characters (padding and
             // `@session` are resolved when drawn, not stored).
@@ -798,7 +840,7 @@ impl Settings {
                     Some(t) => format!("{}\u{2588}", t.buf), // block cursor while typing
                     None => match self.cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
                         Some(p) => p.to_string(),
-                        None => "(none — press Enter to type)".to_string(),
+                        None => crate::wallpaper::DEFAULT_NAME.to_string(),
                     },
                 };
                 self.row(&mut buf, cx, 6, 3, "Wallpaper file", file_val);
@@ -810,10 +852,15 @@ impl Settings {
                     None => self.cfg.launcher_label.clone(),
                 };
                 self.row(&mut buf, cx, 10, 7, "Launcher label", label_val);
-                buf.write_str(cx, 12, "Add your image to ~/.config/tetron-wm/wallpapers/", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "then type its filename above (needs chafa).", pal_dim(), pal_bg());
+                // A wallpaper problem goes on the spacer line under the rows,
+                // in the accent colour so it is not mistaken for a hint.
+                if let Some(n) = &self.wallpaper_note {
+                    buf.write_str(cx, 11, n, pal_accent(), pal_bg());
+                }
+                buf.write_str(cx, 12, "Wallpaper file: default = built-in, a name in", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "~/.config/tetron-wm/wallpapers/, or a full path.", pal_dim(), pal_bg());
                 buf.write_str(cx, 14, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
-                buf.write_str(cx, 15, "Icon style: ascii | nerd (needs a Nerd Font) | emoji.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
                 buf.write_str(cx, 16, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
             }
             2 => {
@@ -1383,8 +1430,8 @@ mod tests {
     }
 
     #[test]
-    fn wallpaper_default_filename_is_wallpaper_jpg() {
-        assert_eq!(Config::default().wallpaper.as_deref(), Some("wallpaper.jpg"));
+    fn wallpaper_default_is_the_default_keyword() {
+        assert_eq!(Config::default().wallpaper.as_deref(), Some("default"));
     }
 
     #[test]
@@ -1402,14 +1449,52 @@ mod tests {
     }
 
     #[test]
-    fn wallpaper_file_empty_clears_to_none() {
+    fn wallpaper_file_empty_autofills_default() {
         let cfg = Config { wallpaper: Some("old.png".into()), ..Config::default() };
         let mut s = Settings::new(cfg);
         to_wallpaper_file(&mut s);
         s.toggle(); // opens pre-filled with "old.png"
         for _ in 0.."old.png".len() { s.backspace(); }
-        s.toggle(); // commit empty → None
-        assert_eq!(s.config().wallpaper, None);
+        s.toggle(); // commit empty → the `default` keyword, never blank
+        assert_eq!(s.config().wallpaper.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn wallpaper_box_on_default_is_replaced_by_first_key() {
+        let mut s = Settings::new(Config::default());
+        to_wallpaper_file(&mut s);
+        s.toggle(); // opens showing "default", as if selected
+        s.type_char('/');
+        s.type_char('a');
+        s.toggle();
+        assert_eq!(s.config().wallpaper.as_deref(), Some("/a"));
+        // A real path is edited in place: typing appends.
+        s.toggle();
+        s.type_char('b');
+        s.toggle();
+        assert_eq!(s.config().wallpaper.as_deref(), Some("/ab"));
+    }
+
+    #[test]
+    fn wallpaper_box_backspace_on_default_clears_it() {
+        let mut s = Settings::new(Config::default());
+        to_wallpaper_file(&mut s);
+        s.toggle();
+        s.backspace(); // clears the whole word
+        s.type_char('x');
+        s.toggle();
+        assert_eq!(s.config().wallpaper.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn paste_fills_wallpaper_box_and_cleans_the_path() {
+        let mut s = Settings::new(Config::default());
+        assert!(!s.paste("ignored"), "no field open, the caller pastes elsewhere");
+        to_wallpaper_file(&mut s);
+        s.toggle();
+        assert!(s.paste("'file:///home/u/My%20Pics/a.jpg'\n"));
+        s.toggle();
+        assert_eq!(s.config().wallpaper.as_deref(), Some("/home/u/My Pics/a.jpg"));
     }
 
     #[test]

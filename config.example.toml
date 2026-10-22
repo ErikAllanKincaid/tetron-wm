@@ -69,12 +69,13 @@ icon_style = "auto"
 launcher_label = "tetron"
 
 ## ── Wallpaper ─────────────────────────────────────────────────────────────
-## Desktop wallpaper: absolute path, ~-path, or a name looked up in
-## ~/.config/tetron-wm/wallpapers/ (then the config dir). Drawn as colored cells
-## with `chafa` (needs it installed; falls back to a solid desktop). Dropping a
-## wallpaper.jpg into the wallpapers dir is all it takes; absent, a built-in
-## image is used. Env override: TETRON_WM_WALLPAPER.
-wallpaper = "wallpaper.jpg"
+## Desktop wallpaper: "default" (the built-in image; empty means the same), an
+## absolute path, a ~-path, or a name looked up in ~/.config/tetron-wm/wallpapers/
+## (then the config dir). Quotes, file:// URLs and $HOME are accepted. A missing
+## file shows the built-in image (logged, and noted in Settings). Drawn as
+## colored cells with `chafa` (needs it installed; falls back to a solid
+## desktop). Env override: TETRON_WM_WALLPAPER.
+wallpaper = "default"
 ## Master switch. false = solid desktop (theme desktop_bg) even if wallpaper is set.
 wallpaper_enabled = true
 

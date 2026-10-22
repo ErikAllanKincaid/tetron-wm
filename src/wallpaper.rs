@@ -7,7 +7,144 @@ use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
 use std::path::PathBuf;
 
-/// Resolve a configured wallpaper path to a file on disk.
+/// The built-in default wallpaper (426x240 JPEG, 70 KB). It is drawn when the
+/// config says `default` (or nothing), and stands in for a configured file
+/// that is missing, so the desktop never goes blank by accident. To ship a new
+/// default, replace `assets/wallpaper.jpg` (keep it under 100 KB, a test checks).
+const DEFAULT_JPG: &[u8] = include_bytes!("../assets/wallpaper.jpg");
+
+/// Config value that means "the built-in wallpaper". An empty value means the
+/// same; Settings writes `default` back so the name is always visible.
+pub const DEFAULT_NAME: &str = "default";
+
+/// The config default before `default` existed. Configs still carrying it get
+/// the built-in image without a "not found" note when no such file exists.
+const LEGACY_NAME: &str = "wallpaper.jpg";
+
+/// Does config value `spec` ask for the built-in wallpaper (unset, empty, or
+/// the `default` keyword)?
+pub fn is_default(spec: Option<&str>) -> bool {
+    spec.map(clean_spec).is_none_or(|s| s.is_empty() || s == DEFAULT_NAME)
+}
+
+/// Normalise a wallpaper value the way people paste it: surrounding quotes
+/// (`"/a b.jpg"`, `'/a b.jpg'`, from a shell or a file manager's "copy
+/// path"), a `file://` URL (percent-decoded, so `%20` becomes a space), and a
+/// leading `$HOME` / `${HOME}` (becomes `~`, which [`resolve_path`] expands).
+pub fn clean_spec(spec: &str) -> String {
+    let mut s = spec.trim();
+    for q in ['"', '\''] {
+        if s.len() >= 2 && s.starts_with(q) && s.ends_with(q) {
+            s = s[1..s.len() - 1].trim();
+        }
+    }
+    if let Some(rest) = s.strip_prefix("file://") {
+        // `file://localhost/x` and `file:///x` both name `/x`.
+        let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+        return percent_decode(rest);
+    }
+    for var in ["$HOME", "${HOME}"] {
+        if let Some(rest) = s.strip_prefix(var) {
+            if rest.is_empty() || rest.starts_with('/') {
+                return format!("~{rest}");
+            }
+        }
+    }
+    s.to_string()
+}
+
+/// Decode `%XX` escapes (as bytes, so multi-byte UTF-8 survives); a malformed
+/// escape is kept as typed.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let hex = |c: u8| (c as char).to_digit(16);
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// What to draw for a config value: the image file, plus the configured file
+/// when it was missing (the built-in image stands in; the caller logs it).
+pub struct Choice {
+    /// File to hand to chafa. `None` only if the built-in could not be written.
+    pub path: Option<PathBuf>,
+    /// The configured file that does not exist, when that is why `path` is
+    /// the built-in image.
+    pub missing: Option<PathBuf>,
+}
+
+/// Pick the file to draw for config value `spec` (see [`Choice`]).
+pub fn choose(spec: Option<&str>) -> Choice {
+    if is_default(spec) {
+        return Choice { path: ensure_default(), missing: None };
+    }
+    let spec = spec.unwrap_or_default();
+    let p = resolve_path(spec);
+    if p.exists() {
+        return Choice { path: Some(p), missing: None };
+    }
+    let legacy = clean_spec(spec) == LEGACY_NAME;
+    Choice { path: ensure_default(), missing: (!legacy).then_some(p) }
+}
+
+/// A one-line problem with config value `spec` for Settings to show under the
+/// wallpaper rows, or `None` when it will draw as asked. Only looks at the
+/// disk and `$PATH`; never writes.
+pub fn note(spec: Option<&str>) -> Option<String> {
+    if !chafa_installed() {
+        return Some("chafa is not installed, so the desktop is plain.".into());
+    }
+    if is_default(spec) {
+        return None;
+    }
+    let spec = spec.unwrap_or_default();
+    let p = resolve_path(spec);
+    if p.exists() || clean_spec(spec) == LEGACY_NAME {
+        return None;
+    }
+    Some(format!("Not found, showing the built-in: {}", p.display()))
+}
+
+/// Is `chafa` (the wallpaper renderer) on `$PATH`?
+fn chafa_installed() -> bool {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join("chafa").is_file()))
+        .unwrap_or(false)
+}
+
+/// Write the embedded default wallpaper to `<data>/tetron-wm/wallpaper.jpg`
+/// (`$XDG_DATA_HOME` aware) unless the file there already holds exactly these
+/// bytes, and return its path. `chafa` needs a real file, hence the stamp.
+/// Comparing contents (not size) means a new default always replaces the old
+/// copy. The copy older versions wrote (`default-wallpaper.jpg`) is removed.
+pub fn ensure_default() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))?;
+    let dir = base.join("tetron-wm");
+    let path = dir.join("wallpaper.jpg");
+    let current = std::fs::read(&path).map(|b| b == DEFAULT_JPG).unwrap_or(false);
+    if !current {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, DEFAULT_JPG).ok()?;
+        let _ = std::fs::remove_file(dir.join("default-wallpaper.jpg"));
+        crate::dbg_log(&format!("wallpaper: stamped built-in default to {}", path.display()));
+    }
+    Some(path)
+}
+
+/// Resolve a configured wallpaper path to a file on disk (after [`clean_spec`]).
 ///
 /// - An absolute path (`/…`) is used as-is.
 /// - A `~`-path is expanded against the home directory.
@@ -19,33 +156,9 @@ use std::path::PathBuf;
 ///
 /// Returns the first candidate that exists, or the best-effort candidate when
 /// none exist (so the caller's own "missing file" handling / log still fires).
-/// The built-in default wallpaper (426x240 JPEG, 70 KB), used when the default
-/// `wallpaper.jpg` is not on disk so a fresh install has a wallpaper with no setup.
-const DEFAULT_JPG: &[u8] = include_bytes!("../assets/default-wallpaper.jpg");
-
-/// Config value that means "the default wallpaper".
-pub const DEFAULT_NAME: &str = "wallpaper.jpg";
-
-/// Write the embedded default wallpaper to `<data>/tetron-wm/default-wallpaper.jpg`
-/// (`$XDG_DATA_HOME` aware) if it is missing or a different size, and return its
-/// path. `chafa` needs a real file, hence the stamp.
-pub fn ensure_default() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))?;
-    let dir = base.join("tetron-wm");
-    let path = dir.join("default-wallpaper.jpg");
-    let current = std::fs::metadata(&path).map(|m| m.len() as usize == DEFAULT_JPG.len()).unwrap_or(false);
-    if !current {
-        std::fs::create_dir_all(&dir).ok()?;
-        std::fs::write(&path, DEFAULT_JPG).ok()?;
-        crate::dbg_log(&format!("wallpaper: stamped built-in default to {}", path.display()));
-    }
-    Some(path)
-}
-
 pub fn resolve_path(path: &str) -> PathBuf {
-    let path = path.trim();
+    let cleaned = clean_spec(path);
+    let path = cleaned.as_str();
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
             return home.join(rest);
@@ -311,6 +424,35 @@ mod tests {
     fn embedded_default_is_a_small_jpeg() {
         assert_eq!(&DEFAULT_JPG[..2], &[0xFF, 0xD8], "JPEG magic");
         assert!(DEFAULT_JPG.len() < 100 * 1024, "keep the embedded wallpaper small");
+    }
+
+    #[test]
+    fn clean_spec_handles_pasted_forms() {
+        assert_eq!(clean_spec("  \"/a b.jpg\" "), "/a b.jpg");
+        assert_eq!(clean_spec("'/a b.jpg'"), "/a b.jpg");
+        assert_eq!(clean_spec("file:///home/u/My%20Pics/%C3%A9.png"), "/home/u/My Pics/\u{e9}.png");
+        assert_eq!(clean_spec("file://localhost/x.png"), "/x.png");
+        assert_eq!(clean_spec("$HOME/p.png"), "~/p.png");
+        assert_eq!(clean_spec("${HOME}/p.png"), "~/p.png");
+        assert_eq!(clean_spec("$HOMEDIR/p.png"), "$HOMEDIR/p.png", "only the whole variable");
+        assert_eq!(clean_spec("100%.png"), "100%.png");
+    }
+
+    #[test]
+    fn default_keyword_empty_and_unset_mean_builtin() {
+        for v in [None, Some(""), Some("  "), Some("default"), Some("\"default\"")] {
+            assert!(is_default(v), "{v:?}");
+        }
+        assert!(!is_default(Some("wallpaper.jpg")));
+        assert!(!is_default(Some("/x/default")));
+    }
+
+    #[test]
+    fn missing_file_reports_missing_but_legacy_name_does_not() {
+        let c = choose(Some("/no/such/dir/pic.png"));
+        assert_eq!(c.missing, Some(PathBuf::from("/no/such/dir/pic.png")));
+        // Old configs naming the former default never report it missing.
+        assert!(choose(Some("wallpaper.jpg")).missing.is_none());
     }
 
     #[test]

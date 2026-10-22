@@ -17,7 +17,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("terminal_bg", "theme", "terminal default background (#rrggbb or name)"),
     ("terminal_fg", "theme", "terminal default foreground (#rrggbb or name)"),
     ("truecolor", "auto", "force 24-bit color on/off"),
-    ("wallpaper", "wallpaper.jpg", "wallpaper image (needs chafa)"),
+    ("wallpaper", "default", "wallpaper image: default (built-in), a file in wallpapers/, or a full path (needs chafa)"),
     ("wallpaper_enabled", "true", "master wallpaper toggle"),
     ("icon_style", "auto", "icon glyphs: auto (ascii on a bare console, else unicode) | ascii | unicode | nerd | emoji"),
     ("default_project_dir", "~", "root of the working-directory picker"),

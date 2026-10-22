@@ -19,6 +19,7 @@ carry user-visible feature work and the occasional breaking config change.
 - `icon_style` gains `unicode` (richer symbols, all present in DejaVu Sans Mono, the kmscon font and the usual GUI fallback) and `auto`, the new default: `ascii` on a bare Linux console, `unicode` everywhere else, decided from the attached terminal and re-decided when a different terminal attaches. GUI and kmscon users get the richer window buttons, markers, file-type and status icons back without configuration; the console stays tofu-free. An explicit `icon_style = "ascii"` (as in the old example config) is kept as is.
 
 ### Fixed
+- Pasting (Ctrl+Shift+V, leader `v`, middle click, Shift+Insert) now works in Settings text fields such as the wallpaper path and terminal colours; it used to go nowhere.
 - Leader shortcuts work while the Shortcuts help, the Logs viewer, the launcher or the folder picker has focus. The leader key was swallowed there, so for example leader `,` did nothing with the help window open. The help window now lists the store (`S`) and settings (`,`) on separate rows.
 - Settings sections can be reached from the keyboard. Like mc's panels, `Tab` moves focus between the section list and the settings rows, and Up / Down move inside the focused pane (in the list, Right or Enter also opens the section). PageDown / PageUp switch section from either pane. Before, the list could only be clicked. The sidebar shows the keys.
 - The mouse pointer drawn by tetron-wm (the only pointer on a bare console with gpm) now follows the mouse inside a focused app that uses the mouse (mc, fresh, htop); it used to stay behind at the window edge.
@@ -32,6 +33,9 @@ carry user-visible feature work and the occasional breaking config change.
 - The launcher warning label on variant entries (Claude Code skip-permissions) now follows `icon_style`: `[!]` for ascii (default), a Nerd Font glyph for nerd, the emoji only for emoji.
 
 ### Changed
+- Wallpaper: `wallpaper = "default"` is the built-in image and the new default. An empty value, or a configured file that is missing, also shows the built-in image instead of a blank desktop (the log says why, and Settings → Appearance shows "Not found" under the rows, or that chafa is missing). A solid desktop is `wallpaper_enabled = false`. Clearing the Wallpaper file field in Settings writes `default` back, and when the field shows `default` the first key typed replaces it. Configs that still say `wallpaper.jpg` keep working.
+- Wallpaper paths are cleaned before use: surrounding quotes, `file://` URLs (with `%20` decoded) and a leading `$HOME` are accepted, so a path pasted from a shell or file manager works.
+- The built-in wallpaper copy is now `~/.local/share/tetron-wm/wallpaper.jpg` (the old `default-wallpaper.jpg` is removed) and is rewritten whenever the shipped image changes, not only when its size changes.
 - The suite installer and the kmscon installer moved to the repo root next to `install.sh`: `install-tetron-wm-suite.sh` and `install-kmscon.sh`. The old paths (`contrib/install-tetron-wm-suite.sh`, `scripts/install-kmscon.sh`) remain as small redirects, so existing links and one-liners keep working.
 
 ## [0.14.14] — 2026-10-19

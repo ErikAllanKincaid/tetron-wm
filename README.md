@@ -114,7 +114,7 @@ Common first changes:
 | A different color theme                  | `theme = "nord"` (also `newmoon`, `midnight`, `gruvbox`, `dracula`, `pastoral`)                                            |
 | Windows to snap to screen edges          | `snapping_enabled = true`                                                                                                  |
 | Windows arranged in a grid automatically | `auto_tile = true`, `grid_rows`, `grid_cols`                                                                               |
-| A wallpaper image                        | put it in `~/.config/tetron-wm/wallpapers/` and set `wallpaper = "name.jpg"` (needs [chafa](https://hpjansson.org/chafa/)) |
+| A wallpaper image                        | put it in `~/.config/tetron-wm/wallpapers/` and set `wallpaper = "name.jpg"`, or a full path; `"default"` is the built-in one (needs [chafa](https://hpjansson.org/chafa/)) |
 | A different leader key                   | `leader = "ctrl+b"`                                                                                                        |
 | No Power menu on a server                | `power_menu = false`                                                                                                       |
 

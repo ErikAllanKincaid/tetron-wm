@@ -208,12 +208,11 @@ With no config file it starts an empty desktop with the defaults: click the top-
 
 ### Wallpaper
 
-The default config already points at `wallpapers/wallpaper.jpg`, so dropping a
-file there is all it takes:
+The default config shows a built-in wallpaper (`wallpaper = "default"`). To use your own, drop a file in the wallpapers folder and put its name in Settings → Appearance → Wallpaper file (or in `config.toml`); a full path works too:
 
 ```sh
 mkdir -p ~/.config/tetron-wm/wallpapers
-cp /path/to/your-image.jpg ~/.config/tetron-wm/wallpapers/wallpaper.jpg
+cp /path/to/your-image.jpg ~/.config/tetron-wm/wallpapers/
 ```
 
 Quick test without editing config: `TETRON_WM_WALLPAPER=~/pics/foo.png tetron-wm`.
@@ -223,7 +222,7 @@ Quick test without editing config: `TETRON_WM_WALLPAPER=~/pics/foo.png tetron-wm
 In `~/.config/tetron-wm/config.toml` (or live in Settings → Appearance):
 
 ```toml
-wallpaper = "wallpaper.jpg"
+wallpaper = "your-image.jpg"   # or "default" for the built-in one
 wallpaper_enabled = true
 # truecolor = true          # if kmscon colors look 256-ish
 # icon_style = "ascii"      # default; "nerd" needs the font from B4; "emoji" also works

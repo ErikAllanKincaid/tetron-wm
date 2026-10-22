@@ -4472,6 +4472,11 @@ or a remote-side error — its authorized_keys was left untouched)",
         if text.is_empty() {
             return;
         }
+        // An open Settings text field (wallpaper path, colors, Apps form)
+        // takes the paste; otherwise it goes to the focused app as before.
+        if self.focused_settings_mut().is_some_and(|s| s.paste(text)) {
+            return;
+        }
         if let Some(id) = self.wm.focused() {
             if let Some(WinContent::App(aid)) = self.contents.get(&id) {
                 let aid = *aid;
@@ -5191,28 +5196,22 @@ or a remote-side error — its authorized_keys was left untouched)",
         if crate::display::depth() == crate::display::ColorDepth::Mono {
             return None;
         }
-        let path: std::path::PathBuf = match std::env::var("TETRON_WM_WALLPAPER") {
-            Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
-            _ => {
-                if !cfg.wallpaper_enabled {
-                    return None;
-                }
-                let spec = cfg.wallpaper.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
-                crate::wallpaper::resolve_path(spec)
-            }
-        };
-        // The default name with no such file on disk falls back to the built-in image.
-        let is_default = cfg.wallpaper.as_deref().map(str::trim) == Some(crate::wallpaper::DEFAULT_NAME)
-            && std::env::var_os("TETRON_WM_WALLPAPER").is_none_or(|v| v.is_empty());
-        let path = if !path.exists() && is_default {
-            crate::wallpaper::ensure_default().unwrap_or(path)
-        } else {
-            path
-        };
-        if !path.exists() {
-            crate::dbg_log(&format!("wallpaper: file not found: {}", path.display()));
+        // TETRON_WM_WALLPAPER overrides the config (and its on/off switch).
+        let env = std::env::var("TETRON_WM_WALLPAPER").ok().filter(|p| !p.is_empty());
+        if env.is_none() && !cfg.wallpaper_enabled {
             return None;
         }
+        // `default`, empty or unset draw the built-in image, and so does a
+        // configured file that is missing: the desktop only goes plain when
+        // the wallpaper is switched off (or chafa is missing).
+        let choice = crate::wallpaper::choose(env.as_deref().or(cfg.wallpaper.as_deref()));
+        if let Some(m) = &choice.missing {
+            crate::dbg_log(&format!("wallpaper: file not found: {}, using the built-in image", m.display()));
+        }
+        let Some(path) = choice.path else {
+            crate::dbg_log("wallpaper: could not write the built-in image to the data dir");
+            return None;
+        };
         let s = path.to_string_lossy();
         match crate::wallpaper::from_image(&s, w, h) {
             Some(buf) => {
