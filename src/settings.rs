@@ -349,7 +349,7 @@ impl Settings {
             }
             (1, 5) => {
                 use crate::iconset::IconStyle::*;
-                let all = [Ascii, Nerd, Emoji];
+                let all = [Auto, Ascii, Unicode, Nerd, Emoji];
                 let cur = all.iter().position(|x| *x == self.cfg.icon_style).unwrap_or(0);
                 let next = if dir == -1 { (cur + all.len() - 1) % all.len() } else { (cur + 1) % all.len() };
                 self.cfg.icon_style = all[next];
@@ -703,7 +703,7 @@ impl Settings {
                 let mark = if crate::assistant::agent_available(agent) { "" } else { " (not installed)" };
                 self.row(&mut buf, cx, 3, 0, "Open as", format!("\u{25C2} {} \u{25B8}", self.cfg.assistant_mode));
                 self.row(&mut buf, cx, 4, 1, "Agent", format!("\u{25C2} {agent} \u{25B8}{mark}"));
-                buf.write_str(cx, 6, "The \u{2726} menubar button opens the assistant.", pal_dim(), pal_bg());
+                buf.write_str(cx, 6, &format!("The {} menubar button opens the assistant.", crate::glyphs::get(crate::glyphs::Glyph::Assistant)), pal_dim(), pal_bg());
                 buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tetron-wm/assistant", pal_dim(), pal_bg());
                 buf.write_str(cx, 8, "Extra args: assistant_args in config.toml.", pal_dim(), pal_bg());
             }
@@ -824,7 +824,7 @@ impl Settings {
         let add_sel = self.sel == self.cfg.launcher.len();
         let marker = if add_sel { "\u{25B8} " } else { "  " };
         buf.write_str(cx, add_y, marker, pal_accent(), pal_bg());
-        buf.write_str(cx + 2, add_y, "\u{FF0B} Add app\u{2026}", if add_sel { GREEN } else { pal_dim() }, pal_bg());
+        buf.write_str(cx + 2, add_y, &format!("{} Add app\u{2026}", crate::glyphs::get(crate::glyphs::Glyph::Plus)), if add_sel { GREEN } else { pal_dim() }, pal_bg());
     }
 
     /// Draw one labelled form field with a block cursor on the focused field.
@@ -881,7 +881,7 @@ fn step_u8(v: u8, dir: i32, lo: u8, hi: u8) -> u8 {
 
 fn icon_style_name(s: crate::iconset::IconStyle) -> &'static str {
     use crate::iconset::IconStyle::*;
-    match s { Ascii => "ascii", Nerd => "nerd", Emoji => "emoji" }
+    match s { Auto => "auto", Ascii => "ascii", Unicode => "unicode", Nerd => "nerd", Emoji => "emoji" }
 }
 
 fn ttl_name(secs: u64) -> String {
@@ -893,7 +893,7 @@ fn ttl_name(secs: u64) -> String {
 }
 
 fn toggle_val(on: bool) -> String {
-    if on { "\u{25CF} on".into() } else { "\u{25CB} off".into() }
+    if on { "\u{25CF} on".into() } else { format!("{} off", crate::glyphs::get(crate::glyphs::Glyph::Off)) }
 }
 
 /// Whether the desktop icon-label scrim is on (anything but `"none"`/`"off"`).
@@ -1311,10 +1311,13 @@ mod tests {
         assert_eq!(s.item_count(), 8);
         s.sel = 5;
         s.right();
-        assert_eq!(s.config().icon_style, IconStyle::Nerd);
+        assert_eq!(s.config().icon_style, IconStyle::Ascii);
+        s.right();
+        assert_eq!(s.config().icon_style, IconStyle::Unicode);
         s.right();
         s.right();
-        assert_eq!(s.config().icon_style, IconStyle::Ascii, "wraps");
+        s.right();
+        assert_eq!(s.config().icon_style, IconStyle::Auto, "wraps");
         s.sel = 6;
         s.toggle();
         assert!(!s.config().desktop_enabled);
