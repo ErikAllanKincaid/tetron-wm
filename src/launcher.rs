@@ -609,7 +609,7 @@ impl Launcher {
         fill_box(&mut buf, box_w, box_h);
 
         // Query row + separator.
-        buf.write_str(2, 1, &format!("\u{2318} {}\u{2588}", self.query), accent(), menu_bg());
+        buf.write_str(2, 1, &format!("{} {}\u{2588}", crate::glyphs::get(crate::glyphs::Glyph::Prompt), self.query), accent(), menu_bg());
         for x in 1..box_w - 1 {
             buf.set(x, 2, Cell { ch: '\u{2500}', fg: border(), bg: menu_bg(), attrs: Default::default() });
         }

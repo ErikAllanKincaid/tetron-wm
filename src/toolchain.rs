@@ -106,8 +106,8 @@ pub fn preamble(app: &str, method: &str, homepage: &str) -> String {
 echo '{app} needs {label}, which is not installed.'; \
 printf 'Install {label} now? [y/N] '; read -r _tc_ans; \
 case \"$_tc_ans\" in \
-[yY]*) echo; echo 'Installing {label} …'; {snippet} || {{ echo; echo 'Could not install {label}. Get it from {home}'; echo 'Close this window (\u{2715}) when done.'; exec \"$SHELL\"; }} ;; \
-*) echo; echo 'Skipped. Install {label} first, then retry {app}.'; echo '  {home}'; echo 'Close this window (\u{2715}) when done.'; exec \"$SHELL\" ;; \
+[yY]*) echo; echo 'Installing {label} …'; {snippet} || {{ echo; echo 'Could not install {label}. Get it from {home}'; echo 'Close this window (x) when done.'; exec \"$SHELL\"; }} ;; \
+*) echo; echo 'Skipped. Install {label} first, then retry {app}.'; echo '  {home}'; echo 'Close this window (x) when done.'; exec \"$SHELL\" ;; \
 esac; \
 fi; ",
         home = homepage,

@@ -376,7 +376,7 @@ impl DirPicker {
             let twig = if r.has_children { if r.expanded { "▾" } else { "▸" } } else { " " };
             let indent = 1 + r.depth as i32 * 2;
             buf.write_str(indent, y, twig, t.accent, bg);
-            buf.write_str(indent + 2, y, "📁", t.accent, bg);
+            buf.write_str(indent + 2, y, &crate::iconset::glyph(crate::openwith::Role::Directory).to_string(), t.accent, bg);
             let name_x = indent + 4;
             let avail = (box_w - 1 - name_x).max(1) as usize;
             let name: String = r.name.chars().take(avail).collect();

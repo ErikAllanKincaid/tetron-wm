@@ -49,7 +49,7 @@ pub fn help_sections() -> &'static [HelpSection] {
         HelpSection {
             title: "Clipboard",
             rows: &[
-                ("C", "clipboard history (also the menubar \u{2398} segment)"),
+                ("C", "clipboard history (also the menubar clipboard segment)"),
                 ("x / y", "select mode: the next drag selects text"),
                 ("c / v", "copy selection / paste clipboard (p also pastes)"),
             ],
@@ -90,7 +90,9 @@ fn body_lines() -> Vec<(String, bool)> {
     }
     lines.push((String::new(), false));
     lines.push(("In overlays:  ↑↓ move · →← expand · Enter open · Esc cancel".into(), false));
-    lines.push(("Menubar:  tetron-wm = launcher · ⊞/▦ = view · ✦ = assistant · host ▾ = power/Systems".into(), false));
+    lines.push((format!("Menubar:  tetron-wm = launcher · {}/{} = view · {} = assistant · host \u{25BE} = power/Systems",
+        crate::glyphs::get(crate::glyphs::Glyph::ModeDesktop), crate::glyphs::get(crate::glyphs::Glyph::ModeSimple),
+        crate::glyphs::get(crate::glyphs::Glyph::Assistant)), false));
     lines.push((String::new(), false));
     lines.push(("↑↓ PgUp PgDn Home End scroll · Esc or q closes this window".into(), false));
 

@@ -41,6 +41,7 @@ pub mod help;
 pub mod imagestore;
 pub mod thumbnail;
 pub mod icons;
+pub mod glyphs;
 pub mod iconset;
 pub mod kitty;
 pub mod kittygfx;

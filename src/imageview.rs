@@ -31,7 +31,7 @@ impl ImageView {
         buf.fill(Cell { ch: ' ', fg: t.dim, bg, attrs: Default::default() });
         let name = self.path.rsplit('/').next().unwrap_or(&self.path);
         let label = if self.id.is_some() {
-            format!("\u{1F5BC}  {}  ({}\u{00D7}{})", name, self.dims.0, self.dims.1)
+            format!("{}  {}  ({}\u{00D7}{})", crate::iconset::glyph(crate::openwith::Role::Image), name, self.dims.0, self.dims.1)
         } else {
             format!("cannot display  {name}")
         };

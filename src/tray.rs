@@ -272,7 +272,7 @@ pub fn tray_layout(
         } else if any_direct {
             "●"
         } else {
-            "○"
+            crate::glyphs::get(crate::glyphs::Glyph::Off)
         };
         put(&mut texts, &mut info, placement, SegmentKind::Tetron, format!("{} {connected} {dot}", status(Status::Net)), false);
     }
@@ -280,7 +280,7 @@ pub fn tray_layout(
         texts.push((SegmentKind::Select, "SELECT".to_string()));
     }
     if let Some((n, paused)) = clip {
-        let tail = if paused { "\u{2016}".to_string() } else { n.to_string() }; // ‖ when paused
+        let tail = if paused { crate::glyphs::get(crate::glyphs::Glyph::Paused).to_string() } else { n.to_string() }; // ‖ when paused
         texts.push((SegmentKind::Clipboard, format!("{} {tail}", status(Status::Clipboard))));
     }
     if bells > 0 {
@@ -288,7 +288,7 @@ pub fn tray_layout(
     }
     // The Info menu: fixed width, always present, a fixed distance from the right
     // corner (only the fixed-width clock and volume are right of it).
-    texts.push((SegmentKind::Info, "\u{24D8} ".to_string()));
+    texts.push((SegmentKind::Info, format!("{} ", crate::glyphs::get(crate::glyphs::Glyph::Info))));
     // Clock is time-only ("09:41"); one click on it drops down the full calendar.
     texts.push((SegmentKind::Clock, state.clock.time.clone()));
     // Volume sits at the far right, past the clock — a fixed corner the user can
@@ -622,7 +622,7 @@ impl Tray {
         buf.write_str(2, 1, &format!("Volume {}{}", v.level, if v.muted { " (muted)" } else { "" }), t.text, t.window_bg);
         // Row 2: ◂  bar  ▸   speaker
         let filled = (v.level as i32 * 6 / 100).clamp(0, 6) as usize;
-        let bar: String = (0..6).map(|i| if i < filled { '▮' } else { '▯' }).collect();
+        let bar: String = (0..6).map(|i| if i < filled { crate::glyphs::ch(crate::glyphs::Glyph::BarOn) } else { crate::glyphs::ch(crate::glyphs::Glyph::BarOff) }).collect();
         buf.write_str(2, 2, "◂", t.accent, t.window_bg);
         buf.write_str(5, 2, &bar, t.text, t.window_bg);
         buf.write_str(13, 2, "▸", t.accent, t.window_bg);
@@ -727,7 +727,7 @@ impl Tray {
         }
         for (i, d) in devs.iter().enumerate() {
             let y = 2 + i as i32;
-            let mark = if d.connected { "●" } else { "○" };
+            let mark = if d.connected { "●" } else { crate::glyphs::get(crate::glyphs::Glyph::Off) };
             buf.write_str(2, y, &format!("{} {}", mark, d.name), t.text, t.window_bg);
             hits.push(PopoverHit {
                 rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1),
@@ -772,7 +772,7 @@ impl Tray {
             let y = 2 + i as i32;
             // `●`/`○` = this network's data plane up/standby; direct/relay = how
             // its connected peers are reached.
-            let mark = if n.active { "●" } else { "○" };
+            let mark = if n.active { "●" } else { crate::glyphs::get(crate::glyphs::Glyph::Off) };
             let via = if n.any_direct { "direct" } else { "relay" };
             let line = format!("{} {}  {}/{} · {}", mark, n.name, n.connected, n.members, via);
             buf.write_str(2, y, &line, t.text, t.window_bg);
@@ -784,7 +784,7 @@ impl Tray {
         // Action row: open a terminal on `tetron status` + an interactive shell
         // (the full tetron CLI). The thin dashboard until the tetron-tui lands.
         let term_y = 2 + rows;
-        buf.write_str(2, term_y, "⌨ Open terminal", t.accent, t.window_bg);
+        buf.write_str(2, term_y, &format!("{} Open terminal", crate::glyphs::get(crate::glyphs::Glyph::Terminal)), t.accent, t.window_bg);
         hits.push(PopoverHit {
             rect: Rect::new(origin.x + 1, origin.y + term_y, box_w - 2, 1),
             intent: ControlIntent::TetronOpenTerminal,

@@ -3930,7 +3930,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             // re-scan + launcher rebuild (see `reap_dead`).
             let cmd = store::install_command(app);
             let wrapped = format!(
-                "{cmd}; echo; echo '── install finished — close this window (✕) to refresh ──'; exec \"$SHELL\""
+                "{cmd}; echo; echo '── install finished — close this window (x) to refresh ──'; exec \"$SHELL\""
             );
             self.launch(format!("install: {}", app.name), "sh".into(), vec!["-lc".into(), wrapped]);
         }

@@ -642,7 +642,7 @@ impl PowerMenu {
                 let status = online.iter().find(|(n, _)| *n == sys.name).map(|(_, up)| *up);
                 let (dot, dot_fg) = match status {
                     Some(true) => ("●", t.accent),
-                    Some(false) => ("○", t.dim),
+                    Some(false) => (crate::glyphs::get(crate::glyphs::Glyph::Off), t.dim),
                     None => ("·", t.dim),
                 };
                 buf.write_str(1, y, &format!(" {dot}"), dot_fg, t.window_bg);
@@ -652,7 +652,7 @@ impl PowerMenu {
                     .take((s.w - 7) as usize)
                     .collect();
                 buf.write_str(4, y, &label, t.text, t.window_bg);
-                buf.write_str(s.w - 3, y, "✕", t.close_fg, t.window_bg);
+                buf.write_str(s.w - 3, y, crate::glyphs::get(crate::glyphs::Glyph::Close), t.close_fg, t.window_bg);
             }
             buf.write_str(1, 2 + n as i32, " + Add Remote…", t.accent, t.window_bg);
             layers.push(Layer { z: 5300, origin: Point::new(s.x, s.y), buf, opacity: 1.0, scissor: None });
@@ -772,7 +772,7 @@ impl PowerMenu {
             buf.write_str(2, 2, &msg, t.text, t.window_bg);
             // Revoke-key checkbox (opt-in; off by default).
             let cb = forget_checkbox_rect(w, h);
-            let mark = if fc.revoke { "▣" } else { "☐" };
+            let mark = if fc.revoke { crate::glyphs::get(crate::glyphs::Glyph::Revoke) } else { "☐" };
             let cb_fg = if fc.revoke { t.accent } else { t.dim };
             let label: String = format!("{mark} Also revoke this PC's key on {}", fc.sys.host)
                 .chars()
