@@ -54,12 +54,16 @@ theme = "newmoon"
 ## Force 24-bit truecolor output on/off. Unset = auto-detect. Set true when your
 ## terminal supports truecolor but does not set COLORTERM (common with
 ## TERM=xterm-256color), else nord/dracula look washed out. Env override:
-## TETRON_WM_TRUECOLOR=1/0.
+## TETRON_WM_TRUECOLOR=1/0. For fewer colors use the env var
+## TETRON_WM_COLORS=mono|16|256 (auto: the kernel console TERM=linux gets 16,
+## NO_COLOR or a vt100-class TERM gets black and white).
 #truecolor = true
-## File-type icon glyphs where the graphical (Kitty) icons can not render
-## (kmscon, a bare VT, plain SSH): "ascii" (every font), "nerd" (needs a Nerd
+## Icon and symbol glyphs where the graphical (Kitty) icons can not render
+## (kmscon, a bare VT, plain SSH): "auto" (ascii on a bare console, unicode
+## elsewhere), "ascii" (every font, kernel console included), "unicode"
+## (DejaVu Sans Mono symbols, kmscon and GUI terminals), "nerd" (needs a Nerd
 ## Font), or "emoji".
-icon_style = "ascii"
+icon_style = "auto"
 ## Text of the menubar launcher button: up to 6 characters (centred), or
 ## "@session" to show the session name in a named session.
 launcher_label = "tetron"
