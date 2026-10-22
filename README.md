@@ -35,6 +35,16 @@ Or build from source with a [Rust toolchain](https://rustup.rs) (1.95 or newer):
 cargo install --git https://github.com/ErikAllanKincaid/tetron-wm
 ```
 
+### Recommended extras
+
+tetron-wm works on its own; these make the most of it. Ubuntu or Debian:
+
+```sh
+sudo apt install chafa sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils
+```
+
+The suite installer above offers to install them for you (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper (chafa), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
+
 Want a bare Linux machine that boots straight into the desktop? Use the suite installer, which can also set up the kmscon console, autologin and autostart, and can undo all of it. See [Bare console](#bare-console-no-x11-or-wayland).
 
 ## tetron mesh VPN companion network
@@ -152,6 +162,7 @@ Inside the app: **Settings → Updates**. The default channel installs the lates
 - [config.example.toml](config.example.toml): a ready-to-copy config with every option at its default
 - [docs/FEATURES_tetron-wm_what_it_can_do.md](docs/FEATURES_tetron-wm_what_it_can_do.md): everything tetron-wm can do, by task
 - [docs/KEYS_tetron-wm_leader_key_table.md](docs/KEYS_tetron-wm_leader_key_table.md): the leader key table
+- [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md): optional programs per feature
 - [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md): the bare console setup
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
 - [agent/](agent/README.md): what the built-in AI assistant (the ✦ button) is told about the desktop
