@@ -157,13 +157,17 @@ clipboard_ignore_apps = []
 
 ## ── Leader key remaps ─────────────────────────────────────────────────────
 ## Press the leader chord, then the key. A value is one key or a list; a key is a
-## single character or space, enter, tab, esc, left, right, up, down, backspace.
+## single character or space, enter, tab, backtab (Shift+Tab), esc, left, right,
+## up, down, backspace.
 ## Setting an action REPLACES its default keys. Defaults shown (all of them):
 [keys]
 spotlight   = "space"
 launcher    = ["l", "enter"]
 maximize    = ["m", "M"]
 minimize    = ["n", "N"]
+focus_next  = "tab"
+focus_prev  = "backtab"
+windows     = "f"
 close       = "esc"
 snap_left   = ["[", "left"]
 snap_right  = ["]", "right"]

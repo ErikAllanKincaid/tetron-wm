@@ -419,6 +419,21 @@ pub enum ClientMsg {
     DesktopCommit,
     /// Desktop overlay: cancel (Escape).
     DesktopCancel,
+    /// Focus and raise the next window in taskbar order, wrapping (leader Tab).
+    /// Cycles visible windows; when every window is minimized it restores them.
+    FocusNext,
+    /// Focus and raise the previous window in taskbar order (leader Shift+Tab).
+    FocusPrev,
+    /// Open the window picker, a numbered list of every window (leader f).
+    WindowPickerOpen,
+    /// Window picker: move the highlight by this many rows (wraps).
+    WindowPickerStep(i32),
+    /// Window picker: focus the highlighted window (Enter).
+    WindowPickerEnter,
+    /// Window picker: focus row N, 1-based (digit keys).
+    WindowPickerNumber(u8),
+    /// Window picker: close without changing focus (Esc).
+    WindowPickerEsc,
     /// Begin renaming the currently focused window (keyboard shortcut / double-click).
     RenameFocused,
     /// Type a character into the window rename buffer.
@@ -616,6 +631,8 @@ pub struct SessionCore {
     power_job: Option<(crate::powerctl::Kind, std::sync::Arc<std::sync::Mutex<Option<crate::powerctl::Report>>>)>,
     /// Modal "are you sure?" shown when closing an app window (which kills it).
     confirm_close: ConfirmClose,
+    /// Keyboard window picker (leader f): modal numbered window list.
+    win_picker: crate::winpicker::WinPicker,
     /// Modal "are you sure?" shown before launching an app entry flagged `warn`.
     launch_warn: LaunchWarn,
     /// What the UI shows, for the poller (None outside the daemon).
@@ -729,6 +746,7 @@ impl SessionCore {
             power_menu: PowerMenu::new(),
             power_job: None,
             confirm_close: ConfirmClose::new(),
+            win_picker: crate::winpicker::WinPicker::new(),
             launch_warn: LaunchWarn::new(),
             interest: None,
             tray_state: std::sync::Arc::new(std::sync::RwLock::new(crate::system::SystemState::default())),
@@ -2125,6 +2143,64 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// and y/n to it while open).
     pub fn confirm_close_open(&self) -> bool { self.confirm_close.is_open() }
 
+    /// Whether the window picker is showing (the client routes its keys to it).
+    pub fn window_picker_open(&self) -> bool { self.win_picker.is_open() }
+
+    /// Window ids in taskbar order (the order `titles` keeps: creation order),
+    /// limited to windows the window manager still knows about.
+    fn window_order(&self) -> Vec<WindowId> {
+        self.titles.iter().map(|(id, _)| *id).filter(|id| self.wm.get(*id).is_some()).collect()
+    }
+
+    /// Focus, raise and (if minimized) restore window `id`. The one place the
+    /// keyboard focus commands land, so they behave like a taskbar click.
+    fn focus_window(&mut self, id: WindowId) {
+        self.wm.unminimize(id);
+        if self.simple {
+            self.sync_app_size(id);
+        }
+    }
+
+    /// Leader Tab / Shift+Tab: step focus through the windows in taskbar order,
+    /// wrapping. Minimized windows are skipped (stepping past them would pop each
+    /// one back up); the picker reaches those. If every window is minimized the
+    /// step runs over all of them instead, so the key still does something.
+    fn focus_step(&mut self, forward: bool) {
+        let all = self.window_order();
+        let visible: Vec<WindowId> =
+            all.iter().copied().filter(|id| self.wm.get(*id).is_some_and(|w| !w.minimized)).collect();
+        let ring = if visible.is_empty() { all } else { visible };
+        if ring.is_empty() {
+            return;
+        }
+        let n = ring.len();
+        let next = match self.wm.focused().and_then(|f| ring.iter().position(|id| *id == f)) {
+            Some(i) if forward => ring[(i + 1) % n],
+            Some(i) => ring[(i + n - 1) % n],
+            // Focus is on nothing in the ring (empty desktop): start at an end.
+            None if forward => ring[0],
+            None => ring[n - 1],
+        };
+        self.focus_window(next);
+    }
+
+    /// Open the window picker over every window in taskbar order, with the
+    /// focused window highlighted.
+    fn open_window_picker(&mut self) {
+        let order = self.window_order();
+        let focused = self.wm.focused();
+        let sel = order.iter().position(|id| Some(*id) == focused).unwrap_or(0);
+        let rows = order
+            .iter()
+            .filter_map(|id| {
+                let w = self.wm.get(*id)?;
+                let label = self.titles.iter().find(|(i, _)| i == id).map(|(_, l)| l.clone()).unwrap_or_else(|| w.title.clone());
+                Some(crate::winpicker::PickRow { id: *id, label, minimized: w.minimized })
+            })
+            .collect();
+        self.win_picker.open(rows, sel);
+    }
+
     /// Whether the launch-warning dialog is showing (the client routes
     /// Enter/Esc and y/n to it while open).
     pub fn launch_warn_open(&self) -> bool { self.launch_warn.is_open() }
@@ -2790,6 +2866,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     || self.dirpicker.is_some()
                     || self.power_menu.is_open()
                     || self.confirm_close.is_open()
+                    || self.win_picker.is_open()
                     || self.launch_warn.is_open()
                     || self.compat_dialog
                     || self.rename.is_some()
@@ -2888,6 +2965,21 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::DesktopBackspace => self.desktop.overlay_backspace(),
             ClientMsg::DesktopCommit => self.desktop_commit(),
             ClientMsg::DesktopCancel => self.desktop.cancel_overlay(),
+            ClientMsg::FocusNext => self.focus_step(true),
+            ClientMsg::FocusPrev => self.focus_step(false),
+            ClientMsg::WindowPickerOpen => self.open_window_picker(),
+            ClientMsg::WindowPickerStep(d) => self.win_picker.step(d),
+            ClientMsg::WindowPickerEnter => {
+                if let Some(id) = self.win_picker.confirm() {
+                    self.focus_window(id);
+                }
+            }
+            ClientMsg::WindowPickerNumber(n) => {
+                if let Some(id) = self.win_picker.pick_number(n) {
+                    self.focus_window(id);
+                }
+            }
+            ClientMsg::WindowPickerEsc => self.win_picker.close(),
             ClientMsg::RenameFocused => {
                 if let Some(id) = self.wm.focused() {
                     self.rename = Some((id, String::new()));
@@ -4111,6 +4203,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
             || self.confirm_close.is_open()
+            || self.win_picker.is_open()
             || self.launch_warn.is_open()
             || self.launcher.is_open()
             || self.tray.open().is_some()
@@ -4282,6 +4375,15 @@ or a remote-side error — its authorized_keys was left untouched)",
             match self.power_menu.on_click(p, self.w, self.h, &self.systems) {
                 PowerClick::Act(outcome) => self.apply_power_outcome(outcome),
                 PowerClick::Consumed => {}
+            }
+            return;
+        }
+
+        // The window picker is modal while open: a row focuses that window,
+        // anywhere else dismisses it.
+        if kind == MouseKind::Down && self.win_picker.is_open() {
+            if let Some(id) = self.win_picker.on_click(p, self.w, self.h) {
+                self.focus_window(id);
             }
             return;
         }
@@ -5043,6 +5145,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // The confirm-close / compat-restart / launch-warning dialogs stack on
         // top of everything else, in that order (launch-warning is the topmost
         // modal of all, by z).
+        layers.extend(self.win_picker.render(self.w, self.h));
         layers.extend(self.confirm_close.render(self.w, self.h));
         layers.extend(self.render_compat_dialog());
         layers.extend(self.launch_warn.render(self.w, self.h));
@@ -5219,6 +5322,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             let online = self.tray_state.read().map(|st| st.remotes_online.clone()).unwrap_or_default();
             layers.extend(self.power_menu.render(self.w, self.h, &self.systems, &online));
         }
+        layers.extend(self.win_picker.render(self.w, self.h));
         layers.extend(self.confirm_close.render(self.w, self.h));
         layers.extend(self.render_compat_dialog());
 
@@ -5339,6 +5443,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
             || self.confirm_close.is_open()
+            || self.win_picker.is_open()
             || self.launch_warn.is_open()
             || self.tray.open().is_some()
             || self.desktop.overlay_rect().is_some()

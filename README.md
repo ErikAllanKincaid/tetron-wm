@@ -62,7 +62,7 @@ tetron-wm
 ```
 
 1. **Open the launcher.** Click the button at the top left, or press `Ctrl+Space` then `l`. The first entry is a **Shell**.
-2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close.
+2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), and `Ctrl+Space` then `f` lists every window to pick one by number.
 3. **Get apps.** Open the **Store** (`Ctrl+Space`, then `S`), search and install. If an app needs a toolchain you do not have, the installer notices and offers to set it up first.
 4. **Find things fast.** `Ctrl+Space` then `space` opens a search over every app.
 5. **See all shortcuts.** `Ctrl+Space` then `?`.

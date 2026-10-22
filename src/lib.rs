@@ -15,6 +15,7 @@ pub mod terminal;
 pub mod ptyhost;
 pub mod apphost;
 pub mod window;
+pub mod winpicker;
 pub mod wm;
 pub mod chrome;
 pub mod catalog;

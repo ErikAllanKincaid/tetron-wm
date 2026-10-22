@@ -108,7 +108,7 @@ These behaviors are fixed in tetron-wm and do not need configuration:
 
 ## Leader keys
 
-Press the leader (`ctrl+space`), release it, then the key. Rebind any action under `[keys]`; setting one replaces its default keys. A key is a single character or `space`, `enter`, `tab`, `esc`, `left`, `right`, `up`, `down`, `backspace`.
+Press the leader (`ctrl+space`), release it, then the key. Rebind any action under `[keys]`; setting one replaces its default keys. A key is a single character or `space`, `enter`, `tab`, `backtab` (Shift+Tab), `esc`, `left`, `right`, `up`, `down`, `backspace`.
 
 | Action        | Default keys | Does                                                                   |
 | ------------- | ------------ | ---------------------------------------------------------------------- |
@@ -116,11 +116,14 @@ Press the leader (`ctrl+space`), release it, then the key. Rebind any action und
 | `launcher`    | `l`, `enter` | app menu (launcher)                                                    |
 | `maximize`    | `m`, `M`     | maximize focused window                                                |
 | `minimize`    | `n`, `N`     | minimize focused window                                                |
+| `focus_next`  | `tab`        | focus the next window (Tab again keeps cycling)                        |
+| `focus_prev`  | `backtab`    | focus the previous window (Shift+Tab)                                  |
+| `windows`     | `f`          | window picker: numbered list of all windows                            |
 | `close`       | `esc`        | close focused window (asks first for app windows)                      |
 | `snap_left`   | `[`, `left`  | snap left half                                                         |
 | `snap_right`  | `]`, `right` | snap right half                                                        |
 | `store`       | `S`          | app store                                                              |
-| `settings`    | ``, ``       | settings                                                               |
+| `settings`    | `,`          | settings                                                               |
 | `activity`    | `A`          | activity monitor                                                       |
 | `clipboard`   | `C`          | clipboard history                                                      |
 | `select`      | `x`, `y`     | select mode: drag selects text even in mouse-capturing apps (one-shot) |
