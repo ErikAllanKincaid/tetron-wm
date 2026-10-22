@@ -140,6 +140,9 @@ pub struct Settings {
     sound: Option<std::sync::Arc<std::sync::RwLock<crate::system::SystemState>>>,
     /// Audio outputs as of the last [`SettingsAction::RefreshSound`].
     outputs: Vec<crate::system::AudioOutput>,
+    /// Keyboard focus is on the section list (left pane) rather than the rows.
+    /// Tab switches panes, like mc; Up / Down move inside the focused one.
+    in_sidebar: bool,
 }
 
 impl Settings {
@@ -149,7 +152,7 @@ impl Settings {
         Self {
             apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
-            sound: None, outputs: Vec::new(),
+            sound: None, outputs: Vec::new(), in_sidebar: false,
         }
     }
 
@@ -260,7 +263,26 @@ impl Settings {
         }
     }
 
+    /// Tab / Shift+Tab: move keyboard focus between the section list and the
+    /// rows. Ignored while a text box or the add form is open.
+    pub fn toggle_pane(&mut self) {
+        if self.edit.is_none() && self.text.is_none() {
+            self.in_sidebar = !self.in_sidebar;
+        }
+    }
+
+    /// Whether the section list has keyboard focus (for tests).
+    pub fn sidebar_focused(&self) -> bool {
+        self.in_sidebar
+    }
+
     pub fn move_up(&mut self) {
+        if self.in_sidebar {
+            if self.section > 0 {
+                self.enter_section(self.section - 1);
+            }
+            return;
+        }
         if self.text.is_some() {
             return; // typing a filename — arrows do nothing
         }
@@ -271,6 +293,12 @@ impl Settings {
         self.sel = self.sel.saturating_sub(1);
     }
     pub fn move_down(&mut self) {
+        if self.in_sidebar {
+            if self.section + 1 < SECTIONS.len() {
+                self.enter_section(self.section + 1);
+            }
+            return;
+        }
         if self.text.is_some() {
             return;
         }
@@ -351,6 +379,14 @@ impl Settings {
 
     /// Apply a change to the selected setting. `dir`: 0 = toggle, -1/+1 = down/up.
     fn adjust(&mut self, dir: i32) {
+        // In the section list, Right / Enter open the section (focus the rows);
+        // Left has nothing further left to go to.
+        if self.in_sidebar {
+            if dir >= 0 {
+                self.in_sidebar = false;
+            }
+            return;
+        }
         // While a text box is open, Enter (dir 0) commits it and every other
         // adjust is swallowed so typing cannot change another row.
         if self.text.is_some() {
@@ -679,10 +715,12 @@ impl Settings {
             let i = (p.y - 1) as usize;
             if i < SECTIONS.len() {
                 self.enter_section(i);
+                self.in_sidebar = true;
             }
             // `true` only when an action (the Sound refresh) needs draining.
             return self.action.is_some();
         }
+        self.in_sidebar = false;
         let row = p.y - 3;
         // Sound volume row: ◂ steps down, ▸ steps up, a click on the bar sets
         // the level there (cell k of 10 = (k + 1) * 10 %).
@@ -713,9 +751,14 @@ impl Settings {
         for (i, s) in SECTIONS.iter().enumerate() {
             let y = 1 + i as i32;
             let sel = i == self.section;
+            // The current section is always highlighted; the ▸ marker shows
+            // when the list itself has keyboard focus.
             let (fg, bg) = if sel { (pal_accent(), pal_sel()) } else { (pal_dim(), pal_bg()) };
             for x in 0..SIDEBAR_W {
                 buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });
+            }
+            if sel && self.in_sidebar {
+                buf.write_str(0, y, "\u{25B8}", fg, bg);
             }
             buf.write_str(2, y, s, fg, bg);
         }
@@ -726,8 +769,9 @@ impl Settings {
         // list, so it never covers a section name).
         let foot = 1 + SECTIONS.len() as i32 + 1;
         if h - 2 >= foot {
-            buf.write_str(1, h - 2, "Tab: next", pal_dim(), pal_bg());
-            buf.write_str(1, h - 1, "Shift+Tab: prev", pal_dim(), pal_bg());
+            let hint = if self.in_sidebar { "Tab: settings" } else { "Tab: sections" };
+            buf.write_str(1, h - 2, hint, pal_dim(), pal_bg());
+            buf.write_str(1, h - 1, "\u{2191}\u{2193}: move", pal_dim(), pal_bg());
         }
 
         let cx = SIDEBAR_W + 2;
@@ -938,7 +982,7 @@ impl Settings {
         }
         for (i, a) in self.cfg.launcher.iter().enumerate() {
             let y = 3 + i as i32;
-            let sel = i == self.sel;
+            let sel = i == self.sel && !self.in_sidebar;
             let marker = if sel { "\u{25B8} " } else { "  " };
             buf.write_str(cx, y, marker, pal_accent(), pal_bg());
             buf.write_str(cx + 2, y, &a.name, if sel { pal_fg() } else { pal_dim() }, pal_bg());
@@ -952,7 +996,7 @@ impl Settings {
         }
         // "＋ Add app…" row.
         let add_y = 3 + self.cfg.launcher.len() as i32;
-        let add_sel = self.sel == self.cfg.launcher.len();
+        let add_sel = self.sel == self.cfg.launcher.len() && !self.in_sidebar;
         let marker = if add_sel { "\u{25B8} " } else { "  " };
         buf.write_str(cx, add_y, marker, pal_accent(), pal_bg());
         buf.write_str(cx + 2, add_y, &format!("{} Add app\u{2026}", crate::glyphs::get(crate::glyphs::Glyph::Plus)), if add_sel { GREEN } else { pal_dim() }, pal_bg());
@@ -968,7 +1012,7 @@ impl Settings {
     }
 
     fn row(&self, buf: &mut CellBuffer, x: i32, y: i32, idx: usize, label: &str, value: String) {
-        let sel = idx == self.sel && self.item_count() > 0;
+        let sel = idx == self.sel && self.item_count() > 0 && !self.in_sidebar;
         let marker = if sel { "\u{25B8} " } else { "  " };
         buf.write_str(x, y, marker, pal_accent(), pal_bg());
         buf.write_str(x + 2, y, label, if sel { pal_fg() } else { pal_dim() }, pal_bg());
@@ -1585,12 +1629,24 @@ mod tests {
     }
 
     #[test]
-    fn section_keys_wrap_both_ways() {
+    fn tab_switches_panes_and_arrows_move_inside_the_focused_one() {
         let mut s = Settings::new(Config::default());
-        s.prev_section();
-        assert_eq!(SECTIONS[s.section], "About", "Shift+Tab from the first wraps to the last");
-        s.next_section();
-        assert_eq!(s.section, 0);
-        assert!(screen(&s).contains("Tab: next"));
+        s.toggle_pane();
+        assert!(s.sidebar_focused());
+        assert!(screen(&s).contains("Tab: settings"));
+        s.move_down();
+        s.move_down();
+        assert_eq!(SECTIONS[s.section], "Updates", "Down in the list changes section");
+        s.move_up();
+        assert_eq!(SECTIONS[s.section], "Appearance");
+        s.left(); // nothing further left: stays in the list
+        assert!(s.sidebar_focused());
+        s.right(); // Right opens the section
+        assert!(!s.sidebar_focused());
+        s.move_down();
+        assert_eq!(s.sel, 1, "Down in the rows moves the row");
+        s.toggle_pane();
+        s.toggle(); // Enter in the list also opens the section
+        assert!(!s.sidebar_focused());
     }
 }

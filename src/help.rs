@@ -48,7 +48,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("S / ,", "store / settings"),
                 ("A", "activity monitor"),
             ],
-            notes: &["In Settings: Tab / Shift+Tab switch section."],
+            notes: &["In Settings: Tab switches between sections and rows."],
         },
         HelpSection {
             title: "Clipboard",

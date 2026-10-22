@@ -297,6 +297,8 @@ pub enum ClientMsg {
     /// Settings: previous / next section.
     SettingsPrevSection,
     SettingsNextSection,
+    /// Settings: move keyboard focus between the section list and the rows (Tab).
+    SettingsTogglePane,
     /// Settings: decrease / increase / toggle the selected setting.
     SettingsLeft,
     SettingsRight,
@@ -2797,10 +2799,13 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::OpenSettings => self.open_settings(),
-            ClientMsg::SettingsUp => { if let Some(s) = self.focused_settings_mut() { s.move_up(); } }
-            ClientMsg::SettingsDown => { if let Some(s) = self.focused_settings_mut() { s.move_down(); } }
+            // Up / Down in the section list change section, which can arm the
+            // Sound refresh, so both drain.
+            ClientMsg::SettingsUp => { if let Some(s) = self.focused_settings_mut() { s.move_up(); } self.drain_settings_action(); }
+            ClientMsg::SettingsDown => { if let Some(s) = self.focused_settings_mut() { s.move_down(); } self.drain_settings_action(); }
             ClientMsg::SettingsPrevSection => { if let Some(s) = self.focused_settings_mut() { s.prev_section(); } self.drain_settings_action(); }
             ClientMsg::SettingsNextSection => { if let Some(s) = self.focused_settings_mut() { s.next_section(); } self.drain_settings_action(); }
+            ClientMsg::SettingsTogglePane => { if let Some(s) = self.focused_settings_mut() { s.toggle_pane(); } }
             ClientMsg::SettingsLeft => { if let Some(s) = self.focused_settings_mut() { s.left(); } self.drain_settings_action(); self.sync_settings(); }
             ClientMsg::SettingsRight => { if let Some(s) = self.focused_settings_mut() { s.right(); } self.drain_settings_action(); self.sync_settings(); }
             ClientMsg::SettingsToggle => {

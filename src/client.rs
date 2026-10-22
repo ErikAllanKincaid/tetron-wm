@@ -457,11 +457,13 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Down => send(&mut out_stream, &ClientMsg::SettingsDown)?,
                             KeyCode::Left => send(&mut out_stream, &ClientMsg::SettingsLeft)?,
                             KeyCode::Right => send(&mut out_stream, &ClientMsg::SettingsRight)?,
-                            // The section list: Tab / Shift+Tab (or PageDown / PageUp)
-                            // move through it, wrapping. Without these it was
-                            // reachable by mouse only.
-                            KeyCode::Tab | KeyCode::PageDown => send(&mut out_stream, &ClientMsg::SettingsNextSection)?,
-                            KeyCode::BackTab | KeyCode::PageUp => send(&mut out_stream, &ClientMsg::SettingsPrevSection)?,
+                            // Tab / Shift+Tab move focus between the section list and
+                            // the rows (like mc's panels); Up / Down then move inside
+                            // the focused pane. PageDown / PageUp switch section
+                            // directly from either pane.
+                            KeyCode::Tab | KeyCode::BackTab => send(&mut out_stream, &ClientMsg::SettingsTogglePane)?,
+                            KeyCode::PageDown => send(&mut out_stream, &ClientMsg::SettingsNextSection)?,
+                            KeyCode::PageUp => send(&mut out_stream, &ClientMsg::SettingsPrevSection)?,
                             KeyCode::Enter | KeyCode::Char(' ') => send(&mut out_stream, &ClientMsg::SettingsToggle)?,
                             _ => {}
                         }
