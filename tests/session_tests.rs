@@ -1261,3 +1261,48 @@ fn window_picker_lists_all_and_restores_the_pick() {
     assert_eq!(core.focused(), Some(ids[1]));
     core.shutdown();
 }
+
+#[test]
+fn move_mode_moves_resizes_and_esc_undoes() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    core.apply(ClientMsg::Launch { name: "a".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 2".into()] });
+    let start = core.focused_window_rect_for_test().unwrap();
+    core.apply(ClientMsg::MoveModeStart);
+    assert!(core.move_mode_open());
+    core.apply(ClientMsg::MoveModeStep { dx: 5, dy: 0 });
+    core.apply(ClientMsg::MoveModeStep { dx: 0, dy: 1 });
+    let moved = core.focused_window_rect_for_test().unwrap();
+    assert_eq!((moved.x, moved.y, moved.w, moved.h), (start.x + 5, start.y + 1, start.w, start.h));
+    core.apply(ClientMsg::MoveModeToggleResize);
+    assert!(core.move_mode_resizing());
+    core.apply(ClientMsg::MoveModeStep { dx: 2, dy: -1 });
+    let sized = core.focused_window_rect_for_test().unwrap();
+    assert_eq!((sized.x, sized.w, sized.h), (moved.x, start.w + 2, start.h - 1));
+    // Esc puts everything back.
+    core.apply(ClientMsg::MoveModeEnd { cancel: true });
+    assert!(!core.move_mode_open());
+    assert_eq!(core.focused_window_rect_for_test(), Some(start));
+    core.shutdown();
+}
+
+#[test]
+fn move_mode_enter_keeps_and_restores_maximized_on_esc() {
+    let mut core = SessionCore::new(120, 40, Config::default());
+    core.apply(ClientMsg::Launch { name: "a".into(), command: "sh".into(), args: vec!["-c".into(), "sleep 2".into()] });
+    let start = core.focused_window_rect_for_test().unwrap();
+    core.apply(ClientMsg::MoveModeStart);
+    core.apply(ClientMsg::MoveModeStep { dx: 3, dy: 0 });
+    core.apply(ClientMsg::MoveModeEnd { cancel: false });
+    assert!(!core.move_mode_open());
+    assert_eq!(core.focused_window_rect_for_test().unwrap().x, start.x + 3);
+    // A maximized window moved then Esc'd comes back maximized.
+    core.apply(ClientMsg::MaximizeFocused);
+    let max = core.focused_window_rect_for_test().unwrap();
+    core.apply(ClientMsg::MoveModeStart);
+    core.apply(ClientMsg::MoveModeStep { dx: 0, dy: 4 });
+    core.apply(ClientMsg::MoveModeEnd { cancel: true });
+    assert_eq!(core.focused_window_rect_for_test(), Some(max));
+    core.apply(ClientMsg::MaximizeFocused);
+    assert_eq!(core.focused_window_rect_for_test().unwrap().x, start.x + 3, "restore still works");
+    core.shutdown();
+}

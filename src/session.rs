@@ -434,6 +434,15 @@ pub enum ClientMsg {
     WindowPickerNumber(u8),
     /// Window picker: close without changing focus (Esc).
     WindowPickerEsc,
+    /// Start the keyboard move mode on the focused window (leader w).
+    MoveModeStart,
+    /// Move mode: move (or, in resize mode, grow/shrink) by `dx`, `dy` cells.
+    MoveModeStep { dx: i32, dy: i32 },
+    /// Move mode: switch between moving and resizing (r).
+    MoveModeToggleResize,
+    /// Move mode: finish. `cancel` (Esc) puts the window back where it started;
+    /// otherwise (Enter) the new geometry stays.
+    MoveModeEnd { cancel: bool },
     /// Begin renaming the currently focused window (keyboard shortcut / double-click).
     RenameFocused,
     /// Type a character into the window rename buffer.
@@ -529,6 +538,15 @@ pub struct Frame {
 }
 
 // ── Session core ──────────────────────────────────────────────────────────────
+
+/// Keyboard move mode state (leader w): the window, where it started (for Esc),
+/// and whether arrows currently resize instead of move.
+struct MoveMode {
+    id: WindowId,
+    start: Rect,
+    start_state: crate::window::WindowState,
+    resize: bool,
+}
 
 /// Owns the window manager and all running app instances.
 ///
@@ -633,6 +651,8 @@ pub struct SessionCore {
     confirm_close: ConfirmClose,
     /// Keyboard window picker (leader f): modal numbered window list.
     win_picker: crate::winpicker::WinPicker,
+    /// Keyboard move / resize mode (leader w), `None` when off.
+    move_mode: Option<MoveMode>,
     /// Modal "are you sure?" shown before launching an app entry flagged `warn`.
     launch_warn: LaunchWarn,
     /// What the UI shows, for the poller (None outside the daemon).
@@ -747,6 +767,7 @@ impl SessionCore {
             power_job: None,
             confirm_close: ConfirmClose::new(),
             win_picker: crate::winpicker::WinPicker::new(),
+            move_mode: None,
             launch_warn: LaunchWarn::new(),
             interest: None,
             tray_state: std::sync::Arc::new(std::sync::RwLock::new(crate::system::SystemState::default())),
@@ -2146,6 +2167,55 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// Whether the window picker is showing (the client routes its keys to it).
     pub fn window_picker_open(&self) -> bool { self.win_picker.is_open() }
 
+    /// Whether the keyboard move mode is active on a window that still exists.
+    pub fn move_mode_open(&self) -> bool {
+        self.move_mode.as_ref().is_some_and(|m| self.wm.get(m.id).is_some())
+    }
+
+    /// Whether the move mode is resizing rather than moving (for tests).
+    pub fn move_mode_resizing(&self) -> bool {
+        self.move_mode.as_ref().is_some_and(|m| m.resize)
+    }
+
+    /// Leader w: start moving the focused window from the keyboard. The start
+    /// geometry is kept so Esc can put it back. Minimized or no window: no-op.
+    fn move_mode_start(&mut self) {
+        let Some(id) = self.wm.focused() else { return };
+        let Some(w) = self.wm.get(id) else { return };
+        if w.minimized {
+            return;
+        }
+        self.move_mode = Some(MoveMode { id, start: w.rect, start_state: w.state, resize: false });
+    }
+
+    /// One arrow press in move mode. Moving goes through `move_to` (clamped so
+    /// the titlebar stays reachable, like a mouse drag); resizing moves the
+    /// right / bottom edge and resizes the app's PTY to match.
+    fn move_mode_step(&mut self, dx: i32, dy: i32) {
+        let Some(m) = self.move_mode.as_ref() else { return };
+        let (id, resize) = (m.id, m.resize);
+        let Some(r) = self.wm.get(id).map(|w| w.rect) else {
+            self.move_mode = None;
+            return;
+        };
+        if resize {
+            self.wm.resize_to(id, r.w + dx, r.h + dy);
+            self.sync_app_size(id);
+        } else {
+            self.wm.move_to(id, r.x + dx, r.y + dy);
+        }
+    }
+
+    /// Enter keeps the new geometry; Esc restores the start rect and state
+    /// (a maximized or snapped window comes back maximized or snapped).
+    fn move_mode_end(&mut self, cancel: bool) {
+        let Some(m) = self.move_mode.take() else { return };
+        if cancel && self.wm.get(m.id).is_some() {
+            self.wm.set_geometry(m.id, m.start, m.start_state);
+            self.sync_app_size(m.id);
+        }
+    }
+
     /// Window ids in taskbar order (the order `titles` keeps: creation order),
     /// limited to windows the window manager still knows about.
     fn window_order(&self) -> Vec<WindowId> {
@@ -2426,6 +2496,8 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             ClientMsg::MouseDown(p) => {
                 self.cursor = p;
+                // A click ends the keyboard move mode, keeping the new geometry.
+                self.move_mode_end(false);
                 // A press inside a terminal window's content starts a text
                 // selection (consumed here); clicks on chrome/desktop fall
                 // through to normal window routing.
@@ -2965,6 +3037,14 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::DesktopBackspace => self.desktop.overlay_backspace(),
             ClientMsg::DesktopCommit => self.desktop_commit(),
             ClientMsg::DesktopCancel => self.desktop.cancel_overlay(),
+            ClientMsg::MoveModeStart => self.move_mode_start(),
+            ClientMsg::MoveModeStep { dx, dy } => self.move_mode_step(dx, dy),
+            ClientMsg::MoveModeToggleResize => {
+                if let Some(m) = self.move_mode.as_mut() {
+                    m.resize = !m.resize;
+                }
+            }
+            ClientMsg::MoveModeEnd { cancel } => self.move_mode_end(cancel),
             ClientMsg::FocusNext => self.focus_step(true),
             ClientMsg::FocusPrev => self.focus_step(false),
             ClientMsg::WindowPickerOpen => self.open_window_picker(),
@@ -4877,6 +4957,9 @@ or a remote-side error — its authorized_keys was left untouched)",
     }
 
     fn close(&mut self, id: WindowId) {
+        if self.move_mode.as_ref().is_some_and(|m| m.id == id) {
+            self.move_mode = None;
+        }
         // Closing Settings with an unsaved color preview puts the saved colors back.
         let revert_preview = matches!(self.contents.get(&id), Some(WinContent::Settings(s)) if s.previewing());
         // An install window is kept alive (it `exec`s a shell after the install so
@@ -4944,6 +5027,25 @@ or a remote-side error — its authorized_keys was left untouched)",
     ///
     /// Returns a single 1-row [`Layer`] at high z (2000) drawn over the title
     /// area of the window, showing the current buffer and a cursor block.
+    /// The move-mode hint drawn over the window's title (same area as the rename
+    /// overlay), in reverse colours so the window being moved stands out.
+    fn render_move_hint(&self, win: &crate::window::Window, resize: bool) -> Vec<Layer> {
+        let t = crate::theme::current();
+        let r = win.rect;
+        let btn_reserve = if r.w >= 9 { 9 } else { 4 };
+        let title_w = (r.w - 2 - btn_reserve).max(1);
+        let text = if resize {
+            " RESIZE  arrows, Shift x5, r move, Enter done, Esc undo "
+        } else {
+            " MOVE  arrows, Shift x5, r resize, Enter done, Esc undo "
+        };
+        let mut row = crate::buffer::CellBuffer::new(title_w, 1);
+        row.fill(crate::cell::Cell { ch: ' ', fg: t.title_focus, bg: t.title_fg, attrs: Default::default() });
+        let shown: String = text.chars().take(title_w as usize).collect();
+        row.write_str(0, 0, &shown, t.title_focus, t.title_fg);
+        vec![Layer { z: 2000, origin: Point::new(r.x + 2, r.y), buf: row, opacity: 1.0, scissor: None }]
+    }
+
     fn render_rename_overlay(&self, win: &crate::window::Window, buf: &str) -> Vec<Layer> {
         let t = crate::theme::current();
         let r = win.rect;
@@ -5079,6 +5181,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             tint.a = 70; // translucent so the windows below show through
             buf.fill(crate::cell::Cell { ch: ' ', fg: crate::cell::Rgba::TRANSPARENT, bg: tint, attrs: Default::default() });
             layers.push(Layer { z: 900, origin: Point::new(r.x, r.y), buf, opacity: 1.0, scissor: None });
+        }
+
+        // Keyboard move mode: the key hint replaces the window's title.
+        if let Some(m) = &self.move_mode {
+            if let Some(win) = self.wm.get(m.id) {
+                layers.extend(self.render_move_hint(win, m.resize));
+            }
         }
 
         // Window rename overlay: draw the edit buffer over the target window's

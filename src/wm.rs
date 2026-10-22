@@ -138,6 +138,15 @@ impl WindowManager {
         }
     }
 
+    /// Put window `id` back to an exact saved `rect` and `state` (the keyboard
+    /// move mode's Esc). No clamping: the values came from the window itself.
+    pub fn set_geometry(&mut self, id: WindowId, rect: Rect, state: WindowState) {
+        if let Some(w) = self.get_mut(id) {
+            w.rect = rect;
+            w.state = state;
+        }
+    }
+
     /// Snap window `id` to `zone`, saving the current rect for future restore.
     ///
     /// If the window is already floating its current rect is stored in `restore_rect`.

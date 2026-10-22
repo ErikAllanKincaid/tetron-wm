@@ -446,6 +446,7 @@ fn serve_client_inner(
             power_dialog: core.power_dialog_open(),
             no_window: core.focused().is_none(),
             window_picker: core.window_picker_open(),
+            move_mode: core.move_mode_open(),
             clipmenu_open: core.clipmenu_open(),
             filemanager_focused: core.focused_is_filemanager(),
             filemanager_editing: core.filemanager_editing(),
