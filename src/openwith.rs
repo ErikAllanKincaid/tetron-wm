@@ -106,7 +106,13 @@ pub fn resolve(path: &Path, is_dir: bool, handlers: &BTreeMap<String, String>) -
     }
     match handlers.get(role.key()).map(String::as_str) {
         Some(cmd) if !cmd.trim().is_empty() => open_with(cmd, path),
-        _ => OpenAction::OpenWithMenu,
+        // No handler chosen: video and audio play in the window with mpv
+        // (any terminal) rather than asking every time.
+        _ => match role {
+            Role::Video if crate::catalog::is_installed("mpv") => open_with("mpv --vo=tct", path),
+            Role::Audio if crate::catalog::is_installed("mpv") => open_with("mpv --no-video", path),
+            _ => OpenAction::OpenWithMenu,
+        },
     }
 }
 

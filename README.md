@@ -75,7 +75,7 @@ tetron-wm
 2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), `Ctrl+Space` then `f` lists every window to pick one by number, and `Ctrl+Space` then `w` moves the focused window with the arrow keys (`r` to resize, Enter when done).
 3. **Get apps.** Open the **Store** (`Ctrl+Space`, then `S`), search and install. If an app needs a toolchain you do not have, the installer notices and offers to set it up first.
 4. **Find things fast.** `Ctrl+Space` then `space` opens a search over every app.
-5. **Open files.** Double-click a desktop icon or a file in **Files**. Right-click it (or `Ctrl+Space` then `.`) for **Open with…** (for example mpv for video, played right in the window, or fresh for text), **Set as wallpaper**, **Copy path** and **Open terminal here**. Images open in the built-in viewer on any terminal; on a plain Linux console, **View full screen** shows them with fbi.
+5. **Open files.** Double-click a desktop icon or a file in **Files**. Right-click it (or `Ctrl+Space` then `.`) for **Open with…** (for example fresh for text), **Set as wallpaper**, **Extract here**, **Copy path**, **Open terminal here**, **Get Info** and **Send to…** a saved system. Videos play right in the window with mpv; images open in the built-in viewer on any terminal; on a plain Linux console, **View full screen** and **Play full screen** use fbi and mpv. A window's title bar has its own right-click menu.
 6. **See all shortcuts.** `Ctrl+Space` then `?`.
 7. **Leave without closing anything.** `Ctrl+Space` then `q` detaches. Run `tetron-wm` again to come back.
 

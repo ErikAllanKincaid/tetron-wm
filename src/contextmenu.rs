@@ -47,6 +47,20 @@ pub enum MenuAction {
     CopyPath,
     /// A shell in the folder (the entry's folder for a file, the folder itself).
     OpenTerminalHere,
+    /// Hand the screen to mpv / cvlc for a video (plain console only).
+    PlayFullscreen,
+    ExtractHere,
+    ListContents,
+    /// Replace the menu with the saved Systems to copy the entry to.
+    SendTo,
+    /// Copy the entry to this Systems entry (by name) with scp.
+    SendToSystem(String),
+    // Window (title bar) actions.
+    Minimize,
+    Maximize,
+    MoveWindow,
+    RenameWindow,
+    CloseWindow,
 }
 
 impl MenuAction {
@@ -68,13 +82,46 @@ impl MenuAction {
             MenuAction::SetWallpaper => "Set as wallpaper".into(),
             MenuAction::CopyPath => "Copy path".into(),
             MenuAction::OpenTerminalHere => "Open terminal here".into(),
+            MenuAction::PlayFullscreen => "Play full screen".into(),
+            MenuAction::ExtractHere => "Extract here".into(),
+            MenuAction::ListContents => "List contents".into(),
+            MenuAction::SendTo => "Send to\u{2026}".into(),
+            MenuAction::SendToSystem(name) => name.clone(),
+            MenuAction::Minimize => "Minimize".into(),
+            MenuAction::Maximize => "Maximize".into(),
+            MenuAction::MoveWindow => "Move".into(),
+            MenuAction::RenameWindow => "Rename".into(),
+            MenuAction::CloseWindow => "Close".into(),
         }
     }
 }
 
-/// The actions `target` offers on `surface`, top to bottom. `fullscreen`: the
-/// client can hand the screen to a framebuffer viewer (a plain console).
-pub fn actions_for(surface: Surface, target: Target, fullscreen: bool) -> Vec<MenuAction> {
+/// What the client and machine can do, for the actions that depend on it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Abilities {
+    /// A plain console with fbi or fim: "View full screen" for images.
+    pub fullscreen_image: bool,
+    /// A plain console with mpv or cvlc: "Play full screen" for video.
+    pub fullscreen_video: bool,
+    /// Saved Systems exist: "Send to…".
+    pub send: bool,
+}
+
+impl Abilities {
+    /// For the attached client and this machine.
+    pub fn current() -> Self {
+        let console = crate::display::get().fb_console;
+        let have = crate::catalog::is_installed;
+        Abilities {
+            fullscreen_image: console && (have("fbi") || have("fim")),
+            fullscreen_video: console && (have("mpv") || have("cvlc")),
+            send: !crate::systems::load().is_empty() && have("scp"),
+        }
+    }
+}
+
+/// The actions `target` offers on `surface`, top to bottom.
+pub fn actions_for(surface: Surface, target: Target, can: Abilities) -> Vec<MenuAction> {
     use MenuAction as A;
     match (surface, target) {
         (Surface::Desktop, Target::Entry { pinned: true, .. }) => vec![A::Open, A::Unpin],
@@ -83,25 +130,66 @@ pub fn actions_for(surface: Surface, target: Target, fullscreen: bool) -> Vec<Me
             if !is_dir {
                 v.push(A::OpenWith);
             }
-            if role == Role::Image {
-                if fullscreen {
-                    v.push(A::ViewFullscreen);
+            match role {
+                Role::Image => {
+                    if can.fullscreen_image {
+                        v.push(A::ViewFullscreen);
+                    }
+                    v.push(A::SetWallpaper);
                 }
-                v.push(A::SetWallpaper);
+                Role::Video if can.fullscreen_video => v.push(A::PlayFullscreen),
+                Role::Archive => v.extend([A::ExtractHere, A::ListContents]),
+                _ => {}
             }
             v.push(A::Rename);
             if surface == Surface::Files {
                 v.extend([A::Copy, A::Cut]);
             }
-            v.extend([A::Trash, A::CopyPath, A::OpenTerminalHere]);
-            if surface == Surface::Files {
-                v.push(A::GetInfo);
+            v.extend([A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo]);
+            if can.send {
+                v.push(A::SendTo);
             }
             v
         }
         (Surface::Desktop, Target::Background) => vec![A::NewFolder, A::OpenTerminalHere, A::CleanUp],
         (Surface::Files, Target::Background) => Vec::new(),
     }
+}
+
+/// The title bar menu of a window.
+pub fn window_actions() -> Vec<MenuAction> {
+    use MenuAction as A;
+    vec![A::Minimize, A::Maximize, A::MoveWindow, A::RenameWindow, A::CloseWindow]
+}
+
+/// The "Send to…" choices: one per saved Systems entry.
+pub fn send_to_actions() -> Vec<MenuAction> {
+    crate::systems::load().into_iter().map(|s| MenuAction::SendToSystem(s.name)).collect()
+}
+
+/// The shell command that extracts (`list` false) or lists `archive` into
+/// or from `dir`, chosen by its name; `None` for an unknown kind.
+pub fn archive_command(archive: &Path, dir: &Path, list: bool) -> Option<String> {
+    let q = |p: &Path| crate::systems::sh_quote(&p.to_string_lossy());
+    let (a, d) = (q(archive), q(dir));
+    let name = archive.file_name()?.to_string_lossy().to_ascii_lowercase();
+    let tar = [".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2", ".tar.zst"];
+    Some(if tar.iter().any(|e| name.ends_with(e)) {
+        if list { format!("tar -tvf {a}") } else { format!("tar -xf {a} -C {d}") }
+    } else if name.ends_with(".zip") {
+        if list { format!("unzip -l {a}") } else { format!("unzip {a} -d {d}") }
+    } else if name.ends_with(".7z") {
+        if list { format!("7z l {a}") } else { format!("7z x {a} -o{d}") }
+    } else if name.ends_with(".rar") {
+        if list { format!("unrar l {a}") } else { format!("unrar x {a} {d}/") }
+    } else {
+        // A single compressed file: keep the original, write it next to it.
+        let tool = [(".gz", "gzip"), (".xz", "xz"), (".bz2", "bzip2"), (".zst", "zstd")]
+            .iter()
+            .find(|(e, _)| name.ends_with(e))?
+            .1;
+        if list { format!("{tool} -l {a}") } else { format!("{tool} -dk {a}") }
+    })
 }
 
 /// The "Open with…" choices for `path`: the built-in viewer for images, then
@@ -215,30 +303,49 @@ mod tests {
     use super::*;
 
     fn menu(n: usize) -> ContextMenu {
-        ContextMenu::new(Point::new(5, 3), actions_for(Surface::Files, Target::Entry { is_dir: false, pinned: false, role: Role::Text }, false).into_iter().take(n).collect())
+        ContextMenu::new(Point::new(5, 3), actions_for(Surface::Files, Target::Entry { is_dir: false, pinned: false, role: Role::Text }, Abilities::default()).into_iter().take(n).collect())
     }
 
     #[test]
     fn actions_differ_by_surface_and_target() {
         use MenuAction as A;
+        let none = Abilities::default();
+        let all = Abilities { fullscreen_image: true, fullscreen_video: true, send: true };
         let file = Target::Entry { is_dir: false, pinned: false, role: Role::Text };
         let dir = Target::Entry { is_dir: true, pinned: false, role: Role::Directory };
         let img = Target::Entry { is_dir: false, pinned: false, role: Role::Image };
-        assert_eq!(actions_for(Surface::Desktop, file, false), vec![A::Open, A::OpenWith, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere]);
-        assert_eq!(actions_for(Surface::Desktop, dir, false), vec![A::Open, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere], "no Open with for folders");
-        assert_eq!(actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true, role: Role::Other }, true), vec![A::Open, A::Unpin]);
-        assert_eq!(actions_for(Surface::Desktop, Target::Background, true), vec![A::NewFolder, A::OpenTerminalHere, A::CleanUp]);
+        let vid = Target::Entry { is_dir: false, pinned: false, role: Role::Video };
+        let zip = Target::Entry { is_dir: false, pinned: false, role: Role::Archive };
+        assert_eq!(actions_for(Surface::Desktop, file, none), vec![A::Open, A::OpenWith, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo]);
+        assert_eq!(actions_for(Surface::Desktop, dir, none), vec![A::Open, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo], "no Open with for folders");
+        assert_eq!(actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true, role: Role::Other }, all), vec![A::Open, A::Unpin]);
+        assert_eq!(actions_for(Surface::Desktop, Target::Background, all), vec![A::NewFolder, A::OpenTerminalHere, A::CleanUp]);
         assert_eq!(
-            actions_for(Surface::Files, file, false),
+            actions_for(Surface::Files, file, none),
             vec![A::Open, A::OpenWith, A::Rename, A::Copy, A::Cut, A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo]
         );
-        assert!(actions_for(Surface::Files, Target::Background, false).is_empty());
+        assert!(actions_for(Surface::Files, Target::Background, all).is_empty());
         // Images: wallpaper always, full screen only where the client can hand over.
-        let plain = actions_for(Surface::Desktop, img, false);
+        let plain = actions_for(Surface::Desktop, img, none);
         assert!(plain.contains(&A::SetWallpaper) && !plain.contains(&A::ViewFullscreen));
-        let console = actions_for(Surface::Files, img, true);
-        assert_eq!(&console[..4], &[A::Open, A::OpenWith, A::ViewFullscreen, A::SetWallpaper]);
-        assert!(!actions_for(Surface::Desktop, file, true).contains(&A::ViewFullscreen), "only images");
+        assert_eq!(&actions_for(Surface::Files, img, all)[..4], &[A::Open, A::OpenWith, A::ViewFullscreen, A::SetWallpaper]);
+        assert!(!actions_for(Surface::Desktop, file, all).contains(&A::ViewFullscreen), "only images");
+        // Video full screen and archives; Send to only with saved Systems.
+        assert!(actions_for(Surface::Desktop, vid, all).contains(&A::PlayFullscreen));
+        assert!(!actions_for(Surface::Desktop, vid, none).contains(&A::PlayFullscreen));
+        assert!(actions_for(Surface::Files, zip, none).contains(&A::ExtractHere));
+        assert_eq!(actions_for(Surface::Files, file, all).last(), Some(&A::SendTo));
+        assert!(!actions_for(Surface::Files, file, none).contains(&A::SendTo));
+    }
+
+    #[test]
+    fn archive_commands_by_kind() {
+        let d = Path::new("/x");
+        assert_eq!(archive_command(Path::new("/x/a.tar.gz"), d, false).as_deref(), Some("tar -xf '/x/a.tar.gz' -C '/x'"));
+        assert_eq!(archive_command(Path::new("/x/a.ZIP"), d, true).as_deref(), Some("unzip -l '/x/a.ZIP'"));
+        assert_eq!(archive_command(Path::new("/x/a.7z"), d, false).as_deref(), Some("7z x '/x/a.7z' -o'/x'"));
+        assert_eq!(archive_command(Path::new("/x/log.gz"), d, false).as_deref(), Some("gzip -dk '/x/log.gz'"));
+        assert_eq!(archive_command(Path::new("/x/a.txt"), d, false), None);
     }
 
     #[test]

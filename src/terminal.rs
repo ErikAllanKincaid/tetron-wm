@@ -66,10 +66,11 @@ fn colors_forced() -> bool {
     std::env::var("TETRON_WM_COLORS").ok().as_deref().and_then(ColorDepth::parse).is_some()
 }
 
-/// Whether this client's terminal is a plain kernel console that a framebuffer
-/// viewer can take over: the VT ioctl answers on stdin (it fails on the pty of
-/// kmscon, a GUI terminal, ssh or tmux, where fbi draws to a hidden buffer),
-/// `/dev/fb0` is writable, and fbi or fim is installed.
+/// Whether this client's terminal is a plain kernel console that a full-screen
+/// program (fbi, mpv --vo=drm) can take over: the VT ioctl answers on stdin (it
+/// fails on the pty of kmscon, a GUI terminal, ssh or tmux, where they draw to
+/// a hidden buffer) and `/dev/fb0` is writable. Which programs exist is checked
+/// per action.
 pub fn fb_console() -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -79,7 +80,7 @@ pub fn fb_console() -> bool {
         let vt = unsafe { libc::ioctl(0, VT_GETSTATE as _, state.as_mut_ptr()) } == 0;
         // SAFETY: a NUL-terminated path literal.
         let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
-        vt && fb && (crate::catalog::is_installed("fbi") || crate::catalog::is_installed("fim"))
+        vt && fb
     }
     #[cfg(not(target_os = "linux"))]
     {

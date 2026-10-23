@@ -454,7 +454,7 @@ impl<F: FsOps> DesktopIcons<F> {
             },
             None => Target::Background,
         };
-        let items = actions_for(Surface::Desktop, target, crate::display::get().fb_console);
+        let items = actions_for(Surface::Desktop, target, crate::contextmenu::Abilities::current());
         self.overlay = Some(DesktopOverlay::Menu { idx, menu: ContextMenu::new(anchor, items) });
     }
 

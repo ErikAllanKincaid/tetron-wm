@@ -134,10 +134,13 @@ SESSIONS:\n\
 \x20 in a window reach that window's session. Names: 1-32 chars of A-Z a-z 0-9 _ -.\n\
 \x20 The launcher button shows the session name with launcher_label = \"@session\".\n\n\
 RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
-\x20 Open, Open with... (apps for the file type: mpv --vo=tct plays video in the window,\n\
-\x20 fresh and other editors for text), Set as wallpaper, Copy path, Open terminal here,\n\
-\x20 Rename, Move to Trash. View full screen shows images with fbi or fim on a plain Linux\n\
-\x20 console (not kmscon, ssh or a GUI terminal); q in fbi returns, apps keep running.\n\n\
+\x20 Open (video and audio play in the window with mpv), Open with... (apps for the file\n\
+\x20 type, fresh and other editors for text), Set as wallpaper, Extract here / List\n\
+\x20 contents (archives), Copy path, Open terminal here, Get Info, Send to... (scp to a\n\
+\x20 saved system), Rename, Move to Trash. On a plain Linux console (not kmscon, ssh or a\n\
+\x20 GUI terminal) View full screen shows images with fbi and Play full screen plays\n\
+\x20 video with mpv; q returns, apps keep running. A window's title bar has Minimize,\n\
+\x20 Maximize, Move, Rename and Close.\n\n\
 IMAGE VIEWER (open an image; image_viewer = auto | graphics | cells):\n\
 \x20 Kitty graphics where the terminal has them, else chafa cells (any terminal).\n\
 \x20 + - or the wheel zoom, 0 fits, arrows or a drag pan, n p next/previous in the folder,\n\

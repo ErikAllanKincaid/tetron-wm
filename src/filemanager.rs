@@ -26,6 +26,11 @@ pub enum FileManagerAction {
     SetWallpaper(PathBuf),
     CopyPath(PathBuf),
     TerminalAt(PathBuf),
+    PlayFullscreen(PathBuf),
+    /// Extract (`list` false) or list an archive, in a window.
+    Archive { path: PathBuf, list: bool },
+    /// Copy to the Systems entry `system` with scp, in a window.
+    SendTo { system: String, path: PathBuf },
 }
 
 /// Modal overlays drawn on top of the listing.
@@ -393,6 +398,14 @@ impl<F: FsOps> FileManager<F> {
 
     /// Select entry `idx`. `ctrl` toggles it into the set; `shift` selects the
     /// range from the current cursor; neither makes it the sole selection.
+    /// Put the cursor on the entry at `path` (if listed) and show its Get Info box.
+    pub fn show_info_for(&mut self, path: &std::path::Path) -> bool {
+        let Some(i) = self.tab().entries.iter().position(|e| e.path == path) else { return false };
+        self.select_at(i, false, false);
+        self.begin_get_info();
+        true
+    }
+
     pub fn select_at(&mut self, idx: usize, ctrl: bool, shift: bool) {
         let cursor = self.tab().cursor;
         if idx >= self.tab().entries.len() { return; }
@@ -517,7 +530,7 @@ impl<F: FsOps> FileManager<F> {
         let items = crate::contextmenu::actions_for(
             crate::contextmenu::Surface::Files,
             crate::contextmenu::Target::Entry { is_dir, pinned: false, role },
-            crate::display::get().fb_console,
+            crate::contextmenu::Abilities::current(),
         );
         self.overlay = Some(Overlay::Context { idx, menu: crate::contextmenu::ContextMenu::new(at, items) });
     }
@@ -623,7 +636,21 @@ impl<F: FsOps> FileManager<F> {
             A::SetWallpaper => self.action = path.map(FileManagerAction::SetWallpaper),
             A::CopyPath => self.action = path.map(FileManagerAction::CopyPath),
             A::OpenTerminalHere => self.action = path.map(FileManagerAction::TerminalAt),
+            A::PlayFullscreen => self.action = path.map(FileManagerAction::PlayFullscreen),
+            A::ExtractHere | A::ListContents => {
+                let list = action == A::ListContents;
+                self.action = path.map(|path| FileManagerAction::Archive { path, list });
+            }
+            A::SendTo => {
+                let items = crate::contextmenu::send_to_actions();
+                if !items.is_empty() {
+                    menu.replace(items);
+                    self.overlay = Some(Overlay::Context { idx, menu });
+                }
+            }
+            A::SendToSystem(system) => self.action = path.map(|path| FileManagerAction::SendTo { system, path }),
             A::Unpin | A::NewFolder | A::CleanUp => {}
+            A::Minimize | A::Maximize | A::MoveWindow | A::RenameWindow | A::CloseWindow => {}
         }
     }
 

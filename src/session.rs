@@ -640,6 +640,8 @@ pub struct SessionCore {
     /// Dock right-click context menu: `Some((target window, anchor x of the
     /// clicked pill))` while open, `None` when closed.
     dock_ctx: Option<(WindowId, i32)>,
+    /// The title bar right-click menu: its window and the shared menu widget.
+    win_menu: Option<(WindowId, crate::contextmenu::ContextMenu)>,
     /// Short host name (computed once at startup); used in the AI briefing.
     host_label: String,
     /// Active window rename: `Some((id, buffer))` while the user is typing a new
@@ -784,6 +786,7 @@ impl SessionCore {
             app_keys: HashMap::new(),
             dock_popup: None,
             dock_ctx: None,
+            win_menu: None,
             host_label: Self::host_short_label(),
             rename: None,
             cfg,
@@ -1417,6 +1420,54 @@ impl SessionCore {
 
     /// Render the dock context menu (empty when closed). Uses the same
     /// geometry fns as the hit-testing so they can never drift.
+    /// Where the title bar menu may go: below the menubar, on screen.
+    fn win_menu_bounds(&self) -> Rect {
+        Rect::new(0, 1, self.w.max(1), (self.h - 1).max(1))
+    }
+
+    /// Render the title bar menu (empty when closed), above the windows.
+    fn render_win_menu(&self) -> Vec<crate::compositor::Layer> {
+        let Some((_, menu)) = &self.win_menu else { return Vec::new() };
+        let b = self.win_menu_bounds();
+        let r = menu.rect(b);
+        let mut buf = crate::buffer::CellBuffer::new(self.w, self.h);
+        buf.fill(crate::cell::Cell { ch: ' ', fg: crate::cell::Rgba::TRANSPARENT, bg: crate::cell::Rgba::TRANSPARENT, attrs: Default::default() });
+        menu.render(&mut buf, b);
+        // Only the box itself: a layer of the box's size, cut from the buffer.
+        let mut boxed = crate::buffer::CellBuffer::new(r.w, r.h);
+        for y in 0..r.h {
+            for x in 0..r.w {
+                if let Some(c) = buf.get(r.x + x, r.y + y) {
+                    boxed.set(x, y, *c);
+                }
+            }
+        }
+        vec![crate::compositor::Layer { z: 5300, origin: Point::new(r.x, r.y), buf: boxed, opacity: 1.0, scissor: None }]
+    }
+
+    /// Perform a title bar menu action on window `id`.
+    fn run_window_action(&mut self, id: WindowId, action: crate::contextmenu::MenuAction) {
+        use crate::contextmenu::MenuAction as A;
+        match action {
+            A::Minimize => self.wm.minimize(id),
+            A::Maximize => {
+                self.wm.unminimize(id);
+                self.wm.maximize_toggle(id);
+                self.sync_app_size(id);
+            }
+            A::MoveWindow => {
+                self.focus_window(id);
+                self.move_mode_start();
+            }
+            A::RenameWindow => {
+                self.focus_window(id);
+                self.rename = Some((id, String::new()));
+            }
+            A::CloseWindow => self.request_close(id),
+            _ => {}
+        }
+    }
+
     fn render_dock_ctx(&self) -> Vec<crate::compositor::Layer> {
         let Some((_, ax)) = self.dock_ctx else { return Vec::new() };
         let t = crate::theme::current();
@@ -2062,7 +2113,7 @@ impl SessionCore {
     /// quits. Only when the client said it is on a plain console.
     fn start_fullscreen(&mut self, files: Vec<std::path::PathBuf>) {
         if !crate::display::get().fb_console || files.is_empty() {
-            crate::dbg_log("fullscreen: not on a plain console with fbi/fim; ignored");
+            crate::dbg_log("fullscreen: not on a plain console; ignored");
             return;
         }
         let mut argv: Vec<String> = if crate::catalog::is_installed("fbi") {
@@ -2075,8 +2126,77 @@ impl SessionCore {
         };
         argv.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
         crate::dbg_log(&format!("fullscreen: handing the console to {} ({} image(s))", argv[0], files.len()));
+        self.hand_over(argv);
+    }
+
+    /// Detach the client so it runs `argv` on the real console, then reattaches.
+    fn hand_over(&mut self, argv: Vec<String>) {
         self.fullscreen = Some(argv);
         self.quit = true;
+    }
+
+    /// Right-click "Play full screen": mpv on the console (DRM), else cvlc on
+    /// the framebuffer. mpv's own keys work (q quits); cvlc ends at the end.
+    fn fullscreen_video(&mut self, path: &std::path::Path) {
+        if !crate::display::get().fb_console {
+            crate::dbg_log("fullscreen video: not on a plain console; ignored");
+            return;
+        }
+        let f = path.to_string_lossy().into_owned();
+        let argv: Vec<String> = if crate::catalog::is_installed("mpv") {
+            vec!["mpv".into(), "--vo=drm".into(), f]
+        } else if crate::catalog::is_installed("cvlc") {
+            vec!["cvlc".into(), "--play-and-exit".into(), "--vout".into(), "fb".into(), f]
+        } else {
+            crate::dbg_log("fullscreen video: neither mpv nor cvlc installed");
+            return;
+        };
+        crate::dbg_log(&format!("fullscreen: handing the console to {}", argv[0]));
+        self.hand_over(argv);
+    }
+
+    /// Run `script` in a new window in `dir`, keeping the window open with the
+    /// outcome until Enter, so a failure can be read.
+    fn run_in_window(&mut self, name: String, script: String, dir: std::path::PathBuf) {
+        crate::dbg_log(&format!("run in window: {script}"));
+        let wrapped = format!(
+            "{script}; s=$?; echo; if [ $s -eq 0 ]; then echo Done.; else echo \"Failed (exit $s).\"; fi; printf 'Press Enter to close. '; read _"
+        );
+        self.launch_in(name, "sh".into(), vec!["-c".into(), wrapped], Some(dir));
+    }
+
+    /// Right-click "Extract here" / "List contents" on an archive.
+    fn archive(&mut self, path: &std::path::Path, list: bool) {
+        let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        let Some(cmd) = crate::contextmenu::archive_command(path, &dir, list) else { return };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if list {
+            crate::dbg_log(&format!("archive list: {cmd}"));
+            self.launch_in(name, "sh".into(), vec!["-c".into(), format!("{cmd} 2>&1 | less")], Some(dir));
+        } else {
+            self.run_in_window(format!("extract {name}"), cmd, dir);
+        }
+    }
+
+    /// Right-click "Send to…" a Systems entry: scp to its home directory, in a
+    /// window so password and host-key prompts work.
+    fn send_to(&mut self, system: &str, path: &std::path::Path) {
+        let Some(sys) = self.systems.iter().find(|s| s.name == system).cloned() else { return };
+        let q = |s: &str| crate::systems::sh_quote(s);
+        let port = sys.port.map(|p| format!("-P {p} ")).unwrap_or_default();
+        let r = if path.is_dir() { "-r " } else { "" };
+        let cmd = format!("scp {port}{r}{} {}", q(&path.to_string_lossy()), q(&format!("{}:", sys.host)));
+        let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        self.run_in_window(format!("send to {system}"), cmd, dir);
+    }
+
+    /// Desktop "Get Info": open Files at the item's folder with its info box.
+    fn desktop_get_info(&mut self, path: &std::path::Path) {
+        let Some(dir) = path.parent() else { return };
+        self.open_filemanager_root(dir.to_path_buf());
+        if let Some(f) = self.focused_filemanager_mut() {
+            f.show_info_for(path);
+        }
     }
 
     /// Right-click "View full screen" on an image: it and the folder's others.
@@ -2783,7 +2903,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // A no-button move means the release was lost: end an image pan.
                 self.image_pan = None;
                 // An open right-click menu highlights the row under the pointer.
-                if self.desktop.menu_open() {
+                if let Some((_, m)) = &mut self.win_menu {
+                    let b = Rect::new(0, 1, self.w.max(1), (self.h - 1).max(1));
+                    m.hover(p, b);
+                } else if self.desktop.menu_open() {
                     self.desktop.menu_hover(p);
                 } else if let Some((id, cr)) = self.topmost_window_content_at(p) {
                     if let Some(WinContent::FileManager(f)) = self.contents.get_mut(&id) {
@@ -3199,6 +3322,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     || self.rename.is_some()
                     || self.tray.open().is_some()
                     || self.clipmenu.is_open()
+                    || self.win_menu.is_some()
                     || self.desktop.overlay_rect().is_some();
                 if !overlay_open && p.y == 0 {
                     let items = self.dock_items();
@@ -3221,6 +3345,16 @@ or a remote-side error — its authorized_keys was left untouched)",
                             self.dock_ctx = Some((id, r.x));
                         }
                         return;
+                    }
+                }
+                // Right-clicking a window's title bar opens its window menu.
+                if !overlay_open {
+                    if let Some(id) = self.wm.topmost_at(p) {
+                        if self.wm.get(id).is_some_and(|w| !w.minimized && w.titlebar_rect().contains(p)) {
+                            self.wm.raise(id);
+                            self.win_menu = Some((id, crate::contextmenu::ContextMenu::new(p, crate::contextmenu::window_actions())));
+                            return;
+                        }
                     }
                 }
                 // Right-clicking inside a file-manager window's content area
@@ -3448,6 +3582,18 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::LogsRefresh => { if let Some(l) = self.focused_logs_mut() { l.reload(); } }
+            ClientMsg::DesktopMenuKey(k) if self.win_menu.is_some() => match k {
+                MenuKey::Up => { if let Some((_, m)) = &mut self.win_menu { m.up(); } }
+                MenuKey::Down => { if let Some((_, m)) = &mut self.win_menu { m.down(); } }
+                MenuKey::Esc => self.win_menu = None,
+                MenuKey::Enter => {
+                    if let Some((id, m)) = self.win_menu.take() {
+                        if let Some(action) = m.selected().cloned() {
+                            self.run_window_action(id, action);
+                        }
+                    }
+                }
+            },
             ClientMsg::DesktopMenuKey(k) => match k {
                 MenuKey::Up => self.desktop.menu_up(),
                 MenuKey::Down => self.desktop.menu_down(),
@@ -3872,7 +4018,7 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Whether the desktop right-click menu is open (keyboard routing).
     pub fn desktop_menu_open(&self) -> bool {
-        self.desktop.menu_open()
+        self.desktop.menu_open() || self.win_menu.is_some()
     }
 
     /// `true` when the focused window is an image viewer (keyboard routing).
@@ -4371,6 +4517,9 @@ or a remote-side error — its authorized_keys was left untouched)",
             Some(crate::filemanager::FileManagerAction::SetWallpaper(p)) => self.set_wallpaper_path(&p),
             Some(crate::filemanager::FileManagerAction::CopyPath(p)) => self.copy_path(&p),
             Some(crate::filemanager::FileManagerAction::TerminalAt(p)) => self.terminal_at(&p),
+            Some(crate::filemanager::FileManagerAction::PlayFullscreen(p)) => self.fullscreen_video(&p),
+            Some(crate::filemanager::FileManagerAction::Archive { path, list }) => self.archive(&path, list),
+            Some(crate::filemanager::FileManagerAction::SendTo { system, path }) => self.send_to(&system, &path),
             None => {}
         }
     }
@@ -4683,6 +4832,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.clipmenu.is_open()
             || self.compat_dialog
             || self.dock_ctx.is_some()
+            || self.win_menu.is_some()
             || self.dirpicker.is_some()
             || self.power_menu.is_open()
             || self.confirm_close.is_open()
@@ -4829,6 +4979,15 @@ or a remote-side error — its authorized_keys was left untouched)",
         // The dock context menu captures the next click: a row applies its
         // action; anywhere else dismisses (consuming the click, like the
         // other transient menus).
+        // The title bar menu captures the next click the same way.
+        if kind == MouseKind::Down && self.win_menu.is_some() {
+            if let Some((id, menu)) = self.win_menu.take() {
+                if let Some(action) = menu.item_at(p, self.win_menu_bounds()).cloned() {
+                    self.run_window_action(id, action);
+                }
+            }
+            return;
+        }
         if kind == MouseKind::Down && self.dock_ctx.is_some() {
             if let Some((id, ax)) = self.dock_ctx.take() {
                 let row = (0..DOCK_CTX_ROWS.len())
@@ -5183,7 +5342,28 @@ or a remote-side error — its authorized_keys was left untouched)",
                     _ => self.terminal_at(&target),
                 }
             }
-            A::Copy | A::Cut | A::GetInfo => self.desktop.cancel_overlay(),
+            A::PlayFullscreen | A::ExtractHere | A::ListContents | A::SendToSystem(_) | A::GetInfo => {
+                self.desktop.cancel_overlay();
+                if let Some(p) = path {
+                    match action {
+                        A::PlayFullscreen => self.fullscreen_video(&p),
+                        A::ExtractHere => self.archive(&p, false),
+                        A::ListContents => self.archive(&p, true),
+                        A::SendToSystem(name) => self.send_to(&name, &p),
+                        _ => self.desktop_get_info(&p),
+                    }
+                }
+            }
+            A::SendTo => {
+                let items = crate::contextmenu::send_to_actions();
+                if items.is_empty() {
+                    self.desktop.cancel_overlay();
+                } else {
+                    self.desktop.menu_replace(items);
+                }
+            }
+            A::Copy | A::Cut => self.desktop.cancel_overlay(),
+            A::Minimize | A::Maximize | A::MoveWindow | A::RenameWindow | A::CloseWindow => self.desktop.cancel_overlay(),
         }
     }
 
@@ -5644,6 +5824,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         let segs = self.tray_segments_now();
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, false, &self.launcher_label_now()));
         layers.extend(self.render_dock_ctx());
+        layers.extend(self.render_win_menu());
 
         // The desktop context / rename menu floats above the windows (but below
         // the launcher / help overlays) on its own high-z layer.
@@ -5851,6 +6032,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         let segs = self.tray_segments_now();
         layers.push(render_menubar(self.w, &self.dock_items(), &segs, true, &self.launcher_label_now()));
         layers.extend(self.render_dock_ctx());
+        layers.extend(self.render_win_menu());
 
         // Overlays that must still work in simple mode.
         let overlay_start = layers.len();
@@ -6445,6 +6627,32 @@ mod tests {
             name: cmd.into(), command: cmd.into(), args: Vec::new(), category: None,
             requires_cwd: None, cwd: None, cli: None, warn: None,
         }
+    }
+
+    #[test]
+    fn title_bar_right_click_menu_acts_on_that_window() {
+        let mut core = SessionCore::new(100, 30, Config { apps: vec![], desktop_enabled: false, ..Config::default() });
+        core.apply(ClientMsg::OpenFileManager);
+        let id = core.wm.focused().expect("files window");
+        let r = core.wm.get(id).unwrap().rect;
+        core.apply(ClientMsg::MouseRightDown(Point::new(r.x + 3, r.y)));
+        assert!(core.desktop_menu_open(), "menu open, so the client routes arrows to it");
+        assert!(core.win_menu.as_ref().is_some_and(|(w, m)| *w == id && m.items == crate::contextmenu::window_actions()));
+        assert!(!core.build_frame().layers.iter().all(|l| l.z != 5300), "the menu is drawn");
+        // Esc closes; reopen and Enter on the first item (Minimize).
+        core.apply(ClientMsg::DesktopMenuKey(MenuKey::Esc));
+        assert!(core.win_menu.is_none());
+        core.apply(ClientMsg::MouseRightDown(Point::new(r.x + 3, r.y)));
+        core.apply(ClientMsg::DesktopMenuKey(MenuKey::Down));
+        core.apply(ClientMsg::DesktopMenuKey(MenuKey::Up));
+        core.apply(ClientMsg::DesktopMenuKey(MenuKey::Enter));
+        assert!(core.win_menu.is_none());
+        assert!(core.wm.get(id).unwrap().minimized, "Minimize applied to that window");
+        // A right-click in the content does not open the window menu.
+        core.wm.unminimize(id);
+        core.apply(ClientMsg::MouseRightDown(Point::new(r.x + 3, r.y + 5)));
+        assert!(core.win_menu.is_none());
+        core.shutdown();
     }
 
     #[test]

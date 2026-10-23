@@ -79,8 +79,8 @@ pub struct ClientCaps {
     /// takes it out before the caps reach the session.
     #[serde(default)]
     pub packed_cells: bool,
-    /// The client runs on a plain kernel console with a writable framebuffer
-    /// and fbi or fim installed, so it can hand the screen to them ("View full
+    /// The client runs on a plain kernel console with a writable framebuffer,
+    /// so it can hand the screen to fbi or mpv ("View full screen", "Play full
     /// screen"). False under kmscon, GUI terminals, ssh and tmux.
     #[serde(default)]
     pub fb_console: bool,

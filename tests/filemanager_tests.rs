@@ -368,7 +368,8 @@ fn context_menu_up_down_wrap_and_enter_performs_the_highlighted_action() {
     fm.begin_context_at(0, Point::new(20, 5));
     fm.context_menu_up(); // wraps from 0 to the last item (Get Info)
     match fm.overlay() {
-        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, 8),
+        // The last item (Get Info, or Send to… when Systems are saved here).
+        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, menu.items.len() - 1),
         other => panic!("expected a Context overlay, got {other:?}"),
     }
     fm.context_menu_down(); // wraps back to 0 (Open)
