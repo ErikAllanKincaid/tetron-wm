@@ -241,6 +241,7 @@ fn notice_frame(notice: &str) -> Vec<u8> {
         switch_to: None,
         clipboard: None,
         notice: Some(notice.to_string()),
+        fullscreen: None,
     })
     .unwrap_or_default();
     buf.push(b'\n');
@@ -536,6 +537,7 @@ fn serve_client_inner(
             switch_to: core.switch_spec(),
             clipboard,
             notice: None,
+            fullscreen: core.fullscreen_spec(),
         })
             .unwrap_or_default();
         buf.push(b'\n');

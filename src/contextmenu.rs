@@ -21,7 +21,7 @@ pub enum Surface {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
     /// A file or folder (`pinned`: a desktop shortcut, not a real file).
-    Entry { is_dir: bool, pinned: bool },
+    Entry { is_dir: bool, pinned: bool, role: Role },
     /// Empty space (the desktop background).
     Background,
 }
@@ -41,6 +41,12 @@ pub enum MenuAction {
     Unpin,
     NewFolder,
     CleanUp,
+    /// Hand the screen to fbi / fim (plain console only), with the folder's images.
+    ViewFullscreen,
+    SetWallpaper,
+    CopyPath,
+    /// A shell in the folder (the entry's folder for a file, the folder itself).
+    OpenTerminalHere,
 }
 
 impl MenuAction {
@@ -58,32 +64,42 @@ impl MenuAction {
             MenuAction::Unpin => "Unpin".into(),
             MenuAction::NewFolder => "New Folder".into(),
             MenuAction::CleanUp => "Clean Up".into(),
+            MenuAction::ViewFullscreen => "View full screen".into(),
+            MenuAction::SetWallpaper => "Set as wallpaper".into(),
+            MenuAction::CopyPath => "Copy path".into(),
+            MenuAction::OpenTerminalHere => "Open terminal here".into(),
         }
     }
 }
 
-/// The actions `target` offers on `surface`, top to bottom.
-pub fn actions_for(surface: Surface, target: Target) -> Vec<MenuAction> {
+/// The actions `target` offers on `surface`, top to bottom. `fullscreen`: the
+/// client can hand the screen to a framebuffer viewer (a plain console).
+pub fn actions_for(surface: Surface, target: Target, fullscreen: bool) -> Vec<MenuAction> {
     use MenuAction as A;
     match (surface, target) {
         (Surface::Desktop, Target::Entry { pinned: true, .. }) => vec![A::Open, A::Unpin],
-        (Surface::Desktop, Target::Entry { is_dir, .. }) => {
+        (_, Target::Entry { is_dir, role, .. }) => {
             let mut v = vec![A::Open];
             if !is_dir {
                 v.push(A::OpenWith);
             }
-            v.extend([A::Rename, A::Trash]);
-            v
-        }
-        (Surface::Desktop, Target::Background) => vec![A::NewFolder, A::CleanUp],
-        (Surface::Files, Target::Entry { is_dir, .. }) => {
-            let mut v = vec![A::Open];
-            if !is_dir {
-                v.push(A::OpenWith);
+            if role == Role::Image {
+                if fullscreen {
+                    v.push(A::ViewFullscreen);
+                }
+                v.push(A::SetWallpaper);
             }
-            v.extend([A::Rename, A::Copy, A::Cut, A::Trash, A::GetInfo]);
+            v.push(A::Rename);
+            if surface == Surface::Files {
+                v.extend([A::Copy, A::Cut]);
+            }
+            v.extend([A::Trash, A::CopyPath, A::OpenTerminalHere]);
+            if surface == Surface::Files {
+                v.push(A::GetInfo);
+            }
             v
         }
+        (Surface::Desktop, Target::Background) => vec![A::NewFolder, A::OpenTerminalHere, A::CleanUp],
         (Surface::Files, Target::Background) => Vec::new(),
     }
 }
@@ -199,20 +215,30 @@ mod tests {
     use super::*;
 
     fn menu(n: usize) -> ContextMenu {
-        ContextMenu::new(Point::new(5, 3), actions_for(Surface::Files, Target::Entry { is_dir: false, pinned: false }).into_iter().take(n).collect())
+        ContextMenu::new(Point::new(5, 3), actions_for(Surface::Files, Target::Entry { is_dir: false, pinned: false, role: Role::Text }, false).into_iter().take(n).collect())
     }
 
     #[test]
     fn actions_differ_by_surface_and_target() {
         use MenuAction as A;
-        let file = Target::Entry { is_dir: false, pinned: false };
-        let dir = Target::Entry { is_dir: true, pinned: false };
-        assert_eq!(actions_for(Surface::Desktop, file), vec![A::Open, A::OpenWith, A::Rename, A::Trash]);
-        assert_eq!(actions_for(Surface::Desktop, dir), vec![A::Open, A::Rename, A::Trash], "no Open with for folders");
-        assert_eq!(actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true }), vec![A::Open, A::Unpin]);
-        assert_eq!(actions_for(Surface::Desktop, Target::Background), vec![A::NewFolder, A::CleanUp]);
-        assert_eq!(actions_for(Surface::Files, file), vec![A::Open, A::OpenWith, A::Rename, A::Copy, A::Cut, A::Trash, A::GetInfo]);
-        assert!(actions_for(Surface::Files, Target::Background).is_empty());
+        let file = Target::Entry { is_dir: false, pinned: false, role: Role::Text };
+        let dir = Target::Entry { is_dir: true, pinned: false, role: Role::Directory };
+        let img = Target::Entry { is_dir: false, pinned: false, role: Role::Image };
+        assert_eq!(actions_for(Surface::Desktop, file, false), vec![A::Open, A::OpenWith, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere]);
+        assert_eq!(actions_for(Surface::Desktop, dir, false), vec![A::Open, A::Rename, A::Trash, A::CopyPath, A::OpenTerminalHere], "no Open with for folders");
+        assert_eq!(actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true, role: Role::Other }, true), vec![A::Open, A::Unpin]);
+        assert_eq!(actions_for(Surface::Desktop, Target::Background, true), vec![A::NewFolder, A::OpenTerminalHere, A::CleanUp]);
+        assert_eq!(
+            actions_for(Surface::Files, file, false),
+            vec![A::Open, A::OpenWith, A::Rename, A::Copy, A::Cut, A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo]
+        );
+        assert!(actions_for(Surface::Files, Target::Background, false).is_empty());
+        // Images: wallpaper always, full screen only where the client can hand over.
+        let plain = actions_for(Surface::Desktop, img, false);
+        assert!(plain.contains(&A::SetWallpaper) && !plain.contains(&A::ViewFullscreen));
+        let console = actions_for(Surface::Files, img, true);
+        assert_eq!(&console[..4], &[A::Open, A::OpenWith, A::ViewFullscreen, A::SetWallpaper]);
+        assert!(!actions_for(Surface::Desktop, file, true).contains(&A::ViewFullscreen), "only images");
     }
 
     #[test]

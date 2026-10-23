@@ -450,10 +450,11 @@ impl<F: FsOps> DesktopIcons<F> {
             Some(icon) => Target::Entry {
                 is_dir: icon.role == Role::Directory,
                 pinned: matches!(icon.source, IconSource::Pinned),
+                role: icon.role,
             },
             None => Target::Background,
         };
-        let items = actions_for(Surface::Desktop, target);
+        let items = actions_for(Surface::Desktop, target, crate::display::get().fb_console);
         self.overlay = Some(DesktopOverlay::Menu { idx, menu: ContextMenu::new(anchor, items) });
     }
 

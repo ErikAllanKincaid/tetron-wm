@@ -51,6 +51,11 @@ pub struct FrameMsg {
     /// client"). Set on a final frame only.
     #[serde(default)]
     pub notice: Option<String>,
+    /// A full-screen program (fbi with the images to show) the client should
+    /// run on the real console: it exits like a detach, `main` runs the argv,
+    /// then reattaches. Only sent to a client that reported `fb_console`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fullscreen: Option<Vec<String>>,
 }
 
 /// A run of changed cells on one row, left to right from `x`, that share

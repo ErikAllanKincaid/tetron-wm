@@ -368,7 +368,7 @@ fn context_menu_up_down_wrap_and_enter_performs_the_highlighted_action() {
     fm.begin_context_at(0, Point::new(20, 5));
     fm.context_menu_up(); // wraps from 0 to the last item (Get Info)
     match fm.overlay() {
-        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, 6),
+        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, 8),
         other => panic!("expected a Context overlay, got {other:?}"),
     }
     fm.context_menu_down(); // wraps back to 0 (Open)
@@ -409,5 +409,31 @@ fn context_menu_open_with_lists_apps_and_runs_the_choice() {
         matches!(fm.take_action(), Some(tetron_wm::filemanager::FileManagerAction::OpenImage(p)) if p.ends_with("a.png")),
         "choosing the viewer opens the image"
     );
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn context_menu_copy_path_and_terminal_here_become_session_actions() {
+    use tetron_wm::contextmenu::MenuAction;
+    use tetron_wm::filemanager::FileManagerAction;
+    let d = tmp("ctxactions");
+    fs::write(d.join("a.txt"), b"x").unwrap();
+    let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+    let _ = fm.render(80, 24);
+    for (want, expect) in [(MenuAction::CopyPath, "copy"), (MenuAction::OpenTerminalHere, "term")] {
+        fm.begin_context_at(0, Point::new(20, 5));
+        let n = match fm.overlay() {
+            Some(Overlay::Context { menu, .. }) => menu.items.iter().position(|a| *a == want).unwrap(),
+            other => panic!("{other:?}"),
+        };
+        for _ in 0..n {
+            fm.context_menu_down();
+        }
+        fm.context_menu_commit();
+        match (fm.take_action(), expect) {
+            (Some(FileManagerAction::CopyPath(p)), "copy") | (Some(FileManagerAction::TerminalAt(p)), "term") => assert!(p.ends_with("a.txt")),
+            (other, _) => panic!("{want:?} gave {other:?}"),
+        }
+    }
     let _ = fs::remove_dir_all(&d);
 }

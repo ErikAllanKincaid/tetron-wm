@@ -241,6 +241,12 @@ fn attach(spawn_if_missing: bool, takeover: bool) -> std::io::Result<()> {
                 run_switch(&spec);
                 continue;
             }
+            tetron_wm::client::ClientExit::Fullscreen(argv) => {
+                // fbi on the real console; its own keys (q quits) until it
+                // exits, then re-attach: the apps kept running.
+                run_fullscreen(&argv);
+                continue;
+            }
             tetron_wm::client::ClientExit::Reload => {
                 // The daemon is restarting; wait briefly for the old socket to
                 // drop, then loop to spawn/connect the fresh daemon.
@@ -251,6 +257,21 @@ fn attach(spawn_if_missing: bool, takeover: bool) -> std::io::Result<()> {
                 }
                 continue;
             }
+        }
+    }
+}
+
+/// Run a full-screen program on the real console with inherited stdio, logging
+/// how it ended. fbi exits 0 even when it showed nothing, so its status is
+/// only informative.
+fn run_fullscreen(argv: &[String]) {
+    let Some((program, args)) = argv.split_first() else { return };
+    tetron_wm::dbg_log(&format!("fullscreen: running {argv:?}"));
+    match std::process::Command::new(program).args(args).status() {
+        Ok(status) => tetron_wm::dbg_log(&format!("fullscreen: {program} ended with {status}")),
+        Err(e) => {
+            tetron_wm::dbg_log(&format!("fullscreen: could not run {program}: {e}"));
+            eprintln!("tetron-wm: could not run {program}: {e}");
         }
     }
 }

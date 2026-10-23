@@ -30,6 +30,7 @@ fn frame_msg_roundtrips_json() {
         clear: true,
         clipboard: Some("copied text".into()),
         notice: None,
+        fullscreen: None,
         switch_to: Some(tetron_wm::systems::SwitchSpec {
             name: "pi".into(),
             host: "pi@10.0.0.2".into(),
@@ -161,7 +162,7 @@ fn packed_frame_to_new_client_and_plain_frame_to_old_client() {
     let changes = noisy_changes();
     let frame = |changes, spans| FrameMsg {
         changes, spans, cursor: None, flags: Flags::default(), images: Vec::new(),
-        image_data: Vec::new(), clear: false, switch_to: None, clipboard: None, notice: None,
+        image_data: Vec::new(), clear: false, switch_to: None, clipboard: None, notice: None, fullscreen: None,
     };
     // Unpacked (the client did not ask): the old format, no `spans` key.
     let plain = serde_json::to_string(&frame(changes.clone(), Vec::new())).unwrap();

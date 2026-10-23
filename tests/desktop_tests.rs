@@ -114,7 +114,7 @@ fn desktop_menu_keys_hover_and_stays_on_screen() {
     assert!(r.x + r.w <= 100 && r.y + r.h <= 30 && r.y >= 1, "{r:?}");
     assert_eq!(dt.menu_item_at(Point::new(r.x + 2, r.y + 1)), Some(MenuAction::NewFolder));
     dt.menu_down();
-    assert_eq!(dt.menu_selected(), Some(MenuAction::CleanUp));
+    assert_eq!(dt.menu_selected(), Some(MenuAction::OpenTerminalHere));
     dt.menu_hover(Point::new(r.x + 2, r.y + 1));
     assert_eq!(dt.menu_selected(), Some(MenuAction::NewFolder), "hover highlights");
     // The keyboard opens the selected icon's menu at its tile.

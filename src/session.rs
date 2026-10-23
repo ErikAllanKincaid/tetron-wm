@@ -661,6 +661,9 @@ pub struct SessionCore {
     /// Set when the user clicks the menubar quit button; polled by the loop.
     /// In daemon mode this means "detach", not "shut down".
     quit: bool,
+    /// A full-screen program (fbi + images) for the client to run on the real
+    /// console; rides on the detach like `switch_to`.
+    fullscreen: Option<Vec<String>>,
     /// Set by `ClientMsg::Shutdown` — the daemon should exit and kill all apps.
     shutdown: bool,
     /// Set by `ClientMsg::Reload` — the daemon should restart the frontend only,
@@ -817,6 +820,7 @@ impl SessionCore {
             last_meta: HashMap::new(),
             systems,
             switch_to: None,
+            fullscreen: None,
         };
         core.tray.set_tools(core.cfg.tray_tools.clone());
         // A long-lived apphost may predate a config edit made while the UI was down.
@@ -2003,6 +2007,68 @@ impl SessionCore {
     pub fn clear_quit(&mut self) {
         self.quit = false;
         self.switch_to = None;
+        self.fullscreen = None;
+    }
+
+    /// The pending full-screen program, shipped with the detach.
+    pub fn fullscreen_spec(&self) -> Option<Vec<String>> {
+        self.fullscreen.clone()
+    }
+
+    /// Hand the screen to fbi (or fim) showing `files`, first one first: the
+    /// client detaches, runs it on the real console and re-attaches when it
+    /// quits. Only when the client said it is on a plain console.
+    fn start_fullscreen(&mut self, files: Vec<std::path::PathBuf>) {
+        if !crate::display::get().fb_console || files.is_empty() {
+            crate::dbg_log("fullscreen: not on a plain console with fbi/fim; ignored");
+            return;
+        }
+        let mut argv: Vec<String> = if crate::catalog::is_installed("fbi") {
+            vec!["fbi".into(), "-a".into(), "--noverbose".into()]
+        } else if crate::catalog::is_installed("fim") {
+            vec!["fim".into(), "-a".into()]
+        } else {
+            crate::dbg_log("fullscreen: neither fbi nor fim installed");
+            return;
+        };
+        argv.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
+        crate::dbg_log(&format!("fullscreen: handing the console to {} ({} image(s))", argv[0], files.len()));
+        self.fullscreen = Some(argv);
+        self.quit = true;
+    }
+
+    /// Right-click "View full screen" on an image: it and the folder's others.
+    fn fullscreen_path(&mut self, path: &std::path::Path) {
+        let files = crate::imageview::starting_at(&crate::imageview::siblings(path), path);
+        self.start_fullscreen(files);
+    }
+
+    /// Right-click "Set as wallpaper": save it to the config and redraw.
+    fn set_wallpaper_path(&mut self, path: &std::path::Path) {
+        crate::dbg_log(&format!("wallpaper: set to {} from the menu", path.display()));
+        self.cfg.wallpaper = Some(path.to_string_lossy().into_owned());
+        self.cfg.wallpaper_enabled = true;
+        if let Err(e) = self.cfg.save() {
+            crate::dbg_log(&format!("config: save failed: {e}"));
+        }
+        self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
+    }
+
+    /// Right-click "Copy path": into the clipboard (and history), and out to
+    /// the host terminal via OSC 52.
+    fn copy_path(&mut self, path: &std::path::Path) {
+        let text = path.to_string_lossy().into_owned();
+        self.set_clipboard(&text);
+        self.pending_clipboard = Some(text.clone());
+        self.clip_record(&text, crate::clipboard::ClipSource::Copy);
+    }
+
+    /// Right-click "Open terminal here": a shell in the folder (a file's own folder).
+    fn terminal_at(&mut self, path: &std::path::Path) {
+        let dir = if path.is_dir() { path.to_path_buf() } else { path.parent().map(|p| p.to_path_buf()).unwrap_or_default() };
+        let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
+        let name = std::path::Path::new(&shell).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| shell.clone());
+        self.launch_in(name, shell, Vec::new(), Some(dir));
     }
 
     /// The pending system switch, if the user picked one in the Systems menu.
@@ -3360,7 +3426,10 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::ImageKey(k) => {
                 if let Some(id) = self.wm.focused() {
                     if let Some(WinContent::ImageView(v)) = self.contents.get_mut(&id) {
-                        if v.key(k) {
+                        if k == crate::imageview::ImageKey::Fullscreen {
+                            let files = v.fullscreen_files();
+                            self.start_fullscreen(files);
+                        } else if v.key(k) {
                             self.close(id);
                         }
                     }
@@ -4257,6 +4326,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                     .to_string();
                 self.open_file_in(name, command, args, cwd);
             }
+            Some(crate::filemanager::FileManagerAction::Fullscreen(p)) => self.fullscreen_path(&p),
+            Some(crate::filemanager::FileManagerAction::SetWallpaper(p)) => self.set_wallpaper_path(&p),
+            Some(crate::filemanager::FileManagerAction::CopyPath(p)) => self.copy_path(&p),
+            Some(crate::filemanager::FileManagerAction::TerminalAt(p)) => self.terminal_at(&p),
             None => {}
         }
     }
@@ -5058,6 +5131,16 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.desktop.cancel_overlay();
                 self.desktop.clean_up();
                 self.persist_desktop_positions();
+            }
+            A::ViewFullscreen | A::SetWallpaper | A::CopyPath | A::OpenTerminalHere => {
+                self.desktop.cancel_overlay();
+                let target = path.clone().unwrap_or_else(|| self.desktop.dir().to_path_buf());
+                match action {
+                    A::ViewFullscreen => self.fullscreen_path(&target),
+                    A::SetWallpaper => self.set_wallpaper_path(&target),
+                    A::CopyPath => self.copy_path(&target),
+                    _ => self.terminal_at(&target),
+                }
             }
             A::Copy | A::Cut | A::GetInfo => self.desktop.cancel_overlay(),
         }

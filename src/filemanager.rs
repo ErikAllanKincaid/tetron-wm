@@ -21,6 +21,11 @@ pub enum FileManagerAction {
     OpenImage(PathBuf),
     /// Launch a TUI app with these args (the file path already appended).
     RunApp { command: String, args: Vec<String> },
+    /// Right-click actions the session carries out.
+    Fullscreen(PathBuf),
+    SetWallpaper(PathBuf),
+    CopyPath(PathBuf),
+    TerminalAt(PathBuf),
 }
 
 /// Modal overlays drawn on top of the listing.
@@ -508,10 +513,11 @@ impl<F: FsOps> FileManager<F> {
     }
 
     fn open_menu(&mut self, idx: usize, at: Point) {
-        let is_dir = self.tab().entries.get(idx).is_some_and(|e| e.is_dir);
+        let (is_dir, role) = self.tab().entries.get(idx).map_or((false, crate::openwith::Role::Other), |e| (e.is_dir, e.role));
         let items = crate::contextmenu::actions_for(
             crate::contextmenu::Surface::Files,
-            crate::contextmenu::Target::Entry { is_dir, pinned: false },
+            crate::contextmenu::Target::Entry { is_dir, pinned: false, role },
+            crate::display::get().fb_console,
         );
         self.overlay = Some(Overlay::Context { idx, menu: crate::contextmenu::ContextMenu::new(at, items) });
     }
@@ -613,6 +619,10 @@ impl<F: FsOps> FileManager<F> {
             A::Cut => self.cut_selection(),
             A::Trash => self.begin_delete(),
             A::GetInfo => self.begin_get_info(),
+            A::ViewFullscreen => self.action = path.map(FileManagerAction::Fullscreen),
+            A::SetWallpaper => self.action = path.map(FileManagerAction::SetWallpaper),
+            A::CopyPath => self.action = path.map(FileManagerAction::CopyPath),
+            A::OpenTerminalHere => self.action = path.map(FileManagerAction::TerminalAt),
             A::Unpin | A::NewFolder | A::CleanUp => {}
         }
     }

@@ -149,6 +149,10 @@ fn image_window_draws_cells_then_a_fitted_kitty_placement() {
     assert!(x1 > x0, "dragging left moves the crop right: {x0} -> {x1}");
     assert!(core.focused_is_image(), "the press did not close or move the window");
 
+    // Full screen is only handed over from a plain console: elsewhere `f` does nothing.
+    core.apply(ClientMsg::ImageKey(tetron_wm::imageview::ImageKey::Fullscreen));
+    assert!(!core.quit_requested() && core.fullscreen_spec().is_none(), "not on a plain console: no handoff");
+
     // Esc closes the viewer.
     core.apply(ClientMsg::ImageKey(tetron_wm::imageview::ImageKey::Close));
     assert!(!core.focused_is_image());

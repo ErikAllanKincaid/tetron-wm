@@ -88,6 +88,17 @@ pub enum ImageKey {
     Mode,
     Info,
     Close,
+    /// Hand the screen to fbi (plain console only).
+    Fullscreen,
+}
+
+/// `path` first, then the rest of `all` after it in order, wrapping: the list
+/// a full-screen viewer gets, so its next / previous still walk the folder.
+pub fn starting_at(all: &[PathBuf], path: &Path) -> Vec<PathBuf> {
+    match all.iter().position(|p| p == path) {
+        Some(i) => all[i..].iter().chain(&all[..i]).cloned().collect(),
+        None => vec![path.to_path_buf()],
+    }
 }
 
 /// What part of the image to show where: the source crop in image pixels and
@@ -383,6 +394,7 @@ impl ImageView {
             ImageKey::Mode => self.method = self.method.next(),
             ImageKey::Info => self.info = !self.info,
             ImageKey::Close => return true,
+            ImageKey::Fullscreen => {} // the session hands the screen over
         }
         // Keep the centre where the view can actually reach, so panning back
         // responds at once after hitting an edge.
@@ -407,6 +419,15 @@ impl ImageView {
         let half = 0.5 / self.zoom;
         self.cx = self.cx.clamp(half, 1.0 - half);
         self.cy = self.cy.clamp(half, 1.0 - half);
+    }
+
+    /// The files a full-screen viewer should get: this image first.
+    pub fn fullscreen_files(&self) -> Vec<PathBuf> {
+        if self.siblings.is_empty() {
+            vec![self.path.clone()]
+        } else {
+            starting_at(&self.siblings, &self.path)
+        }
     }
 
     fn step_image(&mut self, d: i32) {
@@ -472,7 +493,11 @@ impl ImageView {
             via,
             self.method.label()
         );
-        let keys = "+/- zoom 0 fit arrows pan n/p next m mode i info ";
+        let keys = if self.cur.is_some_and(|k| k.caps.fb_console) {
+            "+/- zoom 0 fit n/p next m mode f full screen "
+        } else {
+            "+/- zoom 0 fit arrows pan n/p next m mode i info "
+        };
         let pad = w as usize - left.chars().count().min(w as usize);
         if pad > keys.chars().count() {
             format!("{left}{}{keys}", " ".repeat(pad - keys.chars().count()))
@@ -500,7 +525,7 @@ fn load_file(path: &Path) -> Result<Loaded, String> {
 }
 
 /// Image files in `path`'s folder, sorted by name (always including `path`).
-fn siblings(path: &Path) -> Vec<PathBuf> {
+pub fn siblings(path: &Path) -> Vec<PathBuf> {
     let Some(dir) = path.parent() else { return Vec::new() };
     let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|rd| {
@@ -690,6 +715,13 @@ mod tests {
         v.key(ImageKey::Fit);
         assert_eq!((v.zoom, v.cx, v.cy), (1.0, 0.5, 0.5));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn fullscreen_list_starts_at_the_shown_image_and_wraps() {
+        let all: Vec<PathBuf> = ["a.png", "b.png", "c.png"].iter().map(PathBuf::from).collect();
+        assert_eq!(starting_at(&all, Path::new("b.png")), vec![PathBuf::from("b.png"), "c.png".into(), "a.png".into()]);
+        assert_eq!(starting_at(&all, Path::new("x.png")), vec![PathBuf::from("x.png")]);
     }
 
     #[test]

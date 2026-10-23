@@ -13,6 +13,9 @@ pub enum ClientExit {
     /// switch (and optional first-time setup) in the real terminal, then
     /// re-attach locally when the remote session ends.
     Switch(crate::systems::SwitchSpec),
+    /// "View full screen": `main` runs this program (fbi and the images) on
+    /// the real console, then re-attaches when it exits.
+    Fullscreen(Vec<String>),
 }
 
 use crate::geometry::{Point, SnapZone};
@@ -57,6 +60,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     let detached = Arc::new(AtomicBool::new(false));
     let reload = Arc::new(AtomicBool::new(false));
     let switch: Arc<Mutex<Option<crate::systems::SwitchSpec>>> = Arc::new(Mutex::new(None));
+    let fullscreen: Arc<Mutex<Option<Vec<String>>>> = Arc::new(Mutex::new(None));
     // A message from the daemon to print once the terminal is restored.
     let notice: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
@@ -66,6 +70,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
         let detached = detached.clone();
         let reload = reload.clone();
         let switch = switch.clone();
+        let fullscreen = fullscreen.clone();
         let notice = notice.clone();
         let reader_stream = stream.try_clone()?;
         std::thread::spawn(move || {
@@ -97,6 +102,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             if let Some(spec) = msg.switch_to.take() {
                                 crate::dbg_log(&format!("client: switch requested → {} ({})", spec.name, spec.host));
                                 *switch.lock().unwrap() = Some(spec);
+                            }
+                            if let Some(argv) = msg.fullscreen.take() {
+                                crate::dbg_log(&format!("client: full screen requested: {argv:?}"));
+                                *fullscreen.lock().unwrap() = Some(argv);
                             }
                             if msg.clear {
                                 // Re-baseline (attach / resize): erase every cell and
@@ -617,6 +626,9 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     if let Some(text) = notice.lock().unwrap().take() {
         eprintln!("tetron-wm: {text}");
     }
+    if let Some(argv) = fullscreen.lock().unwrap().take() {
+        return Ok(ClientExit::Fullscreen(argv));
+    }
     if let Some(spec) = switch.lock().unwrap().take() {
         return Ok(ClientExit::Switch(spec));
     }
@@ -658,6 +670,7 @@ fn image_key(code: KeyCode) -> Option<crate::imageview::ImageKey> {
         KeyCode::Char('p') | KeyCode::Backspace | KeyCode::PageUp => K::Prev,
         KeyCode::Char('m') => K::Mode,
         KeyCode::Char('i') => K::Info,
+        KeyCode::Char('f') => K::Fullscreen,
         KeyCode::Esc | KeyCode::Char('q') => K::Close,
         _ => return None,
     })
@@ -937,6 +950,7 @@ mod tests {
             switch_to: None,
             clipboard: None,
             notice: None,
+            fullscreen: None,
         }
     }
 

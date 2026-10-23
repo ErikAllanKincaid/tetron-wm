@@ -57,7 +57,28 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false }
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console() }
+    }
+}
+
+/// Whether this client's terminal is a plain kernel console that a framebuffer
+/// viewer can take over: the VT ioctl answers on stdin (it fails on the pty of
+/// kmscon, a GUI terminal, ssh or tmux, where fbi draws to a hidden buffer),
+/// `/dev/fb0` is writable, and fbi or fim is installed.
+pub fn fb_console() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        const VT_GETSTATE: u64 = 0x5603;
+        let mut state = [0u16; 3]; // struct vt_stat
+        // SAFETY: VT_GETSTATE writes a 3 x u16 vt_stat into `state`; any fd is safe to probe.
+        let vt = unsafe { libc::ioctl(0, VT_GETSTATE as _, state.as_mut_ptr()) } == 0;
+        // SAFETY: a NUL-terminated path literal.
+        let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
+        vt && fb && (crate::catalog::is_installed("fbi") || crate::catalog::is_installed("fim"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
     }
 }
 
