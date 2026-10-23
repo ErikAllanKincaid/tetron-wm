@@ -141,10 +141,12 @@ RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
 \x20 GUI terminal) View full screen shows images with fbi and Play full screen plays\n\
 \x20 video with mpv; q returns, apps keep running. A window's title bar has Minimize,\n\
 \x20 Maximize, Move, Rename and Close.\n\n\
-IMAGE VIEWER (open an image; image_viewer = auto | graphics | cells):\n\
+IMAGE VIEWER (images and PDFs; image_viewer = auto | graphics | cells):\n\
 \x20 Kitty graphics where the terminal has them, else chafa cells (any terminal).\n\
 \x20 + - or the wheel zoom, 0 fits, arrows or a drag pan, n p next/previous in the folder,\n\
-\x20 m graphics/cells, i info line, f full screen (plain console), Esc or q closes.\n\n\
+\x20 m graphics/cells, i info line, f full screen (plain console), Esc or q closes.\n\
+\x20 A PDF shows one page at a time (pdftoppm); n p turn pages. Open with... also offers\n\
+\x20 its text in a pager (pdftotext), tdf and timg; full screen on a console uses fbgs.\n\n\
 LAUNCHER SYSTEM SECTION (click the top-left button):\n\
 \x20 Systems  switch to a saved remote machine over ssh\n\
 \x20 Detach   leave; apps keep running        Reload  restart the UI, apps keep running\n\

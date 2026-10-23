@@ -69,6 +69,9 @@ impl MenuAction {
             MenuAction::Open => "Open".into(),
             MenuAction::OpenWith => "Open with\u{2026}".into(),
             MenuAction::OpenWithApp(cmd) if cmd == "@image" => "Image viewer".into(),
+            MenuAction::OpenWithApp(cmd) if cmd == "@pdf" => "PDF viewer".into(),
+            MenuAction::OpenWithApp(cmd) if cmd == "@pdftext" => "Text (pdftotext)".into(),
+            MenuAction::OpenWithApp(cmd) if cmd == "@timg" => "timg".into(),
             MenuAction::OpenWithApp(cmd) => cmd.clone(),
             MenuAction::Rename => "Rename".into(),
             MenuAction::Copy => "Copy".into(),
@@ -103,6 +106,8 @@ pub struct Abilities {
     pub fullscreen_image: bool,
     /// A plain console with mpv or cvlc: "Play full screen" for video.
     pub fullscreen_video: bool,
+    /// A plain console with fbgs (and ghostscript): "View full screen" for PDFs.
+    pub fullscreen_pdf: bool,
     /// Saved Systems exist: "Send to…".
     pub send: bool,
 }
@@ -115,6 +120,7 @@ impl Abilities {
         Abilities {
             fullscreen_image: console && (have("fbi") || have("fim")),
             fullscreen_video: console && (have("mpv") || have("cvlc")),
+            fullscreen_pdf: console && have("fbgs") && have("gs"),
             send: !crate::systems::load().is_empty() && have("scp"),
         }
     }
@@ -138,6 +144,7 @@ pub fn actions_for(surface: Surface, target: Target, can: Abilities) -> Vec<Menu
                     v.push(A::SetWallpaper);
                 }
                 Role::Video if can.fullscreen_video => v.push(A::PlayFullscreen),
+                Role::Pdf if can.fullscreen_pdf => v.push(A::ViewFullscreen),
                 Role::Archive => v.extend([A::ExtractHere, A::ListContents]),
                 _ => {}
             }
@@ -310,7 +317,7 @@ mod tests {
     fn actions_differ_by_surface_and_target() {
         use MenuAction as A;
         let none = Abilities::default();
-        let all = Abilities { fullscreen_image: true, fullscreen_video: true, send: true };
+        let all = Abilities { fullscreen_image: true, fullscreen_video: true, fullscreen_pdf: true, send: true };
         let file = Target::Entry { is_dir: false, pinned: false, role: Role::Text };
         let dir = Target::Entry { is_dir: true, pinned: false, role: Role::Directory };
         let img = Target::Entry { is_dir: false, pinned: false, role: Role::Image };

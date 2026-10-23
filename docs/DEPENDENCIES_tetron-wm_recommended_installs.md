@@ -7,16 +7,16 @@ tetron-wm is one binary and runs without anything else installed. Each feature b
 Ubuntu or Debian, everything that is packaged:
 
 ```sh
-sudo apt install chafa mpv sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils fonts-dejavu-core
+sudo apt install chafa mpv poppler-utils sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils fonts-dejavu-core
 ```
 
 macOS with [Homebrew](https://brew.sh):
 
 ```sh
-brew install chafa mpv fresh-editor blueutil htop btop
+brew install chafa mpv poppler fresh-editor blueutil htop btop
 ```
 
-The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
+The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
 
 ## By feature
 
@@ -26,6 +26,7 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | Image viewer on terminals without Kitty graphics (bare console, kmscon, tmux, ssh) | `chafa` | Coarser built-in half blocks (colored blocks on a bare console) | Draws the image as colored cells, dithered for 8 and 16 colors. Terminals with Kitty graphics show the real image either way. [chafa](https://hpjansson.org/chafa/) |
 | Video in a window | `mpv` | Videos open only in a GUI player, if there is one | `mpv --vo=tct FILE` plays in a tetron-wm window on any terminal, kmscon and the bare console included. Fedora: from RPM Fusion. [mpv](https://mpv.io/) |
 | Text editor in Open with… | `fresh` | Other editors on the list (nvim, vim, nano, …) | Easy, mouse-friendly terminal editor, offered first for text. Not in distro repositories: the suite installer runs its official installer on Linux (`curl -fsSL https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh \| sh`, which picks .deb, .rpm, AUR, …); macOS `brew install fresh-editor`. [fresh](https://github.com/sinelaw/fresh) |
+| PDFs in the built-in viewer | `pdftoppm`, `pdfinfo`, `pdftotext` (package `poppler-utils`; `poppler` on Arch and Homebrew) | PDFs offer only the apps you have installed | Renders one page at a time into the image viewer (characters on any terminal, the real page with Kitty graphics); the text view uses `pdftotext`. Optional: `tdf` and `timg` (Store) appear in Open with…, and `fbgs` (with fbi and ghostscript) gives full screen on a plain console. |
 | Mouse on a bare Linux console | `gpm` | No mouse on a raw VT | Not needed under kmscon or in a GUI terminal. `sudo apt install gpm && sudo systemctl enable --now gpm` |
 | Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
 | Volume (menubar, leader `=`, Settings → Sound) | `wpctl` (PipeWire, package `wireplumber`) | Volume shows no level and can not change; Settings says so | Also lists and switches outputs (HDMI, headphones, speakers). macOS uses its built-in `osascript`. |

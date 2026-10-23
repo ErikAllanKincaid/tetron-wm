@@ -19,7 +19,7 @@
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
-#      extras         — recommended tools: chafa, mpv, fresh, sshpass, htop,     [Linux, macOS]
+#      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
 #                       btop, upower, alsa-utils, the DejaVu Sans Mono font, and xclip /
 #                       wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
@@ -203,6 +203,7 @@ ensure_truecolor() {
 # its own installer adds it (see fresh_via_script).
 EXTRAS="chafa:chafa:chafa:chafa:chafa
 mpv:mpv::mpv:mpv
+pdftoppm:poppler-utils:poppler-utils:poppler:poppler
 fresh::::fresh-editor
 sshpass:sshpass:sshpass:sshpass:
 htop:htop:htop:htop:htop

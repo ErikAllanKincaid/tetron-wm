@@ -188,6 +188,8 @@ struct Loaded {
     dims: (u32, u32),
     png: Option<Vec<u8>>,
     siblings: Vec<PathBuf>,
+    /// A PDF's page count (`None` for an image).
+    pages: Option<u32>,
 }
 
 enum Done {
@@ -198,6 +200,9 @@ enum Done {
 pub struct ImageView {
     path: PathBuf,
     siblings: Vec<PathBuf>,
+    /// For a PDF: the shown page (1-based) and the page count (0 until known).
+    /// n / p then turn pages instead of stepping through the folder.
+    doc: Option<(u32, u32)>,
     /// Bumped on every (re)load so late results for an older image are dropped.
     gen: u64,
     img: Option<Arc<RgbaImage>>,
@@ -224,9 +229,12 @@ impl ImageView {
     /// Open `path`; decoding starts in the background at once.
     pub fn new(path: impl Into<PathBuf>, method: Method) -> Self {
         let (tx, rx) = mpsc::channel();
+        let path: PathBuf = path.into();
+        let doc = is_pdf(&path).then_some((1, 0));
         let mut v = ImageView {
-            path: path.into(),
+            path,
             siblings: Vec::new(),
+            doc,
             gen: 0,
             img: None,
             dims: (0, 0),
@@ -254,9 +262,21 @@ impl ImageView {
         &self.path
     }
 
-    /// Window title: the file name, plus its position among the folder's images.
+    /// Whether this view shows a PDF (pages instead of folder images).
+    pub fn is_pdf(&self) -> bool {
+        self.doc.is_some()
+    }
+
+    /// Window title: the file name, plus its position among the folder's
+    /// images, or the page for a PDF.
     pub fn title(&self) -> String {
         let name = self.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Some((page, pages)) = self.doc {
+            return match pages {
+                0 => format!("pdf: {name}"),
+                n => format!("pdf: {name} (page {page}/{n})"),
+            };
+        }
         match self.siblings.iter().position(|p| *p == self.path) {
             Some(i) if self.siblings.len() > 1 => format!("image: {name} ({}/{})", i + 1, self.siblings.len()),
             _ => format!("image: {name}"),
@@ -275,9 +295,13 @@ impl ImageView {
         self.cx = 0.5;
         self.cy = 0.5;
         let (gen, path, tx) = (self.gen, self.path.clone(), self.tx.clone());
-        crate::dbg_log(&format!("imageview: load {}", path.display()));
+        let page = self.doc.map(|(p, _)| p);
+        crate::dbg_log(&format!("imageview: load {}{}", path.display(), page.map(|p| format!(" page {p}")).unwrap_or_default()));
         std::thread::spawn(move || {
-            let result = load_file(&path);
+            let result = match page {
+                Some(p) => load_pdf_page(&path, p),
+                None => load_file(&path),
+            };
             if let Err(e) = &result {
                 crate::dbg_log(&format!("imageview: {}: {e}", path.display()));
             }
@@ -297,6 +321,9 @@ impl ImageView {
                         self.dims = l.dims;
                         self.png_id = l.png.map(|png| store.store_png(png, l.img.width(), l.img.height()));
                         self.img = Some(l.img);
+                        if let (Some(n), Some((_, pages))) = (l.pages, self.doc.as_mut()) {
+                            *pages = n;
+                        }
                         if !l.siblings.is_empty() {
                             self.siblings = l.siblings;
                         }
@@ -389,6 +416,8 @@ impl ImageView {
             ImageKey::Right if zoomed => self.cx += step,
             ImageKey::Up => self.cy -= step,
             ImageKey::Down => self.cy += step,
+            ImageKey::Left | ImageKey::Prev if self.doc.is_some() => self.step_page(-1),
+            ImageKey::Right | ImageKey::Next if self.doc.is_some() => self.step_page(1),
             ImageKey::Left | ImageKey::Prev => self.step_image(-1),
             ImageKey::Right | ImageKey::Next => self.step_image(1),
             ImageKey::Mode => self.method = self.method.next(),
@@ -427,6 +456,17 @@ impl ImageView {
             vec![self.path.clone()]
         } else {
             starting_at(&self.siblings, &self.path)
+        }
+    }
+
+    /// Turn to the previous / next page of a PDF (clamped, no wrap).
+    fn step_page(&mut self, d: i32) {
+        let Some((page, pages)) = self.doc else { return };
+        let last = if pages == 0 { page } else { pages };
+        let next = (page as i64 + d as i64).clamp(1, last.max(1) as i64) as u32;
+        if next != page {
+            self.doc = Some((next, pages));
+            self.load();
         }
     }
 
@@ -485,14 +525,12 @@ impl ImageView {
             (false, Some((_, _, via))) => via,
             _ => "",
         };
-        let left = format!(
-            " {}x{}  {:.0}%  {} ({})",
-            self.dims.0,
-            self.dims.1,
-            self.zoom * 100.0,
-            via,
-            self.method.label()
-        );
+        let what = match self.doc {
+            Some((page, pages)) if pages > 0 => format!("page {page}/{pages}"),
+            Some((page, _)) => format!("page {page}"),
+            None => format!("{}x{}", self.dims.0, self.dims.1),
+        };
+        let left = format!(" {what}  {:.0}%  {} ({})", self.zoom * 100.0, via, self.method.label());
         let keys = if self.cur.is_some_and(|k| k.caps.fb_console) {
             "+/- zoom 0 fit n/p next m mode f full screen "
         } else {
@@ -511,7 +549,15 @@ impl ImageView {
 /// encode the Kitty copy, and list the folder's images for next/previous.
 fn load_file(path: &Path) -> Result<Loaded, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    let img = image::load_from_memory(&bytes).map_err(|_| "unsupported or damaged image".to_string())?;
+    let mut l = decode(&bytes)?;
+    l.siblings = siblings(path);
+    Ok(l)
+}
+
+/// Decode an image, keep at most `MAX_SIDE` pixels on the long side, and
+/// encode the Kitty copy.
+fn decode(bytes: &[u8]) -> Result<Loaded, String> {
+    let img = image::load_from_memory(bytes).map_err(|_| "unsupported or damaged image".to_string())?;
     let dims = (img.width(), img.height());
     let img = if dims.0 > MAX_SIDE || dims.1 > MAX_SIDE {
         img.resize(MAX_SIDE, MAX_SIDE, image::imageops::FilterType::Triangle)
@@ -521,7 +567,39 @@ fn load_file(path: &Path) -> Result<Loaded, String> {
     let rgba = img.to_rgba8();
     let mut png = std::io::Cursor::new(Vec::new());
     let png = rgba.write_to(&mut png, image::ImageFormat::Png).ok().map(|_| png.into_inner());
-    Ok(Loaded { img: Arc::new(rgba), dims, png, siblings: siblings(path) })
+    Ok(Loaded { img: Arc::new(rgba), dims, png, siblings: Vec::new(), pages: None })
+}
+
+/// Whether `path` is a PDF (by its extension).
+pub fn is_pdf(path: &Path) -> bool {
+    crate::openwith::classify(path, false) == crate::openwith::Role::Pdf
+}
+
+/// Render page `page` of a PDF with poppler's `pdftoppm` (150 dpi, bounded by
+/// a timeout) and read the page count with `pdfinfo`.
+fn load_pdf_page(path: &Path, page: u32) -> Result<Loaded, String> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = crate::protocol::ensure_socket_dir().unwrap_or_else(|_| crate::protocol::socket_dir());
+    let prefix = dir.join(format!("pdfpage-{}-{n}", std::process::id()));
+    let (file, p, pre) = (path.to_string_lossy(), page.to_string(), prefix.to_string_lossy().into_owned());
+    let args = ["-f", &p, "-l", &p, "-r", "150", "-png", "-singlefile", &file, &pre];
+    match crate::system::run_capped_status("pdftoppm", &args, 20) {
+        crate::system::Capped::Done => {}
+        crate::system::Capped::Missing(_) => return Err("needs pdftoppm (poppler-utils)".into()),
+        other => return Err(format!("pdftoppm failed: {other:?}")),
+    }
+    let png_path = prefix.with_extension("png");
+    let bytes = std::fs::read(&png_path).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&png_path);
+    let mut l = decode(&bytes?)?;
+    l.pages = crate::system::run_capped("pdfinfo", &[&file], 5).as_deref().and_then(pdf_pages);
+    Ok(l)
+}
+
+/// The page count from `pdfinfo` output ("Pages:          12").
+fn pdf_pages(info: &str) -> Option<u32> {
+    info.lines().find_map(|l| l.strip_prefix("Pages:")).and_then(|v| v.trim().parse().ok())
 }
 
 /// Image files in `path`'s folder, sorted by name (always including `path`).
@@ -714,6 +792,61 @@ mod tests {
         assert_eq!(v.zoom, ZOOM_MAX);
         v.key(ImageKey::Fit);
         assert_eq!((v.zoom, v.cx, v.cy), (1.0, 0.5, 0.5));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pdf_page_count_is_read_from_pdfinfo() {
+        assert_eq!(pdf_pages("Title:   x\nPages:          12\nEncrypted: no\n"), Some(12));
+        assert_eq!(pdf_pages("Syntax Error"), None);
+        assert!(is_pdf(Path::new("/x/Report.PDF")) && !is_pdf(Path::new("/x/a.png")));
+    }
+
+    /// A tiny two-page PDF (hand-written, valid xref offsets computed here).
+    fn two_page_pdf(path: &Path) {
+        let objs = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >>",
+        ];
+        let mut out = String::from("%PDF-1.4\n");
+        let mut offs = Vec::new();
+        for (i, o) in objs.iter().enumerate() {
+            offs.push(out.len());
+            out.push_str(&format!("{} 0 obj\n{o}\nendobj\n", i + 1));
+        }
+        let xref = out.len();
+        out.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1));
+        for o in offs {
+            out.push_str(&format!("{o:010} 00000 n \n"));
+        }
+        out.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1));
+        std::fs::write(path, out).unwrap();
+    }
+
+    #[test]
+    fn pdf_pages_render_and_n_p_turn_pages() {
+        if !crate::catalog::is_installed("pdftoppm") {
+            return; // poppler not installed here
+        }
+        let (dir, _) = folder();
+        let pdf = dir.join("doc.pdf");
+        two_page_pdf(&pdf);
+        let mut store = ImageStore::new();
+        let mut v = ImageView::new(pdf.clone(), Method::Auto);
+        assert!(v.is_pdf());
+        poll_until(&mut v, &mut store, |v| v.img.is_some() || v.error.is_some());
+        assert!(v.error.is_none(), "{:?}", v.error);
+        assert_eq!(v.doc, Some((1, 2)), "page 1 of 2");
+        assert_eq!(v.title(), "pdf: doc.pdf (page 1/2)");
+        v.key(ImageKey::Next);
+        assert_eq!(v.doc.map(|d| d.0), Some(2));
+        v.key(ImageKey::Next);
+        assert_eq!(v.doc.map(|d| d.0), Some(2), "no wrap past the last page");
+        v.key(ImageKey::Prev);
+        assert_eq!(v.doc.map(|d| d.0), Some(1));
+        assert_eq!(v.path(), pdf, "pages, not the folder's other files");
         let _ = std::fs::remove_dir_all(dir);
     }
 

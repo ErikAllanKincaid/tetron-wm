@@ -111,6 +111,8 @@ pub fn resolve(path: &Path, is_dir: bool, handlers: &BTreeMap<String, String>) -
         _ => match role {
             Role::Video if crate::catalog::is_installed("mpv") => open_with("mpv --vo=tct", path),
             Role::Audio if crate::catalog::is_installed("mpv") => open_with("mpv --no-video", path),
+            // PDFs open in the built-in viewer (one page at a time) with poppler.
+            Role::Pdf if crate::catalog::is_installed("pdftoppm") => OpenAction::Builtin("@image"),
             _ => OpenAction::OpenWithMenu,
         },
     }
@@ -120,8 +122,19 @@ pub fn resolve(path: &Path, is_dir: bool, handlers: &BTreeMap<String, String>) -
 /// `@navigate`, or a command line) opens `path`.
 pub fn open_with(cmd: &str, path: &Path) -> OpenAction {
     match cmd.trim() {
-        "@image" => OpenAction::Builtin("@image"),
+        // The built-in viewer shows PDFs too (pages via pdftoppm).
+        "@image" | "@pdf" => OpenAction::Builtin("@image"),
         "@navigate" => OpenAction::Navigate,
+        // A PDF's text, laid out, in a pager (searchable with /).
+        "@pdftext" => OpenAction::RunApp {
+            command: "sh".into(),
+            args: vec!["-c".into(), "pdftotext -layout \"$1\" - | less".into(), "pdftext".into(), path.to_string_lossy().into_owned()],
+        },
+        // timg prints the pages and exits: keep the window until Enter.
+        "@timg" => OpenAction::RunApp {
+            command: "sh".into(),
+            args: vec!["-c".into(), "timg \"$1\"; printf 'Press Enter to close. '; read _".into(), "timg".into(), path.to_string_lossy().into_owned()],
+        },
         "" => OpenAction::OpenWithMenu,
         cmd => {
             let mut parts = cmd.split_whitespace().map(String::from);
@@ -188,7 +201,13 @@ pub fn candidates(role: Role) -> Vec<String> {
             add(&mut v, "mpv", "mpv --no-video");
             add(&mut v, "cvlc", "cvlc --play-and-exit");
         }
-        Role::Pdf | Role::Archive => add(&mut v, "less", "less"),
+        Role::Pdf => {
+            add(&mut v, "pdftoppm", "@pdf");
+            add(&mut v, "pdftotext", "@pdftext");
+            add(&mut v, "tdf", "tdf");
+            add(&mut v, "timg", "@timg");
+        }
+        Role::Archive => add(&mut v, "less", "less"),
         Role::Text | Role::Code | Role::Executable | Role::Other => {
             // emacs in the terminal (`-nw`), not its GUI window.
             for (bin, cmd) in [

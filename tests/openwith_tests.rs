@@ -59,3 +59,17 @@ fn fresh_keeps_its_tab_list() {
         OpenAction::RunApp { command: "nvim".into(), args: vec!["/x/notes.txt".into()] }
     );
 }
+
+#[test]
+fn pdf_handlers() {
+    use tetron_wm::openwith::{open_with, OpenAction};
+    let p = std::path::Path::new("/x/a.pdf");
+    assert_eq!(open_with("@pdf", p), OpenAction::Builtin("@image"), "the built-in viewer shows PDFs");
+    match open_with("@pdftext", p) {
+        OpenAction::RunApp { command, args } => {
+            assert_eq!(command, "sh");
+            assert!(args[1].contains("pdftotext -layout") && args.last().unwrap() == "/x/a.pdf", "{args:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+}

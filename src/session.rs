@@ -2116,6 +2116,16 @@ impl SessionCore {
             crate::dbg_log("fullscreen: not on a plain console; ignored");
             return;
         }
+        // A PDF goes to fbgs (ghostscript + fbi), one document at a time.
+        if crate::imageview::is_pdf(&files[0]) {
+            if !(crate::catalog::is_installed("fbgs") && crate::catalog::is_installed("gs")) {
+                crate::dbg_log("fullscreen: fbgs or gs missing for a PDF");
+                return;
+            }
+            crate::dbg_log("fullscreen: handing the console to fbgs");
+            self.hand_over(vec!["fbgs".into(), files[0].to_string_lossy().into_owned()]);
+            return;
+        }
         let mut argv: Vec<String> = if crate::catalog::is_installed("fbi") {
             vec!["fbi".into(), "-a".into(), "--noverbose".into()]
         } else if crate::catalog::is_installed("fim") {
@@ -2201,6 +2211,10 @@ impl SessionCore {
 
     /// Right-click "View full screen" on an image: it and the folder's others.
     fn fullscreen_path(&mut self, path: &std::path::Path) {
+        if crate::imageview::is_pdf(path) {
+            self.start_fullscreen(vec![path.to_path_buf()]);
+            return;
+        }
         let files = crate::imageview::starting_at(&crate::imageview::siblings(path), path);
         self.start_fullscreen(files);
     }
