@@ -124,6 +124,40 @@ pub fn dbg_init() {
         .unwrap_or_else(|_| "?".into());
     dbg_log(&format!("=== tetron-wm session start (v{VERSION}, git {GIT_SHA}, exe {exe}) ==="));
 }
+/// The path of the running tetron-wm binary, for re-running itself (daemon,
+/// apphost, shims). After the binary is replaced on disk while running (an
+/// install or update), Linux reports the old path as "PATH (deleted)"; that file
+/// does not exist, so a reload could not start the daemon again. Use the
+/// installed binary at the same path instead.
+pub fn self_exe() -> std::io::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    Ok(undeleted(&exe).unwrap_or(exe))
+}
+
+/// `PATH` for "PATH (deleted)" when a file now exists at `PATH`.
+fn undeleted(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let s = exe.to_str()?;
+    let live = std::path::PathBuf::from(s.strip_suffix(" (deleted)")?);
+    live.exists().then_some(live)
+}
+
+#[cfg(test)]
+mod self_exe_tests {
+    #[test]
+    fn a_replaced_binary_resolves_to_the_new_file() {
+        let dir = std::env::temp_dir().join(format!("tetron-wm-selfexe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tetron-wm");
+        std::fs::write(&bin, b"").unwrap();
+        let deleted = std::path::PathBuf::from(format!("{} (deleted)", bin.display()));
+        assert_eq!(super::undeleted(&deleted), Some(bin.clone()));
+        assert_eq!(super::undeleted(&bin), None, "a normal path is left alone");
+        std::fs::remove_file(&bin).unwrap();
+        assert_eq!(super::undeleted(&deleted), None, "nothing installed there: keep the original");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 pub mod protocol;
 pub mod daemon;
 pub mod client;

@@ -82,7 +82,7 @@ if command -v {exe} >/dev/null 2>&1 && [ ! -S \"{sock}\" ]; then\n  \
 }
 
 fn current_exe() -> io::Result<String> {
-    Ok(std::env::current_exe()?.to_string_lossy().into_owned())
+    Ok(crate::self_exe()?.to_string_lossy().into_owned())
 }
 
 /// Whether a usable systemd `--user` instance is available.

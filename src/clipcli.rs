@@ -187,7 +187,7 @@ fn setup_mc() -> i32 {
         return 1;
     };
     let path = home.join(".config/mc/ini");
-    let exe = std::env::current_exe().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_else(|| "tetron-wm".into());
+    let exe = crate::self_exe().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_else(|| "tetron-wm".into());
     let old = std::fs::read_to_string(&path).unwrap_or_default();
     match mc_ini_with_clip(&old, &exe) {
         None => {
@@ -507,7 +507,7 @@ pub fn shim_env() -> ShimEnv {
         if !cfg.clipboard_history || !shims_wanted(&cfg.clipboard_shims, display) {
             return ShimEnv::default();
         }
-        let dir = std::env::current_exe().ok().and_then(|exe| ensure_shims(&exe));
+        let dir = crate::self_exe().ok().and_then(|exe| ensure_shims(&exe));
         if let Some(d) = &dir {
             crate::dbg_log(&format!("clipboard: shims enabled in {}", d.display()));
         }

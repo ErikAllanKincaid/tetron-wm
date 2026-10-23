@@ -278,7 +278,7 @@ fn ensure_apphost() -> std::io::Result<crate::apphost::RemoteAppHost> {
 
 /// Spawn `tetron-wm --apphost` detached into its own process group.
 fn spawn_detached_apphost() -> std::io::Result<()> {
-    let exe = std::env::current_exe()?;
+    let exe = crate::self_exe()?;
     std::process::Command::new(exe)
         .arg("--apphost")
         .env("TETRON_WM_SESSION", crate::protocol::session_name())

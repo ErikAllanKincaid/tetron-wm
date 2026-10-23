@@ -330,7 +330,7 @@ fn run_switch(spec: &tetron_wm::systems::SwitchSpec) {
 /// Spawn the daemon detached into its own process group so it survives the
 /// client exiting (and SSH disconnects).
 fn spawn_daemon() -> std::io::Result<()> {
-    let exe = std::env::current_exe()?;
+    let exe = tetron_wm::self_exe()?;
     tetron_wm::dbg_log(&format!("daemon: spawning {} --daemon", exe.display()));
     std::process::Command::new(exe)
         .arg("--daemon")

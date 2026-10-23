@@ -1856,7 +1856,7 @@ impl SessionCore {
                 // A live view of every session: re-run `tetron-wm ls` each second.
                 // Absolute path (like the updater) so a bare `tetron-wm` missing
                 // from the shell's PATH cannot break it.
-                let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "tetron-wm".into());
+                let exe = crate::self_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "tetron-wm".into());
                 let exe = crate::systems::sh_quote(&exe);
                 let script = format!("while :; do clear; {exe} ls; sleep 1; done");
                 self.launch_in("sessions".into(), "sh".into(), vec!["-c".into(), script], None);
