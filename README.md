@@ -117,6 +117,7 @@ Common first changes:
 | A wallpaper image                        | put it in `~/.config/tetron-wm/wallpapers/` and set `wallpaper = "name.jpg"`, or a full path; `"default"` is the built-in one (needs [chafa](https://hpjansson.org/chafa/)) |
 | A different leader key                   | `leader = "ctrl+b"`                                                                                                        |
 | No Power menu on a server                | `power_menu = false`                                                                                                       |
+| Less memory per window                   | `scrollback = 2000` (lines kept per window; default 10000)                                                                 |
 
 ## Bare console (no X11 or Wayland)
 
