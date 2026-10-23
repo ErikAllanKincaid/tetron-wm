@@ -930,8 +930,20 @@ impl Settings {
             SOUND => self.render_sound(&mut buf, cx),
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
-                buf.write_str(cx, 5, "Settings are saved to ~/.config/tetron-wm/config.toml", pal_dim(), pal_bg());
-                buf.write_str(cx, 6, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
+                let sha = &crate::GIT_SHA[..crate::GIT_SHA.len().min(7)];
+                let facts = [
+                    ("Version", format!("{} (git {sha})", crate::VERSION)),
+                    ("Session", crate::protocol::session_name()),
+                    ("App server", format!("protocol v{}", crate::apphost::proto::PROTO_VERSION)),
+                    ("Config", "~/.config/tetron-wm/config.toml".to_string()),
+                    ("Log", "~/tetron-wm-debug.log".to_string()),
+                    ("Clipboard", "~/.local/share/tetron-wm/clipboard-history.jsonl".to_string()),
+                ];
+                for (i, (k, v)) in facts.iter().enumerate() {
+                    buf.write_str(cx, 5 + i as i32, &format!("{k:<12}{v}"), pal_fg(), pal_bg());
+                }
+                buf.write_str(cx, 12, "Shortcuts: leader ?   Info menu: leader i", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
             }
         }
         buf
@@ -1196,6 +1208,16 @@ mod tests {
         for c in t.chars() {
             s.type_char(c);
         }
+    }
+
+    #[test]
+    fn about_shows_the_version() {
+        let mut s = Settings::new(Config::default());
+        s.section = SECTIONS.len() - 1;
+        let buf = s.render(100, 30);
+        let text: String = (0..30).flat_map(|y| (0..100).map(move |x| (x, y))).map(|(x, y)| buf.get(x, y).unwrap().ch).collect();
+        assert!(text.contains(&format!("Version     {}", crate::VERSION)), "About lists the version");
+        assert!(text.contains("tetron-wm-debug.log"));
     }
 
     #[test]

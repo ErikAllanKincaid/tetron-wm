@@ -23,6 +23,7 @@ The leader key exists so tetron-wm shortcuts never collide with your terminal, t
 | `f` | `windows` | Window picker: a numbered list of every window, minimized ones included. Up/Down, `Tab`/`Shift+Tab` or `j`/`k` move, Enter or a digit `1` to `9` focuses (and restores) that window, Esc or `q` closes, a click picks a row |
 | `w` | `move` | Keyboard move mode for the focused window: the title shows a hint, arrows move it one cell (`Shift`+arrow five, where the terminal reports Shift), `r` switches to resizing (arrows move the right and bottom edges) and back, Enter keeps the result, Esc puts the window back exactly as it was (a maximized window comes back maximized), a click also ends it. Other keys are ignored while it is on |
 | `=` | `volume` | Open the menubar volume popover (leader `=` again closes it). Left / Right (or `-` / `=` / `+`) change the volume in 5% steps, `m` or Space mutes, Down then Enter opens the mixer program, Esc closes. The same keys work when the popover was opened with a click. It changes the volume of the machine tetron-wm runs on (over ssh, the remote one) |
+| `i` | `info` | Info menu: session, version, tray details; arrows and Enter open Sessions, Screensaver, Logs, Shortcuts, Settings; Esc closes |
 | `esc` | `close` | Close the focused window (app windows ask for confirmation first; built-in panels close at once) |
 | `[`, `left` | `snap_left` | Snap the focused window to the left half of the screen |
 | `]`, `right` | `snap_right` | Snap the focused window to the right half of the screen |
@@ -56,7 +57,7 @@ These keys are unused after the leader and safe to bind in `[keys]` or to claim 
 
 | Type | Free |
 | --- | --- |
-| lowercase | `a b d e g i j k o u` |
+| lowercase | `a b d e g j k o u` |
 | uppercase | `B D E F G H I J K L O P U V W X Y Z` |
 | digit | `0` |
 | symbols | `` ` - ; ' / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |

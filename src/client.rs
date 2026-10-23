@@ -300,6 +300,22 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                         if let Some(msg) = msg {
                             send(&mut out_stream, &msg)?;
                         }
+                    } else if f.tray_info {
+                        // Info menu (click or leader i): arrows / Tab move, Enter
+                        // opens the row, Esc or the leader closes.
+                        leader = false;
+                        use crate::tray::TrayKey as T;
+                        let key = match k.code {
+                            KeyCode::Up | KeyCode::BackTab => Some(T::Up),
+                            KeyCode::Down | KeyCode::Tab => Some(T::Down),
+                            KeyCode::Enter => Some(T::Enter),
+                            KeyCode::Esc => Some(T::Esc),
+                            _ if is_leader => Some(T::Esc),
+                            _ => None,
+                        };
+                        if let Some(key) = key {
+                            send(&mut out_stream, &ClientMsg::TrayKey(key))?;
+                        }
                     } else if f.tray_volume {
                         // Volume popover (opened by click or leader =): Left / Right
                         // level, Up / Down rows, Enter, m / Space mute, Esc. The
@@ -370,6 +386,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("windows"), _) => send(&mut out_stream, &ClientMsg::WindowPickerOpen)?,
                             (Some("move"), _) => send(&mut out_stream, &ClientMsg::MoveModeStart)?,
                             (Some("volume"), _) => send(&mut out_stream, &ClientMsg::VolumeOpen)?,
+                            (Some("info"), _) => send(&mut out_stream, &ClientMsg::InfoOpen)?,
                             (Some("close"), _) => send(&mut out_stream, &ClientMsg::CloseFocused)?,
                             (Some("snap_left"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Left))?,
                             (Some("snap_right"), _) => send(&mut out_stream, &ClientMsg::SnapFocused(SnapZone::Right))?,

@@ -421,6 +421,8 @@ pub struct Tray {
     tools: crate::traytools::TrayTools,
     /// Volume popover keyboard row: 0 the level bar, 1 the mixer link.
     vol_sel: usize,
+    /// Info menu keyboard row: an index into its rows (segments, then links).
+    info_sel: usize,
 }
 
 /// The mixer row shared by the volume popover and Settings → Sound: the first
@@ -487,6 +489,26 @@ impl Tray {
         self.open = Some((kind, anchor_x));
         self.cal_offset = 0;
         self.vol_sel = 0;
+        self.info_sel = 0;
+    }
+
+    /// A key while the Info menu is open, with `rows` its selectable rows:
+    /// Up / Down move (wrapping), Enter returns the row to act on, Esc closes.
+    pub fn info_key(&mut self, key: TrayKey, rows: usize) -> Option<usize> {
+        let n = rows.max(1);
+        match key {
+            TrayKey::Up | TrayKey::Left => self.info_sel = (self.info_sel + n - 1) % n,
+            TrayKey::Down | TrayKey::Right => self.info_sel = (self.info_sel + 1) % n,
+            TrayKey::Enter => return rows.checked_sub(1).map(|last| self.info_sel.min(last)),
+            TrayKey::Esc => self.close(),
+            TrayKey::Mute => {}
+        }
+        None
+    }
+
+    /// The highlighted Info menu row, for tests.
+    pub fn info_row(&self) -> usize {
+        self.info_sel
     }
 
     /// The volume popover's link row: the first installed mixer from
@@ -678,7 +700,11 @@ impl Tray {
                 let action = segment_app(row.kind, &self.tools, &crate::catalog::is_installed);
                 let tail = if action.is_some() { " \u{25B8}" } else { "" };
                 let line = clip(format!("{:<10}{}{}", row.label, row.text, tail));
-                buf.write_str(2, y, &line, t.text, t.window_bg);
+                let bg = if hits.len() == self.info_sel { t.active_bg } else { t.window_bg };
+                for x in 1..box_w - 1 {
+                    buf.set(x, y, crate::cell::Cell { ch: ' ', fg: t.text, bg, attrs: Default::default() });
+                }
+                buf.write_str(2, y, &line, t.text, bg);
                 let intent = match (row.kind, action) {
                     (SegmentKind::Cpu | SegmentKind::Mem, Some(a)) => {
                         ControlIntent::OpenTool { title: a.title, command: a.command, args: a.args }
@@ -691,7 +717,12 @@ impl Tray {
         }
         y += 1; // blank line
         for (label, intent) in links {
-            buf.write_str(2, y, &format!("\u{25B8} {label}"), t.accent, t.window_bg);
+            // The keyboard row highlight: the whole inner width of the selected row.
+            let bg = if hits.len() == self.info_sel { t.active_bg } else { t.window_bg };
+            for x in 1..box_w - 1 {
+                buf.set(x, y, crate::cell::Cell { ch: ' ', fg: t.accent, bg, attrs: Default::default() });
+            }
+            buf.write_str(2, y, &format!("\u{25B8} {label}"), t.accent, bg);
             hits.push(PopoverHit { rect: Rect::new(origin.x + 1, origin.y + y, box_w - 2, 1), intent });
             y += 1;
         }
@@ -1069,6 +1100,19 @@ fn fill_box(buf: &mut CellBuffer, w: i32, h: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn info_keys_wrap_pick_and_close() {
+        let mut t = Tray::new();
+        t.force_open(SegmentKind::Info);
+        assert_eq!(t.info_key(TrayKey::Up, 5), None);
+        assert_eq!(t.info_row(), 4, "up wraps to the last row");
+        t.info_key(TrayKey::Down, 5);
+        assert_eq!(t.info_key(TrayKey::Enter, 5), Some(0));
+        assert_eq!(t.info_key(TrayKey::Enter, 0), None, "nothing to pick");
+        t.info_key(TrayKey::Esc, 5);
+        assert_eq!(t.open(), None);
+    }
 
     #[test]
     fn volume_link_prefers_installed_mixer_and_ascii_charset() {

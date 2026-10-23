@@ -445,6 +445,8 @@ pub enum ClientMsg {
     WindowPickerNumber(u8),
     /// Window picker: close without changing focus (Esc).
     WindowPickerEsc,
+    /// Open the Info menu from the keyboard (leader `i`).
+    InfoOpen,
     /// Open (or close) the menubar volume popover from the keyboard (leader =).
     VolumeOpen,
     /// A key for the open volume popover (Left / Right level, Up / Down rows,
@@ -2511,6 +2513,28 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Leader `=`: toggle the volume popover under its menubar segment, closing
     /// any other popover or menu first so only one thing has the keys.
+    /// Leader `i`: open (or close) the Info menu under its menubar segment.
+    fn info_open(&mut self) {
+        if self.info_popover_open() {
+            self.tray.close();
+            return;
+        }
+        self.launcher.close();
+        self.power_menu.close();
+        let x = self
+            .tray_segments_now()
+            .iter()
+            .find(|s| s.kind == crate::tray::SegmentKind::Info)
+            .map(|s| s.rect.x)
+            .unwrap_or(self.w);
+        self.tray.open_at(crate::tray::SegmentKind::Info, x);
+    }
+
+    /// Whether the Info menu is open (the client routes arrows to it).
+    pub fn info_popover_open(&self) -> bool {
+        self.tray.open() == Some(crate::tray::SegmentKind::Info)
+    }
+
     fn volume_open(&mut self) {
         if self.volume_popover_open() {
             self.tray.close();
@@ -3441,6 +3465,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::DesktopCommit => self.desktop_commit(),
             ClientMsg::DesktopCancel => self.desktop.cancel_overlay(),
             ClientMsg::VolumeOpen => self.volume_open(),
+            ClientMsg::InfoOpen => self.info_open(),
+            ClientMsg::TrayKey(key) if self.info_popover_open() => {
+                // Enter applies the selected row's action, exactly what a click does.
+                let rendered = self.tray_render_now();
+                if let Some(i) = self.tray.info_key(key, rendered.hits.len()) {
+                    if let Some(hit) = rendered.hits.get(i) {
+                        self.apply_intent(hit.intent.clone());
+                    }
+                }
+            }
             ClientMsg::TrayKey(key) => {
                 if self.tray.open() == Some(crate::tray::SegmentKind::Volume) {
                     if let Some(intent) = self.tray.volume_key(key) {
@@ -6641,6 +6675,27 @@ mod tests {
             name: cmd.into(), command: cmd.into(), args: Vec::new(), category: None,
             requires_cwd: None, cwd: None, cli: None, warn: None,
         }
+    }
+
+    #[test]
+    fn leader_i_opens_info_and_enter_follows_the_selected_row() {
+        let mut core = SessionCore::new(120, 30, Config { apps: vec![], desktop_enabled: false, ..Config::default() });
+        core.apply(ClientMsg::InfoOpen);
+        assert!(core.info_popover_open());
+        let rows = core.tray_render_now().hits;
+        let logs = rows.iter().position(|h| h.intent == crate::system::ControlIntent::OpenLogs).expect("Logs row");
+        for _ in 0..logs {
+            core.apply(ClientMsg::TrayKey(crate::tray::TrayKey::Down));
+        }
+        assert_eq!(core.tray.info_row(), logs);
+        core.apply(ClientMsg::TrayKey(crate::tray::TrayKey::Enter));
+        assert!(core.focused_is_logs(), "Enter opened the Logs window");
+        assert!(!core.info_popover_open());
+        // Leader i toggles; Esc closes.
+        core.apply(ClientMsg::InfoOpen);
+        core.apply(ClientMsg::TrayKey(crate::tray::TrayKey::Esc));
+        assert!(!core.info_popover_open());
+        core.shutdown();
     }
 
     #[test]

@@ -196,6 +196,7 @@ paste       = ["v", "p"]
 help        = ["?", "h"]
 rename      = ["r", "R"]
 tile        = "t"
+info        = "i"
 context_menu = "."
 auto_tile   = "T"
 screensaver = "z"

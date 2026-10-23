@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- The Info menu opens from the keyboard with leader `i` (new `[keys]` action `info`): arrows or Tab move through its rows, Enter opens one (CPU, Memory, Bluetooth, Sessions, Screensaver, Logs, Shortcuts, Settings), Esc closes. Settings → About now shows the version and git commit, the session, the app server protocol, and where the config, log and clipboard history live.
+
 ## [0.14.16] — 2026-10-23
 
 ### Added

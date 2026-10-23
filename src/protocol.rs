@@ -209,6 +209,9 @@ pub struct Flags {
     /// The menubar volume popover is open (by click or leader =); the client
     /// routes arrows, Enter, m / Space and Esc to it.
     pub tray_volume: bool,
+    /// The menubar Info menu is open (by click or leader i); the client routes
+    /// arrows, Tab, Enter and Esc to it.
+    pub tray_info: bool,
     /// The clipboard history popover is open; the client routes keys to it.
     pub clipmenu_open: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.
