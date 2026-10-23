@@ -16,6 +16,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("theme_dir", "<config>/themes", "directory of *.toml theme files"),
     ("terminal_bg", "theme", "terminal default background (#rrggbb or name)"),
     ("terminal_fg", "theme", "terminal default foreground (#rrggbb or name)"),
+    ("scrollback", "10000", "scrollback lines per app window (0 to 100000); applies to new windows"),
     ("truecolor", "auto", "force 24-bit color on/off"),
     ("wallpaper", "default", "wallpaper image: default (built-in), a file in wallpapers/, or a full path (needs chafa)"),
     ("wallpaper_enabled", "true", "master wallpaper toggle"),

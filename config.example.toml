@@ -51,6 +51,10 @@ theme = "newmoon"
 ## `tetron-wm kill` then relaunch (the apphost reads them at startup).
 #terminal_bg = "#1a1a1a"
 #terminal_fg = "#e0e0e0"
+## Scrollback lines kept per app window (0 to 100000). The main memory cost of
+## a busy window. Applies to
+## windows opened after the change.
+#scrollback = 10000
 ## Force 24-bit truecolor output on/off. Unset = auto-detect. Set true when your
 ## terminal supports truecolor but does not set COLORTERM (common with
 ## TERM=xterm-256color), else nord/dracula look washed out. Env override:

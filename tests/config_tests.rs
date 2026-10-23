@@ -49,6 +49,13 @@ command = "bash"
 }
 
 #[test]
+fn scrollback_defaults_to_10000_and_parses() {
+    assert_eq!(Config::default().scrollback, 10_000);
+    let c = Config::from_toml_str("scrollback = 2000\n").unwrap();
+    assert_eq!(c.scrollback, 2000);
+}
+
+#[test]
 fn save_and_load_roundtrip() {
     let dir = std::env::temp_dir().join(format!("tetron-wm-cfg-{}", std::process::id()));
     std::env::set_var("XDG_CONFIG_HOME", &dir);

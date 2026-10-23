@@ -199,7 +199,13 @@ impl AppInstance {
         let loads: Arc<Mutex<Vec<crate::apphost::proto::ClipReq>>> = Arc::new(Mutex::new(Vec::new()));
         // OSC 52 in both directions: stores feed the clipboard history and
         // reads (`ESC ] 52 ; c ; ? ST`) are answered by the frontend.
-        let term_cfg = Config { osc52: alacritty_terminal::term::Osc52::CopyPaste, ..Config::default() };
+        // Scrollback is read per spawn, so a config change applies to new windows.
+        let history = crate::config::Config::load().scrollback.min(crate::config::MAX_SCROLLBACK);
+        let term_cfg = Config {
+            osc52: alacritty_terminal::term::Osc52::CopyPaste,
+            scrolling_history: history,
+            ..Config::default()
+        };
         let term = Arc::new(Mutex::new(Term::new(
             term_cfg,
             &TermSize::new(cols as usize, rows as usize),

@@ -85,6 +85,10 @@ pub struct Config {
     pub terminal_bg: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_fg: Option<String>,
+    /// Scrollback lines kept per app window (0 = none, capped at 100000). The
+    /// main memory cost of a busy window. Read when a window opens, so a change
+    /// applies to new windows without restarting the apphost.
+    pub scrollback: usize,
     /// Force 24-bit ("truecolor") SGR output on/off. Unset = auto-detect from the
     /// terminal (known truecolor terminals + `COLORTERM`). Set `true` when your
     /// terminal supports truecolor but does not advertise it (many set
@@ -301,6 +305,7 @@ impl Default for Config {
             theme_dir: None,
             terminal_bg: None,
             terminal_fg: None,
+            scrollback: DEFAULT_SCROLLBACK,
             truecolor: None,
             wallpaper: default_wallpaper(),
             wallpaper_enabled: true,
@@ -348,6 +353,11 @@ impl Default for Config {
 }
 
 fn default_true() -> bool { true }
+
+/// Default scrollback lines per app window (alacritty's own default).
+pub const DEFAULT_SCROLLBACK: usize = 10_000;
+/// Upper bound for `scrollback`, so a typo can not reserve gigabytes per window.
+pub const MAX_SCROLLBACK: usize = 100_000;
 
 /// Default wallpaper: the `default` keyword, meaning the built-in image.
 fn default_wallpaper() -> Option<String> { Some(crate::wallpaper::DEFAULT_NAME.into()) }
