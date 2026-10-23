@@ -92,6 +92,9 @@ pub struct Config {
     /// How the image viewer draws: "auto" (Kitty graphics when the terminal
     /// has them, never on a bare VT; otherwise cells), "graphics", "cells".
     pub image_viewer: String,
+    /// Colour depth: "auto" (what the terminal reports), "mono" (black and
+    /// white), "16", "256" or "truecolor". `TETRON_WM_COLORS` overrides it.
+    pub colors: String,
     /// Force 24-bit ("truecolor") SGR output on/off. Unset = auto-detect from the
     /// terminal (known truecolor terminals + `COLORTERM`). Set `true` when your
     /// terminal supports truecolor but does not advertise it (many set
@@ -310,6 +313,7 @@ impl Default for Config {
             terminal_fg: None,
             scrollback: DEFAULT_SCROLLBACK,
             image_viewer: "auto".into(),
+            colors: "auto".into(),
             truecolor: None,
             wallpaper: default_wallpaper(),
             wallpaper_enabled: true,

@@ -264,7 +264,7 @@ impl Settings {
     fn item_count(&self) -> usize {
         match self.section {
             0 => 8,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll
-            1 => 8,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label
+            1 => 9,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label, colors
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
             4 => DEFAULT_APP_ROLES.len(),
@@ -488,6 +488,12 @@ impl Settings {
             // `@session`); ←/→ do nothing, it is free text.
             (1, 7) if dir == 0 => {
                 self.text = Some(TextEdit { target: TextTarget::LauncherLabel, buf: self.cfg.launcher_label.clone(), error: false, fresh: false });
+            }
+            (1, 8) => {
+                let cur = COLOR_CHOICES.iter().position(|(v, _)| crate::display::ColorDepth::parse(v) == crate::display::ColorDepth::parse(&self.cfg.colors)).unwrap_or(0);
+                let n = COLOR_CHOICES.len();
+                let next = if dir == -1 { (cur + n - 1) % n } else { (cur + 1) % n };
+                self.cfg.colors = COLOR_CHOICES[next].0.to_string();
             }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
             (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
@@ -852,16 +858,18 @@ impl Settings {
                     None => self.cfg.launcher_label.clone(),
                 };
                 self.row(&mut buf, cx, 10, 7, "Launcher label", label_val);
+                self.row(&mut buf, cx, 11, 8, "Colors", format!("\u{25C2} {} \u{25B8}", color_choice_name(&self.cfg.colors)));
                 // A wallpaper problem goes on the spacer line under the rows,
                 // in the accent colour so it is not mistaken for a hint.
                 if let Some(n) = &self.wallpaper_note {
-                    buf.write_str(cx, 11, n, pal_accent(), pal_bg());
+                    buf.write_str(cx, 12, n, pal_accent(), pal_bg());
                 }
-                buf.write_str(cx, 12, "Wallpaper file: default = built-in, a name in", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "~/.config/tetron-wm/wallpapers/, or a full path.", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
-                buf.write_str(cx, 15, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
-                buf.write_str(cx, 16, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "Wallpaper file: default = built-in, a name in", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "~/.config/tetron-wm/wallpapers/, or a full path.", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
+                buf.write_str(cx, 16, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
+                buf.write_str(cx, 17, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
+                buf.write_str(cx, 18, "Colors: auto follows the terminal; TETRON_WM_COLORS wins.", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -1099,6 +1107,20 @@ fn step_u8(v: u8, dir: i32, lo: u8, hi: u8) -> u8 {
         1 => (v + 1).min(hi),
         _ => if v >= hi { lo } else { v + 1 },
     }
+}
+
+/// The Colors row's choices: the config value and its label.
+const COLOR_CHOICES: [(&str, &str); 5] = [
+    ("auto", "Auto"),
+    ("mono", "Black and white"),
+    ("16", "16 colors"),
+    ("256", "256 colors"),
+    ("truecolor", "Truecolor"),
+];
+
+fn color_choice_name(v: &str) -> &'static str {
+    let d = crate::display::ColorDepth::parse(v);
+    COLOR_CHOICES.iter().find(|(c, _)| crate::display::ColorDepth::parse(c) == d).map_or("Auto", |(_, n)| n)
 }
 
 fn icon_style_name(s: crate::iconset::IconStyle) -> &'static str {
@@ -1568,7 +1590,14 @@ mod tests {
         s.toggle();
         assert_eq!(s.config().natural_scroll, !before);
         s.section = 1;
-        assert_eq!(s.item_count(), 8);
+        assert_eq!(s.item_count(), 9);
+        s.sel = 8;
+        for want in ["mono", "16", "256", "truecolor", "auto"] {
+            s.right();
+            assert_eq!(s.config().colors, want, "Colors cycles and wraps");
+        }
+        s.left();
+        assert_eq!(s.config().colors, "truecolor");
         s.sel = 5;
         s.right();
         assert_eq!(s.config().icon_style, IconStyle::Ascii);

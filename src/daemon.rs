@@ -447,6 +447,13 @@ fn serve_client_inner(
         core.tick_screensaver();
         core.refresh_activity();
         core.poll_desktop_dir();
+        // A colour-depth change re-quantizes every cell, not just the ones the
+        // diff sees: re-baseline like an attach.
+        if core.take_repaint() {
+            comp.resize(comp.width(), comp.height());
+            clear_pending = true;
+            sent_image_ids.clear();
+        }
         let frame = core.build_frame();
         let shot = core.take_screenshot();
         // The compositor's output depends only on the layers, the cursor and the
@@ -496,6 +503,7 @@ fn serve_client_inner(
             power_editing: core.power_form_editing(),
             logs_focused: core.focused_is_logs(),
             image_focused: core.focused_is_image(),
+            colors: core.colors_override(),
             activity_focused: core.focused_is_activity(),
             activity_confirming: core.activity_confirming(),
             detach: core.quit_requested(),

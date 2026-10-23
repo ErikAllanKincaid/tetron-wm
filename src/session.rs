@@ -664,6 +664,11 @@ pub struct SessionCore {
     /// A full-screen program (fbi + images) for the client to run on the real
     /// console; rides on the detach like `switch_to`.
     fullscreen: Option<Vec<String>>,
+    /// The display facts the client reported, before the `colors` setting is
+    /// applied (so switching the setting back to auto restores them).
+    client_caps: crate::display::ClientCaps,
+    /// The colour depth changed: the daemon re-baselines the client's screen.
+    repaint: bool,
     /// Set by `ClientMsg::Shutdown` — the daemon should exit and kill all apps.
     shutdown: bool,
     /// Set by `ClientMsg::Reload` — the daemon should restart the frontend only,
@@ -821,6 +826,8 @@ impl SessionCore {
             systems,
             switch_to: None,
             fullscreen: None,
+            client_caps: crate::display::ClientCaps::default(),
+            repaint: false,
         };
         core.tray.set_tools(core.cfg.tray_tools.clone());
         // A long-lived apphost may predate a config edit made while the UI was down.
@@ -2008,6 +2015,41 @@ impl SessionCore {
         self.quit = false;
         self.switch_to = None;
         self.fullscreen = None;
+    }
+
+    /// The colour depth in use: `TETRON_WM_COLORS` (the client says it was
+    /// forced), else the `colors` setting, else what the client detected.
+    fn effective_caps(&self) -> crate::display::ClientCaps {
+        let c = self.client_caps;
+        match crate::display::ColorDepth::parse(&self.cfg.colors) {
+            Some(colors) if !c.colors_forced => crate::display::ClientCaps { colors, ..c },
+            _ => c,
+        }
+    }
+
+    /// The depth the client must render with, when the setting overrides its
+    /// own detection (sent in every frame's flags).
+    pub fn colors_override(&self) -> Option<crate::display::ColorDepth> {
+        let e = self.effective_caps().colors;
+        (e != self.client_caps.colors).then_some(e)
+    }
+
+    /// Put the effective display facts in force. The theme adapts on the next
+    /// frame by itself (`theme::current` reads the depth); the wallpaper bakes
+    /// in chafa's colour mode and symbol set, so it is rebuilt, and
+    /// `icon_style = "auto"` follows the display too (ascii on a VT).
+    fn apply_display(&mut self) {
+        if crate::display::set(self.effective_caps()) {
+            crate::iconset::refresh();
+            self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
+            self.repaint = true;
+        }
+    }
+
+    /// Whether the client's screen must be re-baselined (the depth changed, so
+    /// every cell quantizes differently, not only the ones the diff sees).
+    pub fn take_repaint(&mut self) -> bool {
+        std::mem::take(&mut self.repaint)
     }
 
     /// The pending full-screen program, shipped with the detach.
@@ -3443,14 +3485,8 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::Caps(caps) => {
-                // The theme adapts on the next frame by itself (theme::current
-                // reads the depth); the wallpaper bakes in chafa's colour mode
-                // and symbol set, so rebuild it when the display changed.
-                // `icon_style = "auto"` follows the display too (ascii on a VT).
-                if crate::display::set(caps) {
-                    crate::iconset::refresh();
-                    self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
-                }
+                self.client_caps = caps;
+                self.apply_display();
             }
             ClientMsg::SetTheme(name) => {
                 crate::dbg_log(&format!("theme: set '{name}' (client attach / TETRON_WM_THEME)"));
@@ -3521,7 +3557,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 return;
             }
         }
-        let w = 60.min((self.w - 4).max(40));
+        let w = 84.min((self.w - 4).max(40));
         let h = 20.min((self.h - 4).max(10));
         let rect = Rect::new((self.w - w) / 2, 3, w, h);
         let id = self.wm.add_window("Settings".into(), rect);
@@ -3597,6 +3633,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 || cfg.clipboard_persist != self.cfg.clipboard_persist
                 || cfg.clipboard_history_size != self.cfg.clipboard_history_size
                 || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
+            let colors_changed_depth = cfg.colors != self.cfg.colors;
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper;
             let colors_changed = cfg.theme != self.cfg.theme
@@ -3620,6 +3657,10 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             if wallpaper_changed {
                 self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
+            }
+            if colors_changed_depth {
+                crate::dbg_log(&format!("display: colors setting -> {}", self.cfg.colors));
+                self.apply_display();
             }
             if colors_changed {
                 self.push_terminal_colors();

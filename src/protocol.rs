@@ -216,6 +216,9 @@ pub struct Flags {
     /// An image viewer is focused; the client routes zoom, pan and next/previous
     /// keys and the wheel to it.
     pub image_focused: bool,
+    /// The colour depth the user chose (Settings / `colors`), when it differs
+    /// from detection: the client renders with it. `None` = its own detection.
+    pub colors: Option<crate::display::ColorDepth>,
     /// The activity monitor is the focused window; the client routes
     /// navigation / kill keys to it.
     pub activity_focused: bool,

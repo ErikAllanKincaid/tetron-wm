@@ -1373,3 +1373,23 @@ fn leader_volume_toggles_the_volume_popover() {
     assert!(!core.volume_popover_open(), "leader = again closes it");
     core.shutdown();
 }
+
+#[test]
+fn colors_setting_overrides_detection_unless_the_env_forced_it() {
+    use tetron_wm::display::{ClientCaps, ColorDepth};
+    let before = tetron_wm::display::get();
+    let mut core = SessionCore::new(80, 24, Config { apps: vec![], desktop_enabled: false, colors: "mono".into(), ..Config::default() });
+    core.apply(ClientMsg::Caps(ClientCaps { colors: ColorDepth::TrueColor, ..Default::default() }));
+    assert_eq!(core.colors_override(), Some(ColorDepth::Mono), "the client is told to render black and white");
+    assert_eq!(tetron_wm::display::get().colors, ColorDepth::Mono, "and the theme adapts to it");
+    assert!(core.take_repaint(), "a depth change re-baselines the screen");
+    // TETRON_WM_COLORS on the client wins over the setting.
+    core.apply(ClientMsg::Caps(ClientCaps { colors: ColorDepth::Ansi256, colors_forced: true, ..Default::default() }));
+    assert_eq!(core.colors_override(), None);
+    assert_eq!(tetron_wm::display::get().colors, ColorDepth::Ansi256);
+    // Auto: the client's own detection.
+    core.set_config_for_test(Config { colors: "auto".into(), ..Config::default() });
+    core.apply(ClientMsg::Caps(ClientCaps { colors: ColorDepth::Ansi16, ..Default::default() }));
+    assert_eq!(core.colors_override(), None);
+    tetron_wm::display::set(before);
+}

@@ -141,7 +141,7 @@ Inside the app: **Settings → Updates**. The default channel installs the lates
 ## Troubleshooting
 
 - **Colors look washed out.** Your terminal may do 24-bit color without saying so. Set `truecolor = true`, or run once with `TETRON_WM_TRUECOLOR=1 tetron-wm`.
-- **Colors are wrong or unreadable on a basic terminal.** Force the color depth: `TETRON_WM_COLORS=16 tetron-wm` (16 colors, the default on the bare Linux console), `TETRON_WM_COLORS=mono` (black and white, also set by `NO_COLOR`), or `256` / `truecolor`.
+- **Colors are wrong or unreadable on a basic terminal.** Pick the color depth in Settings → Appearance → Colors (Auto, Black and white, 16, 256, Truecolor; config key `colors`), or force it per terminal: `TETRON_WM_COLORS=16 tetron-wm` (16 colors, the default on the bare Linux console), `TETRON_WM_COLORS=mono` (black and white, also set by `NO_COLOR`), or `256` / `truecolor`.
 - **Nothing happens on `attach`.** Run `tetron-wm ls`. A `detached` session is waiting for you. `recoverable` means the daemon is gone but the apps are alive, so run `tetron-wm` to restore the windows.
 - **Copying text out of an app that grabs the mouse** (vim, w3m): press `Ctrl+Space` then `x`, drag over the text, then `Ctrl+Space` then `C`.
 - **No wallpaper.** Install `chafa`, or set `wallpaper_enabled = false` for a solid desktop.

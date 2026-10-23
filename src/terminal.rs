@@ -57,8 +57,13 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console() }
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), colors_forced: colors_forced() }
     }
+}
+
+/// Whether `TETRON_WM_COLORS` names a depth (it then wins over the setting).
+fn colors_forced() -> bool {
+    std::env::var("TETRON_WM_COLORS").ok().as_deref().and_then(ColorDepth::parse).is_some()
 }
 
 /// Whether this client's terminal is a plain kernel console that a framebuffer

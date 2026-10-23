@@ -81,6 +81,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
             // displayed for each (so we only re-place on move/resize).
             let mut transmitted: std::collections::HashSet<u64> = std::collections::HashSet::new();
             let mut active: std::collections::HashMap<u32, Placed> = std::collections::HashMap::new();
+            // The depth this terminal was detected with; the user's choice
+            // (Settings / `colors`) arrives in the flags and replaces it.
+            let detected = caps.depth;
+            let mut caps = caps;
             loop {
                 line.clear();
                 match r.read_line(&mut line) {
@@ -88,6 +92,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                     Ok(_) => {
                         if let Ok(mut msg) = serde_json::from_str::<FrameMsg>(line.trim()) {
                             *flags.lock().unwrap() = msg.flags;
+                            caps.depth = msg.flags.colors.unwrap_or(detected);
                             // The whole frame goes out in one write.
                             let mut frame = String::new();
                             if let Some(text) = msg.notice.take() {

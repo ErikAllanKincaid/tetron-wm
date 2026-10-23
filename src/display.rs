@@ -84,6 +84,10 @@ pub struct ClientCaps {
     /// screen"). False under kmscon, GUI terminals, ssh and tmux.
     #[serde(default)]
     pub fb_console: bool,
+    /// `TETRON_WM_COLORS` set the depth for this client, so the `colors`
+    /// setting does not override it.
+    #[serde(default)]
+    pub colors_forced: bool,
 }
 
 /// The 16 ANSI colours as the Linux console (VGA text mode) renders them. The
