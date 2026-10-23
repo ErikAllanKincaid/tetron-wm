@@ -177,8 +177,20 @@ pub fn candidates(role: Role) -> Vec<String> {
         }
         Role::Pdf | Role::Archive => add(&mut v, "less", "less"),
         Role::Text | Role::Code | Role::Executable | Role::Other => {
-            for app in ["vi", "vim", "nvim", "nano", "micro", "hx", "emacs", "less", "bat"] {
-                add(&mut v, app, app);
+            // emacs in the terminal (`-nw`), not its GUI window.
+            for (bin, cmd) in [
+                ("fresh", "fresh"),
+                ("nvim", "nvim"),
+                ("vim", "vim"),
+                ("vi", "vi"),
+                ("hx", "hx"),
+                ("micro", "micro"),
+                ("nano", "nano"),
+                ("emacs", "emacs -nw"),
+                ("less", "less"),
+                ("bat", "bat"),
+            ] {
+                add(&mut v, bin, cmd);
             }
         }
     }
