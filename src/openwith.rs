@@ -142,18 +142,44 @@ pub fn default_handlers() -> BTreeMap<String, String> {
     m
 }
 
-/// Candidate handlers offered in the Settings → Default Apps chooser for a role.
+/// Candidate handlers for a role, offered in the Settings → Default Apps
+/// chooser and the right-click "Open with…" menu: only programs that are
+/// installed and suit the file type. Video and audio play inside the window
+/// (`--vo=tct` draws video as truecolor characters on any terminal); a GUI
+/// player window is offered too when a display exists.
 pub fn candidates(role: Role) -> Vec<String> {
+    let gui = std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
     let mut v = vec![String::new()]; // "" = Open-with menu / unset
-    match role {
-        Role::Image => v.push("@image".into()),
-        Role::Directory => v.push("@navigate".into()),
-        _ => {}
+    fn add(v: &mut Vec<String>, bin: &str, cmd: &str) {
+        if crate::catalog::is_installed(bin) {
+            v.push(cmd.to_string());
+        }
     }
-    // Common terminal apps detected on PATH.
-    for app in ["vi", "vim", "nvim", "nano", "micro", "hx", "emacs", "less", "bat", "mpv", "feh"] {
-        if crate::catalog::is_installed(app) {
-            v.push(app.to_string());
+    match role {
+        Role::Image => {
+            v.push("@image".into());
+            if gui {
+                add(&mut v, "feh", "feh");
+            }
+        }
+        Role::Directory => v.push("@navigate".into()),
+        Role::Video => {
+            add(&mut v, "mpv", "mpv --vo=tct");
+            add(&mut v, "cvlc", "cvlc --play-and-exit --vout caca");
+            if gui {
+                add(&mut v, "mpv", "mpv");
+                add(&mut v, "vlc", "vlc");
+            }
+        }
+        Role::Audio => {
+            add(&mut v, "mpv", "mpv --no-video");
+            add(&mut v, "cvlc", "cvlc --play-and-exit");
+        }
+        Role::Pdf | Role::Archive => add(&mut v, "less", "less"),
+        Role::Text | Role::Code | Role::Executable | Role::Other => {
+            for app in ["vi", "vim", "nvim", "nano", "micro", "hx", "emacs", "less", "bat"] {
+                add(&mut v, app, app);
+            }
         }
     }
     v

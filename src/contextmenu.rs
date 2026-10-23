@@ -223,6 +223,12 @@ mod tests {
         let txt = open_with_actions(Path::new("/x/notes.txt"));
         assert!(!txt.contains(&MenuAction::OpenWithApp("@image".into())));
         assert!(!txt.iter().any(|a| matches!(a, MenuAction::OpenWithApp(c) if c.is_empty() || c == "@navigate")));
+        // Video never offers editors; when mpv is installed it plays in the window.
+        let vid = open_with_actions(Path::new("/x/clip.mp4"));
+        assert!(!vid.iter().any(|a| matches!(a, MenuAction::OpenWithApp(c) if ["vi", "nano", "less"].contains(&c.as_str()))));
+        if crate::catalog::is_installed("mpv") {
+            assert!(vid.contains(&MenuAction::OpenWithApp("mpv --vo=tct".into())));
+        }
     }
 
     #[test]
