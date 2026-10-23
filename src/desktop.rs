@@ -43,8 +43,8 @@ pub enum DesktopAction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DesktopOverlay {
-    Context { idx: usize, anchor: Point },
-    DesktopMenu { anchor: Point },
+    /// The right-click menu: on icon `idx`, or the empty desktop when `None`.
+    Menu { idx: Option<usize>, menu: crate::contextmenu::ContextMenu },
     Rename { idx: usize, name: String },
     NewFolder { name: String },
 }
@@ -58,6 +58,7 @@ pub struct DesktopIcons<F: FsOps = StdFs> {
     overlay: Option<DesktopOverlay>,
     action: Option<DesktopAction>,
     width: i32, // screen width in cells (for right-anchored layout)
+    height: i32, // screen height in cells (keeps menus on screen)
     cols: u16,
     rows: u16,
 }
@@ -79,6 +80,7 @@ impl<F: FsOps> DesktopIcons<F> {
             overlay: None,
             action: None,
             width: 80,
+            height: 24,
             cols: 1,
             rows: 1,
         }
@@ -173,6 +175,7 @@ impl<F: FsOps> DesktopIcons<F> {
     /// Recompute the grid dimensions for a `w×h` screen.
     pub fn layout(&mut self, w: i32, h: i32) {
         self.width = w;
+        self.height = h;
         self.cols = ((w / ICON_W).max(1)) as u16;
         // leave the menubar (1) and dock (1) rows out
         self.rows = (((h - GRID_TOP - 1) / ICON_H).max(1)) as u16;
@@ -423,10 +426,87 @@ impl<F: FsOps> DesktopIcons<F> {
             Some(i) => {
                 self.selection.clear();
                 self.selection.insert(i);
-                self.overlay = Some(DesktopOverlay::Context { idx: i, anchor: p });
+                self.open_menu(Some(i), p);
             }
-            None => self.overlay = Some(DesktopOverlay::DesktopMenu { anchor: p }),
+            None => self.open_menu(None, p),
         }
+    }
+
+    /// Open the menu from the keyboard: on the selected icon (at its tile), else
+    /// the empty-desktop menu near the top-left.
+    pub fn open_menu_keyboard(&mut self) {
+        match self.selection.iter().next().copied().filter(|&i| i < self.icons.len()) {
+            Some(i) => {
+                let r = self.tile_rect(self.icons[i].cell);
+                self.open_menu(Some(i), Point::new(r.x + 1, r.y + ICON_H - 1));
+            }
+            None => self.open_menu(None, Point::new(2, GRID_TOP + 1)),
+        }
+    }
+
+    fn open_menu(&mut self, idx: Option<usize>, anchor: Point) {
+        use crate::contextmenu::{actions_for, ContextMenu, Surface, Target};
+        let target = match idx.and_then(|i| self.icons.get(i)) {
+            Some(icon) => Target::Entry {
+                is_dir: icon.role == Role::Directory,
+                pinned: matches!(icon.source, IconSource::Pinned),
+            },
+            None => Target::Background,
+        };
+        let items = actions_for(Surface::Desktop, target);
+        self.overlay = Some(DesktopOverlay::Menu { idx, menu: ContextMenu::new(anchor, items) });
+    }
+
+    /// Whether the right-click menu is open (the client routes arrows to it).
+    pub fn menu_open(&self) -> bool {
+        matches!(self.overlay, Some(DesktopOverlay::Menu { .. }))
+    }
+
+    fn menu_mut(&mut self) -> Option<&mut crate::contextmenu::ContextMenu> {
+        match &mut self.overlay {
+            Some(DesktopOverlay::Menu { menu, .. }) => Some(menu),
+            _ => None,
+        }
+    }
+
+    pub fn menu_up(&mut self) {
+        if let Some(m) = self.menu_mut() {
+            m.up();
+        }
+    }
+
+    pub fn menu_down(&mut self) {
+        if let Some(m) = self.menu_mut() {
+            m.down();
+        }
+    }
+
+    /// Highlight the menu row under `p` (mouse hover).
+    pub fn menu_hover(&mut self, p: Point) {
+        let b = self.menu_bounds();
+        if let Some(m) = self.menu_mut() {
+            m.hover(p, b);
+        }
+    }
+
+    /// The highlighted menu action (Enter).
+    pub fn menu_selected(&self) -> Option<crate::contextmenu::MenuAction> {
+        match &self.overlay {
+            Some(DesktopOverlay::Menu { menu, .. }) => menu.selected().cloned(),
+            _ => None,
+        }
+    }
+
+    /// Swap the open menu's items (the Open-with submenu).
+    pub fn menu_replace(&mut self, items: Vec<crate::contextmenu::MenuAction>) {
+        if let Some(m) = self.menu_mut() {
+            m.replace(items);
+        }
+    }
+
+    /// Menus stay below the menubar and inside the screen.
+    fn menu_bounds(&self) -> crate::geometry::Rect {
+        crate::geometry::Rect::new(0, GRID_TOP, self.width.max(1), (self.height - GRID_TOP).max(1))
     }
 
     /// Begin a rename overlay for a folder-sourced icon (pins can't be renamed).
@@ -555,7 +635,7 @@ impl<F: FsOps> DesktopIcons<F> {
     /// The icon index a context menu is anchored on, if any.
     pub fn context_idx(&self) -> Option<usize> {
         match self.overlay {
-            Some(DesktopOverlay::Context { idx, .. }) => Some(idx),
+            Some(DesktopOverlay::Menu { idx, .. }) => idx,
             _ => None,
         }
     }
@@ -569,44 +649,12 @@ impl<F: FsOps> DesktopIcons<F> {
         self.icons.get(idx).map(|i| i.path.clone())
     }
 
-    /// The menu items for the currently-open overlay, top to bottom. Empty when
-    /// no menu (or a text overlay) is open.
-    fn menu_items(&self) -> Vec<DesktopMenuItem> {
-        match self.overlay {
-            Some(DesktopOverlay::Context { idx, .. }) => {
-                if self.icon_is_pinned(idx) {
-                    vec![DesktopMenuItem::Open, DesktopMenuItem::Unpin]
-                } else {
-                    vec![
-                        DesktopMenuItem::Open,
-                        DesktopMenuItem::OpenWith,
-                        DesktopMenuItem::Rename,
-                        DesktopMenuItem::Trash,
-                    ]
-                }
-            }
-            Some(DesktopOverlay::DesktopMenu { .. }) => {
-                vec![DesktopMenuItem::NewFolder, DesktopMenuItem::CleanUp]
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    /// The screen rect of the open menu box (anchor + item list), if any. Width is
-    /// fixed; height is one row per item plus a one-cell border on each side.
+    /// The screen rect of the open menu, if any (shared geometry with render).
     fn menu_rect(&self) -> Option<crate::geometry::Rect> {
-        let anchor = match self.overlay {
-            Some(DesktopOverlay::Context { anchor, .. })
-            | Some(DesktopOverlay::DesktopMenu { anchor }) => anchor,
-            _ => return None,
-        };
-        let items = self.menu_items();
-        if items.is_empty() {
-            return None;
+        match &self.overlay {
+            Some(DesktopOverlay::Menu { menu, .. }) => Some(menu.rect(self.menu_bounds())),
+            _ => None,
         }
-        let w = MENU_W;
-        let h = items.len() as i32 + 2; // +border rows
-        Some(crate::geometry::Rect::new(anchor.x, anchor.y, w, h))
     }
 
     /// The screen rect of whatever overlay is open (context/desktop menu or a
@@ -632,19 +680,12 @@ impl<F: FsOps> DesktopIcons<F> {
         }
     }
 
-    /// The menu item under `p` for an open context / desktop menu, if any.
-    pub fn menu_item_at(&self, p: Point) -> Option<DesktopMenuItem> {
-        let r = self.menu_rect()?;
-        let items = self.menu_items();
-        if !r.contains(p) {
-            return None;
+    /// The menu action under `p` for an open menu, if any.
+    pub fn menu_item_at(&self, p: Point) -> Option<crate::contextmenu::MenuAction> {
+        match &self.overlay {
+            Some(DesktopOverlay::Menu { menu, .. }) => menu.item_at(p, self.menu_bounds()).cloned(),
+            _ => None,
         }
-        // Rows are the interior of the box (skip the top border row).
-        let row = p.y - (r.y + 1);
-        if row < 0 || row as usize >= items.len() {
-            return None;
-        }
-        Some(items[row as usize])
     }
 
     /// Render the open overlay (menu box or text field) into a screen-sized buffer,
@@ -659,17 +700,8 @@ impl<F: FsOps> DesktopIcons<F> {
         let mut buf = crate::buffer::CellBuffer::new(w, h);
         buf.fill(Cell { ch: ' ', fg: FG, bg: transparent, attrs: Default::default() });
 
-        if let Some(r) = self.menu_rect() {
-            // Box background.
-            for y in r.y..r.y + r.h {
-                for x in r.x..r.x + r.w {
-                    buf.set(x, y, Cell { ch: ' ', fg: FG, bg: BG, attrs: Default::default() });
-                }
-            }
-            // Item labels, one per interior row.
-            for (i, item) in self.menu_items().iter().enumerate() {
-                buf.write_str(r.x + 1, r.y + 1 + i as i32, item.label(), FG, BG);
-            }
+        if let Some(DesktopOverlay::Menu { menu, .. }) = &self.overlay {
+            menu.render(&mut buf, self.menu_bounds());
         } else if let Some(r) = self.field_rect() {
             let name = match &self.overlay {
                 Some(DesktopOverlay::Rename { name, .. })
@@ -690,31 +722,6 @@ impl<F: FsOps> DesktopIcons<F> {
 
 /// Fixed pixel/cell width of a desktop menu box.
 const MENU_W: i32 = 18;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DesktopMenuItem {
-    Open,
-    OpenWith,
-    Rename,
-    Trash,
-    Unpin,
-    NewFolder,
-    CleanUp,
-}
-
-impl DesktopMenuItem {
-    fn label(self) -> &'static str {
-        match self {
-            DesktopMenuItem::Open => "Open",
-            DesktopMenuItem::OpenWith => "Open with…",
-            DesktopMenuItem::Rename => "Rename",
-            DesktopMenuItem::Trash => "Move to Trash",
-            DesktopMenuItem::Unpin => "Unpin",
-            DesktopMenuItem::NewFolder => "New Folder",
-            DesktopMenuItem::CleanUp => "Clean Up",
-        }
-    }
-}
 
 fn glyph_for(role: Role) -> char {
     // The no-graphics fallback glyph, in the configured icon style (see `iconset`).

@@ -105,16 +105,25 @@ pub fn resolve(path: &Path, is_dir: bool, handlers: &BTreeMap<String, String>) -
         return OpenAction::Navigate;
     }
     match handlers.get(role.key()).map(String::as_str) {
-        Some("@image") => OpenAction::Builtin("@image"),
-        Some("@navigate") => OpenAction::Navigate,
-        Some(cmd) if !cmd.is_empty() => {
+        Some(cmd) if !cmd.trim().is_empty() => open_with(cmd, path),
+        _ => OpenAction::OpenWithMenu,
+    }
+}
+
+/// How handler `cmd` (a `[default_apps]` value or an Open-with choice: `@image`,
+/// `@navigate`, or a command line) opens `path`.
+pub fn open_with(cmd: &str, path: &Path) -> OpenAction {
+    match cmd.trim() {
+        "@image" => OpenAction::Builtin("@image"),
+        "@navigate" => OpenAction::Navigate,
+        "" => OpenAction::OpenWithMenu,
+        cmd => {
             let mut parts = cmd.split_whitespace().map(String::from);
             let program = parts.next().unwrap_or_default();
             let mut args: Vec<String> = parts.collect();
             args.push(path.to_string_lossy().to_string());
             OpenAction::RunApp { command: program, args }
         }
-        _ => OpenAction::OpenWithMenu,
     }
 }
 

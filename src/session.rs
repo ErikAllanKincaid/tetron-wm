@@ -185,6 +185,15 @@ impl WinContent {
 
 // ── Public message type ───────────────────────────────────────────────────────
 
+/// Keys for an open menu (the desktop right-click menu).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum MenuKey {
+    Up,
+    Down,
+    Enter,
+    Esc,
+}
+
 /// All input the front-end (or a future daemon client) can send to the core.
 ///
 /// This enum is intentionally minimal — exactly the surface needed for Slice 1.
@@ -528,6 +537,11 @@ pub enum ClientMsg {
     LogsClose,
     /// A key for the focused image viewer.
     ImageKey(crate::imageview::ImageKey),
+    /// A key for the open desktop right-click menu.
+    DesktopMenuKey(MenuKey),
+    /// Open the right-click menu from the keyboard (leader `.`): on the
+    /// focused file manager's entry, else on the desktop.
+    ContextMenuOpen,
 }
 
 // ── Output frame type ─────────────────────────────────────────────────────────
@@ -2660,6 +2674,16 @@ or a remote-side error — its authorized_keys was left untouched)",
             ClientMsg::MouseMove(p) => {
                 // A no-button move means the release was lost: end an image pan.
                 self.image_pan = None;
+                // An open right-click menu highlights the row under the pointer.
+                if self.desktop.menu_open() {
+                    self.desktop.menu_hover(p);
+                } else if let Some((id, cr)) = self.topmost_window_content_at(p) {
+                    if let Some(WinContent::FileManager(f)) = self.contents.get_mut(&id) {
+                        if f.context_menu_open() {
+                            f.context_menu_hover(Point::new(p.x - cr.x, p.y - cr.y), cr.w, cr.h);
+                        }
+                    }
+                }
                 // A no-button move ends any active text selection (self-heals a
                 // missed release), then behaves like the previous bare-move path
                 // (hover / drag-preview via handle_mouse).
@@ -3316,6 +3340,23 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::LogsRefresh => { if let Some(l) = self.focused_logs_mut() { l.reload(); } }
+            ClientMsg::DesktopMenuKey(k) => match k {
+                MenuKey::Up => self.desktop.menu_up(),
+                MenuKey::Down => self.desktop.menu_down(),
+                MenuKey::Esc => self.desktop.cancel_overlay(),
+                MenuKey::Enter => {
+                    if let Some(action) = self.desktop.menu_selected() {
+                        self.run_desktop_menu_action(action);
+                    }
+                }
+            },
+            ClientMsg::ContextMenuOpen => {
+                if let Some(f) = self.focused_filemanager_mut() {
+                    f.begin_context();
+                } else if self.cfg.desktop_enabled && self.wm.focused().is_none() {
+                    self.desktop.open_menu_keyboard();
+                }
+            }
             ClientMsg::ImageKey(k) => {
                 if let Some(id) = self.wm.focused() {
                     if let Some(WinContent::ImageView(v)) = self.contents.get_mut(&id) {
@@ -3717,6 +3758,11 @@ or a remote-side error — its authorized_keys was left untouched)",
             Some(WinContent::ImageView(v)) if !win.minimized && v.zoomed() && content.contains(p) => Some(id),
             _ => None,
         }
+    }
+
+    /// Whether the desktop right-click menu is open (keyboard routing).
+    pub fn desktop_menu_open(&self) -> bool {
+        self.desktop.menu_open()
     }
 
     /// `true` when the focused window is an image viewer (keyboard routing).
@@ -4884,13 +4930,23 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.exec(action, p);
     }
 
-    /// A click while a desktop context / desktop menu is open: act on the menu
-    /// item under `p`, or dismiss the menu if the click missed it.
+    /// A click while the desktop menu is open: act on the item under `p`, or
+    /// dismiss the menu if the click missed it.
     fn handle_desktop_menu_click(&mut self, p: Point) {
-        let item = self.desktop.menu_item_at(p);
+        match self.desktop.menu_item_at(p) {
+            Some(action) => self.run_desktop_menu_action(action),
+            None => self.desktop.cancel_overlay(),
+        }
+    }
+
+    /// Perform a desktop menu action (click or Enter). "Open with…" keeps the
+    /// menu open with the app choices instead.
+    fn run_desktop_menu_action(&mut self, action: crate::contextmenu::MenuAction) {
+        use crate::contextmenu::MenuAction as A;
         let idx = self.desktop.context_idx();
-        match item {
-            Some(crate::desktop::DesktopMenuItem::Open) => {
+        let path = idx.and_then(|i| self.desktop.icon_path(i));
+        match action {
+            A::Open => {
                 self.desktop.cancel_overlay();
                 if let Some(i) = idx {
                     let r = self.desktop.tile_rect(self.desktop.icons()[i].cell);
@@ -4898,18 +4954,39 @@ or a remote-side error — its authorized_keys was left untouched)",
                     self.drain_desktop_action();
                 }
             }
-            Some(crate::desktop::DesktopMenuItem::OpenWith) => self.desktop.cancel_overlay(),
-            Some(crate::desktop::DesktopMenuItem::Rename) => {
+            A::OpenWith => {
+                let items = path.as_deref().map(crate::contextmenu::open_with_actions).unwrap_or_default();
+                if items.is_empty() {
+                    self.desktop.cancel_overlay();
+                } else {
+                    self.desktop.menu_replace(items);
+                }
+            }
+            A::OpenWithApp(cmd) => {
+                self.desktop.cancel_overlay();
+                if let Some(path) = path {
+                    crate::dbg_log(&format!("desktop: open {} with {cmd}", path.display()));
+                    match crate::openwith::open_with(&cmd, &path) {
+                        crate::openwith::OpenAction::Builtin("@image") => self.open_image(path.to_string_lossy().to_string()),
+                        crate::openwith::OpenAction::RunApp { command, args } => {
+                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| command.clone());
+                            self.launch_in(name, command, args, path.parent().map(|p| p.to_path_buf()));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            A::Rename => {
                 if let Some(i) = idx {
                     self.desktop.begin_rename(i);
                 }
             }
-            Some(crate::desktop::DesktopMenuItem::Trash) => {
+            A::Trash => {
                 if self.desktop.trash_selection() {
                     self.reload_desktop();
                 }
             }
-            Some(crate::desktop::DesktopMenuItem::Unpin) => {
+            A::Unpin => {
                 let cmd = idx.and_then(|i| self.desktop.icon_command(i));
                 self.desktop.cancel_overlay();
                 if let Some(cmd) = cmd {
@@ -4918,13 +4995,13 @@ or a remote-side error — its authorized_keys was left untouched)",
                     self.reload_desktop();
                 }
             }
-            Some(crate::desktop::DesktopMenuItem::NewFolder) => self.desktop.begin_new_folder(),
-            Some(crate::desktop::DesktopMenuItem::CleanUp) => {
+            A::NewFolder => self.desktop.begin_new_folder(),
+            A::CleanUp => {
                 self.desktop.cancel_overlay();
                 self.desktop.clean_up();
                 self.persist_desktop_positions();
             }
-            None => self.desktop.cancel_overlay(),
+            A::Copy | A::Cut | A::GetInfo => self.desktop.cancel_overlay(),
         }
     }
 

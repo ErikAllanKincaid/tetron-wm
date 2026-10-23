@@ -369,6 +369,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             (Some("help"), _) => send(&mut out_stream, &ClientMsg::ToggleHelp)?,
                             (Some("rename"), _) => send(&mut out_stream, &ClientMsg::RenameFocused)?,
                             (Some("tile"), _) => send(&mut out_stream, &ClientMsg::TileAll)?,
+                            (Some("context_menu"), _) => send(&mut out_stream, &ClientMsg::ContextMenuOpen)?,
                             (Some("screensaver"), _) => send(&mut out_stream, &ClientMsg::Screensaver { mode: crate::screensaver::SaverMode::Toggle, effect: None })?,
                             (Some("screenshot"), _) => send(&mut out_stream, &ClientMsg::Screenshot(String::new()))?,
                             (Some("auto_tile"), _) => send(&mut out_stream, &ClientMsg::ToggleAutoTile)?,
@@ -382,6 +383,21 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                         // those used to swallow the leader, so no leader shortcut
                         // worked while one of them had focus.
                         leader = true;
+                    } else if f.desktop_menu {
+                        // The desktop right-click menu: arrows move, Enter acts,
+                        // Esc closes; other keys are ignored while it is open.
+                        use crate::session::MenuKey as M;
+                        let key = match k.code {
+                            KeyCode::Up => Some(M::Up),
+                            KeyCode::Down | KeyCode::Tab => Some(M::Down),
+                            KeyCode::BackTab => Some(M::Up),
+                            KeyCode::Enter => Some(M::Enter),
+                            KeyCode::Esc => Some(M::Esc),
+                            _ => None,
+                        };
+                        if let Some(key) = key {
+                            send(&mut out_stream, &ClientMsg::DesktopMenuKey(key))?;
+                        }
                     } else if f.logs_focused {
                         match k.code {
                             KeyCode::Esc => send(&mut out_stream, &ClientMsg::LogsClose)?,

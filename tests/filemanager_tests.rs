@@ -322,17 +322,17 @@ fn context_menu_opens_anchored_at_the_click_and_click_on_rename_starts_a_rename(
     fm.begin_context_at(0, at);
     assert!(fm.context_menu_open());
     match fm.overlay() {
-        Some(Overlay::Context { idx, at: anchor, sel }) => {
+        Some(Overlay::Context { idx, menu }) => {
             assert_eq!(*idx, 0);
-            assert_eq!(*anchor, at, "menu must anchor at the exact click point");
-            assert_eq!(*sel, 0);
+            assert_eq!(menu.anchor, at, "menu must anchor at the exact click point");
+            assert_eq!(menu.sel, 0);
         }
         other => panic!("expected a Context overlay, got {other:?}"),
     }
 
-    // Menu rows start one below the anchor (row 0 is the top border); Open is
-    // row 0, Rename is row 1.
-    let rename_row = Point::new(at.x + 1, at.y + 2);
+    // Menu rows start one below the anchor (row 0 is the top border); a text
+    // file's menu is Open, Open with…, Rename.
+    let rename_row = Point::new(at.x + 2, at.y + 3);
     assert!(fm.context_menu_click(rename_row, 80, 24), "click on a menu row is consumed by the overlay");
     assert!(
         matches!(fm.overlay(), Some(Overlay::Rename { idx: 0, .. })),
@@ -368,20 +368,46 @@ fn context_menu_up_down_wrap_and_enter_performs_the_highlighted_action() {
     fm.begin_context_at(0, Point::new(20, 5));
     fm.context_menu_up(); // wraps from 0 to the last item (Get Info)
     match fm.overlay() {
-        Some(Overlay::Context { sel, .. }) => assert_eq!(*sel, 5),
+        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, 6),
         other => panic!("expected a Context overlay, got {other:?}"),
     }
     fm.context_menu_down(); // wraps back to 0 (Open)
     match fm.overlay() {
-        Some(Overlay::Context { sel, .. }) => assert_eq!(*sel, 0),
+        Some(Overlay::Context { menu, .. }) => assert_eq!(menu.sel, 0),
         other => panic!("expected a Context overlay, got {other:?}"),
     }
+    fm.context_menu_down(); // -> Open with…
     fm.context_menu_down(); // -> Rename
     fm.context_menu_commit();
     assert!(
         matches!(fm.overlay(), Some(Overlay::Rename { idx: 0, .. })),
         "Enter on the highlighted Rename row must start a rename, got {:?}",
         fm.overlay()
+    );
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn context_menu_open_with_lists_apps_and_runs_the_choice() {
+    use tetron_wm::contextmenu::MenuAction;
+    let d = tmp("ctxopenwith");
+    fs::write(d.join("a.png"), b"x").unwrap();
+    let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+    let _ = fm.render(80, 24);
+    fm.begin_context_at(0, Point::new(20, 5));
+    fm.context_menu_down(); // -> Open with…
+    fm.context_menu_commit();
+    match fm.overlay() {
+        Some(Overlay::Context { menu, .. }) => {
+            assert_eq!(menu.items.first(), Some(&MenuAction::OpenWithApp("@image".into())), "the submenu replaces the items");
+        }
+        other => panic!("Open with keeps the menu open, got {other:?}"),
+    }
+    fm.context_menu_commit(); // Image viewer
+    assert!(fm.overlay().is_none());
+    assert!(
+        matches!(fm.take_action(), Some(tetron_wm::filemanager::FileManagerAction::OpenImage(p)) if p.ends_with("a.png")),
+        "choosing the viewer opens the image"
     );
     let _ = fs::remove_dir_all(&d);
 }

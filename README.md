@@ -132,7 +132,7 @@ It asks before every step, is safe to re-run, and `--uninstall` puts your login 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
 - Why each piece is needed, with diagrams: [docs/tetron-wm_bare_console_guide.html](docs/tetron-wm_bare_console_guide.html)
 - Just kmscon: [install-kmscon.sh](install-kmscon.sh)
-- Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard.
+- Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard, and the right-click menu of a file opens with leader `.`.
 
 ## Updating
 

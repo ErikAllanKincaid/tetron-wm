@@ -35,6 +35,7 @@ pub fn help_sections() -> &'static [HelpSection] {
             rows: &[
                 ("t", "tile all into the grid"),
                 ("T", "toggle auto-tile mode"),
+                (".", "right-click menu (Files, desktop)"),
                 ("s", "save a screenshot (PNG)"),
                 ("1–9", "send window to cell N"),
             ],

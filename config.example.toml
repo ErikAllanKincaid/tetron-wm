@@ -192,6 +192,7 @@ paste       = ["v", "p"]
 help        = ["?", "h"]
 rename      = ["r", "R"]
 tile        = "t"
+context_menu = "."
 auto_tile   = "T"
 screensaver = "z"
 screenshot  = "s"

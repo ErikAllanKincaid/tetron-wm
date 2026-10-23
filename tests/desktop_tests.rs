@@ -92,9 +92,41 @@ fn right_click_opens_context_and_menu_targets() {
     dt.layout(100, 30);
     let tr = dt.tile_rect((0, 0));
     dt.right_click(Point::new(tr.x + 1, tr.y + 1)); // on the icon
-    assert!(matches!(dt.overlay(), Some(DesktopOverlay::Context { .. })));
+    assert!(matches!(dt.overlay(), Some(DesktopOverlay::Menu { idx: Some(0), .. })));
     dt.right_click(Point::new(tr.x - 5, 20)); // empty desktop
-    assert!(matches!(dt.overlay(), Some(DesktopOverlay::DesktopMenu { .. })));
+    assert!(matches!(dt.overlay(), Some(DesktopOverlay::Menu { idx: None, .. })));
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn desktop_menu_keys_hover_and_stays_on_screen() {
+    use tetron_wm::contextmenu::MenuAction;
+    let d = tmp("ctxkeys");
+    fs::write(d.join("a.txt"), b"x").unwrap();
+    let mut dt = DesktopIcons::new(d.clone());
+    dt.reload(&[], &BTreeMap::new());
+    dt.layout(100, 30);
+    // Opened at the bottom-right corner: the box is moved back on screen, and
+    // its first row is where a click lands on "Open".
+    dt.right_click(Point::new(10, 29));
+    assert!(dt.menu_open());
+    let r = dt.overlay_rect().unwrap();
+    assert!(r.x + r.w <= 100 && r.y + r.h <= 30 && r.y >= 1, "{r:?}");
+    assert_eq!(dt.menu_item_at(Point::new(r.x + 2, r.y + 1)), Some(MenuAction::NewFolder));
+    dt.menu_down();
+    assert_eq!(dt.menu_selected(), Some(MenuAction::CleanUp));
+    dt.menu_hover(Point::new(r.x + 2, r.y + 1));
+    assert_eq!(dt.menu_selected(), Some(MenuAction::NewFolder), "hover highlights");
+    // The keyboard opens the selected icon's menu at its tile.
+    let tr = dt.tile_rect((0, 0));
+    dt.click(Point::new(tr.x + 1, tr.y + 1), false);
+    dt.open_menu_keyboard();
+    assert!(matches!(dt.overlay(), Some(tetron_wm::desktop::DesktopOverlay::Menu { idx: Some(0), .. })));
+    assert_eq!(dt.menu_selected(), Some(MenuAction::Open));
+    // The menu is opaque: no glyph below shows through.
+    let buf = dt.overlay_buffer(100, 30).unwrap();
+    let r = dt.overlay_rect().unwrap();
+    assert_eq!(buf.get(r.x, r.y).unwrap().bg.a, 255);
     let _ = fs::remove_dir_all(&d);
 }
 

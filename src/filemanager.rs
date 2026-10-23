@@ -29,11 +29,11 @@ pub enum Overlay {
     NewFolder { name: String },
     Rename { idx: usize, name: String },
     ConfirmDelete { count: usize },
-    /// Context menu for entry `idx`, anchored at content-local point `at`
-    /// (the click point for a right-click, or the entry's tile/row for the
-    /// keyboard shortcut); `sel` is the highlighted row.
-    Context { idx: usize, at: Point, sel: usize },
-    OpenWith { idx: usize, sel: usize },
+    /// Context menu (the shared [`crate::contextmenu::ContextMenu`]) for entry
+    /// `idx`, anchored at a content-local point: the click point for a
+    /// right-click, or the entry's tile/row for the keyboard. "Open with…"
+    /// swaps its items for the apps that can open the entry.
+    Context { idx: usize, menu: crate::contextmenu::ContextMenu },
     Error { message: String },
     GetInfo { idx: usize },
 }
@@ -432,7 +432,12 @@ impl<F: FsOps> FileManager<F> {
                 self.action = Some(FileManagerAction::RunApp { command, args });
             }
             OpenAction::OpenWithMenu => {
-                self.overlay = Some(Overlay::OpenWith { idx: cursor, sel: 0 });
+                // No default app for this type: offer the ones that can open it.
+                let at = self.entry_anchor(cursor);
+                let items = crate::contextmenu::open_with_actions(&path);
+                if !items.is_empty() {
+                    self.overlay = Some(Overlay::Context { idx: cursor, menu: crate::contextmenu::ContextMenu::new(at, items) });
+                }
             }
         }
     }
@@ -487,7 +492,7 @@ impl<F: FsOps> FileManager<F> {
             return;
         }
         let at = self.entry_anchor(idx);
-        self.overlay = Some(Overlay::Context { idx, at, sel: 0 });
+        self.open_menu(idx, at);
     }
 
     /// Open the context menu for entry `idx`, anchored at the exact
@@ -499,7 +504,16 @@ impl<F: FsOps> FileManager<F> {
             return;
         }
         self.select_at(idx, false, false);
-        self.overlay = Some(Overlay::Context { idx, at, sel: 0 });
+        self.open_menu(idx, at);
+    }
+
+    fn open_menu(&mut self, idx: usize, at: Point) {
+        let is_dir = self.tab().entries.get(idx).is_some_and(|e| e.is_dir);
+        let items = crate::contextmenu::actions_for(
+            crate::contextmenu::Surface::Files,
+            crate::contextmenu::Target::Entry { is_dir, pinned: false },
+        );
+        self.overlay = Some(Overlay::Context { idx, menu: crate::contextmenu::ContextMenu::new(at, items) });
     }
 
     /// The content-local point to anchor a keyboard-invoked context menu for
@@ -507,11 +521,14 @@ impl<F: FsOps> FileManager<F> {
     fn entry_anchor(&self, idx: usize) -> Point {
         let t = self.tab();
         let top = self.content_top();
+        // Scrolled like render and hit-test, so the menu sits at the entry.
+        let off = self.scroll_rows();
         match t.view {
-            ViewMode::List | ViewMode::Columns => Point::new(SIDEBAR_W, top + idx as i32),
+            // Just below the row, so the entry stays visible above the menu.
+            ViewMode::List | ViewMode::Columns => Point::new(SIDEBAR_W, top + idx as i32 - off + 1),
             ViewMode::Icon => {
                 let cols = self.cols_per_row.get().max(1);
-                let tile = icon_tile_rect(SIDEBAR_W, top, cols, idx);
+                let tile = icon_tile_rect(SIDEBAR_W, top - off * TILE_H, cols, idx);
                 Point::new(tile.x, tile.y)
             }
         }
@@ -524,24 +541,31 @@ impl<F: FsOps> FileManager<F> {
 
     /// Move the context-menu highlight up (wrapping).
     pub fn context_menu_up(&mut self) {
-        if let Some(Overlay::Context { sel, .. }) = &mut self.overlay {
-            let n = ContextMenuItem::ALL.len();
-            *sel = (*sel + n - 1) % n;
+        if let Some(Overlay::Context { menu, .. }) = &mut self.overlay {
+            menu.up();
         }
     }
 
     /// Move the context-menu highlight down (wrapping).
     pub fn context_menu_down(&mut self) {
-        if let Some(Overlay::Context { sel, .. }) = &mut self.overlay {
-            let n = ContextMenuItem::ALL.len();
-            *sel = (*sel + 1) % n;
+        if let Some(Overlay::Context { menu, .. }) = &mut self.overlay {
+            menu.down();
         }
     }
 
-    /// Perform the highlighted context-menu action and close the menu.
+    /// Highlight the menu row under the content-local point `p` (mouse hover).
+    pub fn context_menu_hover(&mut self, p: Point, w: i32, h: i32) {
+        if let Some(Overlay::Context { menu, .. }) = &mut self.overlay {
+            menu.hover(p, crate::geometry::Rect::new(0, 0, w, h));
+        }
+    }
+
+    /// Perform the highlighted context-menu action.
     pub fn context_menu_commit(&mut self) {
-        if let Some(Overlay::Context { idx, sel, .. }) = self.overlay.take() {
-            self.run_context_action(idx, ContextMenuItem::ALL[sel]);
+        if let Some(Overlay::Context { idx, menu }) = self.overlay.take() {
+            if let Some(action) = menu.selected().cloned() {
+                self.run_context_action(idx, menu, action);
+            }
         }
     }
 
@@ -551,31 +575,45 @@ impl<F: FsOps> FileManager<F> {
     /// or `false` when no menu is open (so the caller falls back to normal
     /// FM click handling).
     pub fn context_menu_click(&mut self, p: Point, w: i32, h: i32) -> bool {
-        if !self.context_menu_open() {
+        let Some(Overlay::Context { idx, menu }) = self.overlay.take() else {
             return false;
-        }
-        match self.context_menu_item_at(p, w, h) {
-            Some(item) => {
-                if let Some(Overlay::Context { idx, .. }) = self.overlay.take() {
-                    self.run_context_action(idx, item);
-                }
-            }
-            None => self.overlay = None,
+        };
+        if let Some(action) = menu.item_at(p, crate::geometry::Rect::new(0, 0, w, h)).cloned() {
+            self.run_context_action(idx, menu, action);
         }
         true
     }
 
-    /// Dispatch a context-menu action, reusing the FM's existing operations —
-    /// no new file operations are introduced for the menu.
-    fn run_context_action(&mut self, idx: usize, item: ContextMenuItem) {
+    /// Dispatch a context-menu action, reusing the FM's existing operations.
+    /// "Open with…" keeps the menu open with the app choices instead.
+    fn run_context_action(&mut self, idx: usize, mut menu: crate::contextmenu::ContextMenu, action: crate::contextmenu::MenuAction) {
+        use crate::contextmenu::MenuAction as A;
         self.select_at(idx, false, false);
-        match item {
-            ContextMenuItem::Open => self.activate(),
-            ContextMenuItem::Rename => self.begin_rename(),
-            ContextMenuItem::Copy => self.copy_selection(),
-            ContextMenuItem::Cut => self.cut_selection(),
-            ContextMenuItem::Delete => self.begin_delete(),
-            ContextMenuItem::GetInfo => self.begin_get_info(),
+        let path = self.tab().entries.get(idx).map(|e| e.path.clone());
+        match action {
+            A::Open => self.activate(),
+            A::OpenWith => {
+                let items = path.as_deref().map(crate::contextmenu::open_with_actions).unwrap_or_default();
+                if !items.is_empty() {
+                    menu.replace(items);
+                    self.overlay = Some(Overlay::Context { idx, menu });
+                }
+            }
+            A::OpenWithApp(cmd) => {
+                if let Some(path) = path {
+                    self.action = match crate::openwith::open_with(&cmd, &path) {
+                        OpenAction::Builtin("@image") => Some(FileManagerAction::OpenImage(path)),
+                        OpenAction::RunApp { command, args } => Some(FileManagerAction::RunApp { command, args }),
+                        _ => None,
+                    };
+                }
+            }
+            A::Rename => self.begin_rename(),
+            A::Copy => self.copy_selection(),
+            A::Cut => self.cut_selection(),
+            A::Trash => self.begin_delete(),
+            A::GetInfo => self.begin_get_info(),
+            A::Unpin | A::NewFolder | A::CleanUp => {}
         }
     }
 
@@ -1093,11 +1131,8 @@ impl<F: FsOps> FileManager<F> {
                     &[format!("Trash {count} item(s)? [Enter] Yes  [Esc] No")],
                 );
             }
-            Overlay::Context { sel, .. } => {
-                self.render_context_menu(buf, w, h, *sel);
-            }
-            Overlay::OpenWith { .. } => {
-                self.draw_box(buf, w, h, "Open with", &["Pick an app (Enter), Esc to cancel".to_string()]);
+            Overlay::Context { menu, .. } => {
+                menu.render(buf, crate::geometry::Rect::new(0, 0, w, h));
             }
             Overlay::Error { message } => {
                 self.draw_box(buf, w, h, "Error", std::slice::from_ref(message));
@@ -1140,89 +1175,6 @@ impl<F: FsOps> FileManager<F> {
         buf.write_str(bx + 2, by, title, pal_accent(), pal_sel());
         for (i, line) in lines.iter().enumerate() {
             buf.write_str(bx + 2, by + 2 + i as i32, line, pal_fg(), pal_sel());
-        }
-    }
-
-    /// The screen rect of the open context menu (anchor + item list), clamped
-    /// so it never spills outside the `w×h` content area. `None` when no
-    /// context menu is open.
-    fn context_menu_rect(&self, w: i32, h: i32) -> Option<crate::geometry::Rect> {
-        let Some(Overlay::Context { at, .. }) = &self.overlay else { return None; };
-        let mw = CONTEXT_MENU_W;
-        let mh = ContextMenuItem::ALL.len() as i32 + 2;
-        let x = at.x.clamp(0, (w - mw).max(0));
-        let y = at.y.clamp(0, (h - mh).max(0));
-        Some(crate::geometry::Rect::new(x, y, mw, mh))
-    }
-
-    /// The context-menu item under `p`, if the menu is open and `p` lands on
-    /// one of its rows.
-    fn context_menu_item_at(&self, p: Point, w: i32, h: i32) -> Option<ContextMenuItem> {
-        let r = self.context_menu_rect(w, h)?;
-        if !r.contains(p) {
-            return None;
-        }
-        // Rows are the interior of the box (skip the top border row).
-        let row = p.y - (r.y + 1);
-        if row < 0 || row as usize >= ContextMenuItem::ALL.len() {
-            return None;
-        }
-        Some(ContextMenuItem::ALL[row as usize])
-    }
-
-    /// Render the open context menu: a compact box at its anchor with one row
-    /// per item, the highlighted (hovered / keyboard-selected) row in reverse
-    /// video.
-    fn render_context_menu(&self, buf: &mut CellBuffer, w: i32, h: i32, sel: usize) {
-        let Some(r) = self.context_menu_rect(w, h) else { return; };
-        for y in r.y..r.y + r.h {
-            for x in r.x..r.x + r.w {
-                buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: pal_sel(), attrs: Default::default() });
-            }
-        }
-        for (i, item) in ContextMenuItem::ALL.iter().enumerate() {
-            let hi = i == sel;
-            let (fg, bg) = if hi { (pal_bg(), pal_accent()) } else { (pal_fg(), pal_sel()) };
-            let y = r.y + 1 + i as i32;
-            for x in r.x + 1..r.x + r.w - 1 {
-                buf.set(x, y, Cell { ch: ' ', fg, bg, attrs: Default::default() });
-            }
-            buf.write_str(r.x + 1, y, item.label(), fg, bg);
-        }
-    }
-}
-
-/// Fixed width of the FM context-menu box.
-const CONTEXT_MENU_W: i32 = 14;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ContextMenuItem {
-    Open,
-    Rename,
-    Copy,
-    Cut,
-    Delete,
-    GetInfo,
-}
-
-impl ContextMenuItem {
-    const ALL: [ContextMenuItem; 6] = [
-        ContextMenuItem::Open,
-        ContextMenuItem::Rename,
-        ContextMenuItem::Copy,
-        ContextMenuItem::Cut,
-        ContextMenuItem::Delete,
-        ContextMenuItem::GetInfo,
-    ];
-
-    fn label(self) -> &'static str {
-        match self {
-            ContextMenuItem::Open => "Open",
-            ContextMenuItem::Rename => "Rename",
-            ContextMenuItem::Copy => "Copy",
-            ContextMenuItem::Cut => "Cut",
-            ContextMenuItem::Delete => "Delete",
-            ContextMenuItem::GetInfo => "Get Info",
         }
     }
 }
@@ -1349,6 +1301,30 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
     }
 
+    /// In a scrolled list the keyboard menu opens just below the cursor's
+    /// visible row, not where the row would be unscrolled.
+    #[test]
+    fn begin_context_follows_the_list_scroll() {
+        let d = tmp("ctxscroll");
+        for i in 0..60 { fs::write(d.join(format!("f{i:02}")), b"").unwrap(); }
+        let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+        fm.set_view(ViewMode::List);
+        let _ = fm.render(80, 24);
+        for _ in 0..40 { fm.move_cursor(0, 1); }
+        let _ = fm.render(80, 24);
+        let off = fm.scroll_rows();
+        assert!(off > 0, "the list scrolled");
+        fm.begin_context();
+        match fm.overlay() {
+            Some(Overlay::Context { menu, .. }) => {
+                assert_eq!(menu.anchor.y, fm.content_top() + 40 - off + 1);
+                assert!(menu.anchor.y < 24, "on screen");
+            }
+            other => panic!("expected a Context overlay, got {other:?}"),
+        }
+        let _ = fs::remove_dir_all(&d);
+    }
+
     /// The keyboard-invoked context menu anchors at the focused entry's tile
     /// (Icon view), matching the same `icon_tile_rect` render/hit_test use —
     /// not some fixed/centered position.
@@ -1365,10 +1341,10 @@ mod tests {
         let top = fm.content_top();
         let expected = icon_tile_rect(SIDEBAR_W, top, cols, 1);
         match fm.overlay() {
-            Some(Overlay::Context { idx, at, .. }) => {
+            Some(Overlay::Context { idx, menu }) => {
                 assert_eq!(*idx, 1);
-                assert_eq!(at.x, expected.x);
-                assert_eq!(at.y, expected.y);
+                assert_eq!(menu.anchor.x, expected.x);
+                assert_eq!(menu.anchor.y, expected.y);
             }
             other => panic!("expected a Context overlay, got {other:?}"),
         }

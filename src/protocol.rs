@@ -161,6 +161,9 @@ pub struct Flags {
     pub filemanager_context: bool,
     /// The desktop has a rename/new-folder overlay open; forward typed chars.
     pub desktop_editing: bool,
+    /// The desktop right-click menu is open; the client routes arrows, Enter
+    /// and Esc to it.
+    pub desktop_menu: bool,
     /// The daemon asked the client to detach (e.g. the Quit button was clicked).
     pub detach: bool,
     /// The daemon is reloading the frontend; the client should reconnect (not

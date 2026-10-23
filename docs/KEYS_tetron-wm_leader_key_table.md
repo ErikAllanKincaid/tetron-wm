@@ -27,6 +27,7 @@ The leader key exists so tetron-wm shortcuts never collide with your terminal, t
 | `[`, `left` | `snap_left` | Snap the focused window to the left half of the screen |
 | `]`, `right` | `snap_right` | Snap the focused window to the right half of the screen |
 | `t` | `tile` | Tile all windows into the grid once |
+| `.` | `context_menu` | Right-click menu for the selected file in Files, or on the desktop when no window is focused; arrows and Enter pick, Esc closes |
 | `T` | `auto_tile` | Toggle auto-tile mode (new windows re-tile the grid automatically) |
 | `1` to `9` | none (fixed) | Send the focused window to grid cell N (row-major, 1-based) |
 | `r`, `R` | `rename` | Rename the focused window |
@@ -58,7 +59,7 @@ These keys are unused after the leader and safe to bind in `[keys]` or to claim 
 | lowercase | `a b d e g i j k o u` |
 | uppercase | `B D E F G H I J K L O P U V W X Y Z` |
 | digit | `0` |
-| symbols | `` ` - ; ' . / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |
+| symbols | `` ` - ; ' / \ ! @ # $ % ^ & * ( ) _ + { } | : " < > ~ `` |
 
 `d` is reserved for the planned screen dump above, and `g` is reserved for the planned grid prefix (`g` then `1` to `9` sends a window to a cell).
 

@@ -488,6 +488,7 @@ fn serve_client_inner(
             filemanager_editing: core.filemanager_editing(),
             filemanager_context: core.filemanager_context(),
             desktop_editing: core.desktop_editing(),
+            desktop_menu: core.desktop_menu_open(),
             renaming: core.renaming(),
             confirm_close: core.confirm_close_open(),
             launch_warn: core.launch_warn_open(),

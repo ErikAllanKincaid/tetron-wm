@@ -50,6 +50,7 @@ pub const DEFAULTS: &[(&str, &[&str], &str)] = &[
     ("help", &["?", "h"], "shortcut help"),
     ("rename", &["r", "R"], "rename focused window"),
     ("tile", &["t"], "tile all windows into the grid"),
+    ("context_menu", &["."], "right-click menu for the selected file (Files or desktop), arrows and Enter pick"),
     ("auto_tile", &["T"], "toggle auto-tile"),
     ("screensaver", &["z"], "start the screensaver (any key or mouse wakes it)"),
     ("screenshot", &["s"], "save a screenshot (PNG) of the whole screen"),
