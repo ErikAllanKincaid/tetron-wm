@@ -635,6 +635,9 @@ pub struct SessionCore {
     w: i32,
     h: i32,
     drag: Option<Hit>,
+    /// A mouse drag panning a zoomed image viewer: its window and the last
+    /// pointer cell.
+    image_pan: Option<(WindowId, Point)>,
     /// Pointer position where the current drag was pressed, and whether it has
     /// passed the drag threshold. A plain click (or sub-threshold jitter) on a
     /// titlebar must NOT move/untile the window — only a real drag does.
@@ -765,6 +768,7 @@ impl SessionCore {
             w,
             h,
             drag: None,
+            image_pan: None,
             drag_start: None,
             drag_armed: false,
             cursor: Point::new(w / 2, h / 2),
@@ -2605,8 +2609,18 @@ or a remote-side error — its authorized_keys was left untouched)",
                     return;
                 }
                 self.handle_mouse(MouseKind::Down, p);
+                self.image_pan = self.zoomed_image_at(p).map(|id| (id, p));
             }
             ClientMsg::MouseDrag(p) => {
+                // A press on a zoomed image pans it while the button is held.
+                if let Some((id, last)) = self.image_pan {
+                    if let Some(WinContent::ImageView(v)) = self.contents.get_mut(&id) {
+                        v.drag_by(p.x - last.x, p.y - last.y);
+                    }
+                    self.image_pan = Some((id, p));
+                    self.cursor = p;
+                    return;
+                }
                 // An active text selection owns drags (extend the selection).
                 if self.selection.map(|s| s.dragging).unwrap_or(false) {
                     self.cursor = p;
@@ -2626,6 +2640,10 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.handle_mouse(MouseKind::Drag, p);
             }
             ClientMsg::MouseUp(p) => {
+                if self.image_pan.take().is_some() {
+                    self.cursor = p;
+                    return;
+                }
                 // Finish a text selection (capture its text into the primary
                 // buffer) before any window-drag release handling.
                 if self.selection.map(|s| s.dragging).unwrap_or(false) {
@@ -2640,6 +2658,8 @@ or a remote-side error — its authorized_keys was left untouched)",
                 self.handle_mouse(MouseKind::Up, p);
             }
             ClientMsg::MouseMove(p) => {
+                // A no-button move means the release was lost: end an image pan.
+                self.image_pan = None;
                 // A no-button move ends any active text selection (self-heals a
                 // missed release), then behaves like the previous bare-move path
                 // (hover / drag-preview via handle_mouse).
@@ -3685,6 +3705,18 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.contents.insert(id, WinContent::Logs(crate::logsview::LogsView::new()));
         self.titles.push((id, "Logs".into()));
         self.logs_win = Some(id);
+    }
+
+    /// The zoomed image viewer whose image area is under `p` (topmost window),
+    /// so a press there starts a pan instead of doing nothing.
+    fn zoomed_image_at(&self, p: Point) -> Option<WindowId> {
+        let id = self.wm.topmost_at(p)?;
+        let win = self.wm.get(id)?;
+        let content = if self.simple && self.wm.focused() == Some(id) { self.simple_content_rect() } else { win.content_rect() };
+        match self.contents.get(&id) {
+            Some(WinContent::ImageView(v)) if !win.minimized && v.zoomed() && content.contains(p) => Some(id),
+            _ => None,
+        }
     }
 
     /// `true` when the focused window is an image viewer (keyboard routing).

@@ -392,6 +392,23 @@ impl ImageView {
         false
     }
 
+    /// Whether the view is zoomed in (so it can pan).
+    pub fn zoomed(&self) -> bool {
+        self.zoom > 1.0
+    }
+
+    /// Pan by a mouse drag of (`dx`, `dy`) cells: the image follows the pointer.
+    pub fn drag_by(&mut self, dx: i32, dy: i32) {
+        let (Some(key), Some(img)) = (self.cur, self.img.as_ref()) else { return };
+        let f = key.fit;
+        // Source pixels per destination cell, as a fraction of the image.
+        self.cx -= dx as f32 * f.sw as f32 / f.dw.max(1) as f32 / img.width() as f32;
+        self.cy -= dy as f32 * f.sh as f32 / f.dh.max(1) as f32 / img.height() as f32;
+        let half = 0.5 / self.zoom;
+        self.cx = self.cx.clamp(half, 1.0 - half);
+        self.cy = self.cy.clamp(half, 1.0 - half);
+    }
+
     fn step_image(&mut self, d: i32) {
         let n = self.siblings.len() as i32;
         if n < 2 {
@@ -672,6 +689,26 @@ mod tests {
         assert_eq!(v.zoom, ZOOM_MAX);
         v.key(ImageKey::Fit);
         assert_eq!((v.zoom, v.cx, v.cy), (1.0, 0.5, 0.5));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn mouse_drag_pans_with_the_pointer_only_when_zoomed() {
+        let (dir, paths) = folder();
+        let mut store = ImageStore::new();
+        let mut v = ImageView::new(paths[0].clone(), Method::Auto);
+        poll_until(&mut v, &mut store, |v| v.img.is_some());
+        v.poll(30, 12, caps(false, false), true, &mut store);
+        v.drag_by(5, 0);
+        assert_eq!(v.cx, 0.5, "at fit there is nothing to pan");
+        v.key(ImageKey::ZoomIn);
+        v.key(ImageKey::ZoomIn);
+        v.poll(30, 12, caps(false, false), true, &mut store);
+        let cx = v.cx;
+        v.drag_by(3, 0);
+        assert!(v.cx < cx, "dragging right shows more of the left side");
+        v.drag_by(-6, 0);
+        assert!(v.cx > cx, "dragging left shows more of the right side");
         let _ = std::fs::remove_dir_all(dir);
     }
 

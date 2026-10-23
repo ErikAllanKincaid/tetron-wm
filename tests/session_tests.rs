@@ -128,6 +128,27 @@ fn image_window_draws_cells_then_a_fitted_kitty_placement() {
     // A 2:1 image, in cells twice as tall as wide, spans 4 columns per row.
     assert_eq!(p.cols as i32, 4 * p.rows as i32, "aspect kept: {p:?}");
 
+    // Zoomed in, a press on the image and a drag pan the shown crop.
+    core.apply(ClientMsg::Caps(tetron_wm::display::ClientCaps { kitty_graphics: true, ..before }));
+    for _ in 0..3 {
+        core.apply(ClientMsg::ImageKey(tetron_wm::imageview::ImageKey::ZoomIn));
+    }
+    core.pump_images();
+    let src_x = |core: &mut SessionCore| {
+        core.pump_images();
+        core.build_frame().images[0].src.unwrap()[0]
+    };
+    let x0 = src_x(&mut core);
+    let r = core.build_frame().images[0].rect;
+    let mid = tetron_wm::geometry::Point::new(r.x + r.w / 2, r.y + r.h / 2);
+    core.apply(ClientMsg::MouseDown(mid));
+    core.apply(ClientMsg::MouseDrag(tetron_wm::geometry::Point::new(mid.x - 4, mid.y)));
+    core.apply(ClientMsg::MouseUp(tetron_wm::geometry::Point::new(mid.x - 4, mid.y)));
+    let x1 = src_x(&mut core);
+    tetron_wm::display::set(before);
+    assert!(x1 > x0, "dragging left moves the crop right: {x0} -> {x1}");
+    assert!(core.focused_is_image(), "the press did not close or move the window");
+
     // Esc closes the viewer.
     core.apply(ClientMsg::ImageKey(tetron_wm::imageview::ImageKey::Close));
     assert!(!core.focused_is_image());

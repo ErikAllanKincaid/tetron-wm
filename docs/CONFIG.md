@@ -107,7 +107,7 @@ These behaviors are fixed in tetron-wm and do not need configuration:
 - Clipboard: `Ctrl+Shift+C` copies the selection (and to the host via OSC 52), `Ctrl+Shift+V` pastes it.
 - Scrollback: mouse wheel, or `Shift+PageUp` / `Shift+PageDown`.
 - Hold `Shift` to force terminal selection/paste even over an app that is grabbing the mouse.
-- Image viewer (open an image from the file manager or desktop): `+` / `-` or the mouse wheel zoom, `0` fits, arrows pan when zoomed, `n` / `p` (and Left / Right at fit, Space, PageDown / PageUp) step through the images in the folder, `m` switches graphics / cells, `i` toggles the info line, `Esc` or `q` closes.
+- Image viewer (open an image from the file manager or desktop): `+` / `-` or the mouse wheel zoom, `0` fits, arrows or a left-button drag pan when zoomed, `n` / `p` (and Left / Right at fit, Space, PageDown / PageUp) step through the images in the folder, `m` switches graphics / cells, `i` toggles the info line, `Esc` or `q` closes.
 
 ## Leader keys
 
