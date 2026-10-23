@@ -19,8 +19,8 @@
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
-#      extras         — recommended tools: chafa, mpv, sshpass, htop, btop,      [Linux, macOS]
-#                       upower, alsa-utils, the DejaVu Sans Mono font, and xclip /
+#      extras         — recommended tools: chafa, mpv, fresh, sshpass, htop,     [Linux, macOS]
+#                       btop, upower, alsa-utils, the DejaVu Sans Mono font, and xclip /
 #                       wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
@@ -199,9 +199,11 @@ ensure_truecolor() {
 # A "font=NAME" command field means "is this font installed" instead (see
 # present); DejaVu Sans Mono backs the default icon tier and kmscon. mpv has
 # no Fedora entry: it lives in RPM Fusion there, and one unknown package makes
-# dnf refuse the whole batch.
+# dnf refuse the whole batch. fresh (the editor) is in Homebrew only; on Linux
+# its own installer adds it (see fresh_via_script).
 EXTRAS="chafa:chafa:chafa:chafa:chafa
 mpv:mpv::mpv:mpv
+fresh::::fresh-editor
 sshpass:sshpass:sshpass:sshpass:
 htop:htop:htop:htop:htop
 btop:btop:btop:btop:btop
@@ -265,6 +267,22 @@ extras_list() {
   is_graphical && l="$l
 $EXTRAS_GUI"
   missing_pkgs "$l"
+}
+
+# fresh is in no Linux distro repository; its official installer picks the
+# right method itself (.deb, .rpm, AUR, …). Offered with the extras when missing.
+FRESH_INSTALLER="https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh"
+fresh_via_script() { [ "$IS_LINUX" = 1 ] && ! have fresh; }
+
+install_fresh() {
+  log "installing fresh with its official installer ($FRESH_INSTALLER)"
+  local tmp; tmp="$(mktemp)"
+  if fetch "$FRESH_INSTALLER" > "$tmp"; then
+    sh "$tmp" || warn "the fresh installer failed; see https://github.com/sinelaw/fresh#installation"
+  else
+    warn "could not download the fresh installer; see https://github.com/sinelaw/fresh#installation"
+  fi
+  rm -f "$tmp"
 }
 
 # ── Step 3: kmscon ─────────────────────────────────────────────────────────────
@@ -534,9 +552,11 @@ main() {
   # Only ask about packages that are actually missing; nothing to ask = skip.
   local extras services=""
   extras="$(extras_list)"
+  local shown="$extras"
+  fresh_via_script && shown="${shown:+$shown }fresh"
   [ "$IS_LINUX" = 1 ] && services="$(missing_pkgs "$SERVICES")"
-  if [ -n "$extras" ]; then
-    resolve WANT_EXTRAS "Install recommended tools ($extras)?" y
+  if [ -n "$shown" ]; then
+    resolve WANT_EXTRAS "Install recommended tools ($shown)?" y
   else
     WANT_EXTRAS=n
   fi
@@ -565,12 +585,13 @@ main() {
 
   echo
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${extras:+ ($extras)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
     return 0
   fi
   [ "$WANT_WM" = y ]        && install_wm
   [ "$WANT_CONFIG" = y ]    && seed_config
   [ "$WANT_EXTRAS" = y ]    && pm_install "$extras"
+  [ "$WANT_EXTRAS" = y ]    && fresh_via_script && install_fresh
   [ "$WANT_SERVICES" = y ]  && pm_install "$services"
   [ "$WANT_KMSCON" = y ]    && install_kmscon
   [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"
