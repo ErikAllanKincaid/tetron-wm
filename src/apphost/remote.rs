@@ -110,7 +110,9 @@ fn reader_loop_buffered(
 ) {
     while let Ok(Some(evt)) = recv::<HostEvt, _>(&mut r) {
         apply_evt(evt, &cache, &pending, &inflight);
+        crate::daemon::wake();
     }
+    crate::daemon::wake(); // the app server went away
 }
 
 fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, inflight: &Inflight) {

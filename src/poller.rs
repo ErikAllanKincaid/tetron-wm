@@ -4,7 +4,7 @@
 //! timeout-guarded, so the poller can never hang the desktop.
 
 use crate::protocol::DaemonStatus;
-use crate::system::{backend, BatteryInfo, ClockInfo, Interest, SystemState};
+use crate::system::{backend, BatteryInfo, ClockInfo, Interest, SystemState, Want};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -79,6 +79,10 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
         .unwrap_or_else(Instant::now);
     let mut seen_kick = gate.1.kick_gen();
     let caps = backend.caps();
+    // The network and Bluetooth reads (nmcli, bluetoothctl) start D-Bus clients
+    // and cost far more than the volume read, so they refresh less often.
+    let mut last_radio = last_slow;
+    let mut clock = Clock::default();
 
     // Remote reachability + calendar events refresh on their own (slowest)
     // cadence, on a separate thread so a slow ssh-port probe or `khal` run can
@@ -119,29 +123,37 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
         // attaches, then refresh everything (including the slow reads) at once.
         if gate.wait_attached() {
             last_slow = Instant::now().checked_sub(Duration::from_secs(10)).unwrap_or_else(Instant::now);
+            last_radio = Instant::now().checked_sub(Duration::from_secs(60)).unwrap_or_else(Instant::now);
+            clock = Clock::default();
         }
         sys.refresh_cpu_usage();
         sys.refresh_memory();
         let cpu_pct = sys.global_cpu_usage();
         let (used, total) = (sys.used_memory(), sys.total_memory());
-        let clock = now_clock();
+        let clock_now = clock.now();
         let battery = read_battery();
 
         // The shell-backed metrics refresh less often than CPU/clock, or at once
         // when a hidden part becomes visible. Only the parts the UI shows are read.
         let kick = gate.1.kick_gen();
-        let slow = last_slow.elapsed() >= Duration::from_secs(3) || kick != seen_kick;
+        let kicked = kick != seen_kick;
+        let slow = last_slow.elapsed() >= SLOW_EVERY || kicked;
+        let radio = last_radio.elapsed() >= RADIO_EVERY || kicked;
         seen_kick = kick;
-        let want = gate.1.want();
+        let shown = gate.1.want();
+        let want = Want { volume: shown.volume, net: shown.net && radio, bluetooth: shown.bluetooth && radio };
         let readout = if slow {
             last_slow = Instant::now();
+            if radio {
+                last_radio = last_slow;
+            }
             Some(backend.read_parts(want))
         } else {
             None
         };
 
         if let Ok(mut s) = state.write() {
-            s.clock = clock;
+            s.clock = clock_now;
             s.cpu_pct = cpu_pct;
             s.mem.used = used;
             s.mem.total = total;
@@ -168,23 +180,49 @@ fn run(state: Arc<RwLock<SystemState>>, gate: Gate) {
     }
 }
 
-fn now_clock() -> ClockInfo {
-    // Local time via `date` (cheap, avoids a chrono dependency); uptime via sysinfo.
-    let time = crate::system::run_capped("date", &["+%H:%M"], 1)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let date = crate::system::run_capped("date", &["+%a %d %b"], 1)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    // Civil date for the menubar calendar (one call, parsed locally).
-    let ymd = crate::system::run_capped("date", &["+%Y-%m-%d"], 1).unwrap_or_default();
-    let mut parts = ymd.trim().splitn(3, '-');
+/// Volume refresh interval (and the cadence of the slow-read check).
+const SLOW_EVERY: Duration = Duration::from_secs(3);
+/// WiFi, link, known networks and Bluetooth refresh interval. Showing a hidden
+/// part, attaching, or a tray action (a kick) refreshes them at once.
+const RADIO_EVERY: Duration = Duration::from_secs(10);
+
+/// The menubar clock. The shown fields change only at a minute boundary (time
+/// zone offsets are whole minutes), so `date` runs once a minute, not every
+/// second; uptime comes from sysinfo each call.
+#[derive(Default)]
+struct Clock {
+    minute: Option<u64>,
+    info: ClockInfo,
+}
+
+impl Clock {
+    fn now(&mut self) -> ClockInfo {
+        let minute = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() / 60)
+            .unwrap_or(0);
+        if self.minute != Some(minute) {
+            // Local time via `date` (cheap, avoids a chrono dependency), one call.
+            let out = crate::system::run_capped("date", &["+%H:%M%n%a %d %b%n%Y-%m-%d"], 1).unwrap_or_default();
+            self.info = parse_date_lines(&out);
+            // A failed run is retried next second instead of kept for a minute.
+            self.minute = (!out.is_empty()).then_some(minute);
+        }
+        ClockInfo { uptime_secs: sysinfo::System::uptime(), ..self.info.clone() }
+    }
+}
+
+/// Parse `date +%H:%M%n%a %d %b%n%Y-%m-%d`: time, date, then the civil date for
+/// the menubar calendar.
+fn parse_date_lines(out: &str) -> ClockInfo {
+    let mut lines = out.lines().map(str::trim);
+    let time = lines.next().unwrap_or_default().to_string();
+    let date = lines.next().unwrap_or_default().to_string();
+    let mut parts = lines.next().unwrap_or_default().splitn(3, '-');
     let year = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
     let month = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
     let day = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    ClockInfo { time, date, uptime_secs: sysinfo::System::uptime(), year, month, day }
+    ClockInfo { time, date, uptime_secs: 0, year, month, day }
 }
 
 /// Battery is reported only on hosts that have one; `None` hides the segment.
@@ -427,5 +465,31 @@ mod tests {
         assert!(parse_ymd("2026-13-01").is_none());
         assert_eq!(parse_ymd("2026-06-10"), Some((2026, 6, 10)));
         assert_eq!(parse_ymd("10.06.2026"), Some((2026, 6, 10)));
+    }
+
+    #[test]
+    fn date_lines_parse_time_date_and_civil_date() {
+        let c = parse_date_lines("14:05\nThu 22 Oct\n2026-10-22\n");
+        assert_eq!((c.time.as_str(), c.date.as_str()), ("14:05", "Thu 22 Oct"));
+        assert_eq!((c.year, c.month, c.day), (2026, 10, 22));
+        let empty = parse_date_lines("");
+        assert_eq!((empty.time.as_str(), empty.year), ("", 0), "a failed `date` leaves the clock blank");
+    }
+
+    #[test]
+    fn clock_runs_date_once_per_minute() {
+        let mut c = Clock::default();
+        let first = c.now();
+        if first.time.is_empty() {
+            return; // no `date` on this host
+        }
+        let minute = c.minute;
+        assert!(minute.is_some());
+        // Within the same minute the cached fields are reused, not re-read.
+        c.info.time = "cached".into();
+        if c.minute == minute && c.now().time != "cached" {
+            // The minute rolled over between the two calls; the re-read is correct.
+            assert_ne!(c.minute, minute);
+        }
     }
 }
