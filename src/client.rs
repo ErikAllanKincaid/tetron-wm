@@ -35,8 +35,9 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
     let mut out_stream = stream.try_clone()?;
     send(&mut out_stream, &ClientMsg::Resize { w, h, takeover })?;
     // Tell the daemon what this display can show, so it adapts the theme and
-    // wallpaper (an older daemon ignores the message).
-    send(&mut out_stream, &ClientMsg::Caps(caps.client_caps()))?;
+    // wallpaper (an older daemon ignores the message), and that this client
+    // reads packed cells (an older daemon ignores the field and sends `changes`).
+    send(&mut out_stream, &ClientMsg::Caps(crate::display::ClientCaps { packed_cells: true, ..caps.client_caps() }))?;
 
     // A per-system theme rides over ssh as TETRON_WM_THEME: apply it to this
     // daemon's config as soon as we attach.
@@ -106,6 +107,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                                 transmitted.clear();
                                 active.clear();
                             }
+                            crate::protocol::unpack_spans(&msg.spans, &mut msg.changes);
                             let ansi = frame_to_ansi(&msg.changes, &caps);
                             let _ = out.write_all(ansi.as_bytes());
                             if caps.kitty_graphics {
@@ -879,6 +881,7 @@ mod tests {
     fn frame_with(images: Vec<ImagePlacement>) -> FrameMsg {
         FrameMsg {
             changes: Vec::new(),
+            spans: Vec::new(),
             cursor: None,
             flags: Flags::default(),
             images,

@@ -232,6 +232,7 @@ fn handshake(stream: UnixStream) -> Conn {
 fn notice_frame(notice: &str) -> Vec<u8> {
     let mut buf = serde_json::to_vec(&FrameMsg {
         changes: Vec::new(),
+        spans: Vec::new(),
         cursor: None,
         flags: Flags { detach: true, ..Default::default() },
         images: Vec::new(),
@@ -370,6 +371,8 @@ fn serve_client_inner(
     // cells and kept image placements the incremental diff/delete stream no
     // longer knows about, so only a full re-baseline is trustworthy.
     let mut clear_pending = true;
+    // The client reads packed `spans` (it said so in its `Caps`).
+    let mut packed = false;
 
     loop {
         // A new connection while this client is attached: `attach -d` evicts
@@ -397,7 +400,11 @@ fn serve_client_inner(
                     // The client's wipe frees transmitted image data; re-send it.
                     sent_image_ids.clear();
                 }
-                Ok(msg) => {
+                Ok(mut msg) => {
+                    // A wire fact for this connection; the session never sees it.
+                    if let ClientMsg::Caps(c) = &mut msg {
+                        packed = std::mem::take(&mut c.packed_cells);
+                    }
                     if let Some(msg) = wake_or_pass(core, msg) {
                         core.apply(msg);
                     }
@@ -478,8 +485,14 @@ fn serve_client_inner(
                 }
             }
         }
+        let (changes, spans) = if packed {
+            (Vec::new(), crate::protocol::pack_changes(&changes))
+        } else {
+            (changes, Vec::new())
+        };
         let mut buf = serde_json::to_vec(&FrameMsg {
             changes,
+            spans,
             cursor: frame.cursor,
             flags,
             images: frame.images.clone(),

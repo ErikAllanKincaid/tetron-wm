@@ -14,7 +14,14 @@ use std::path::{Path, PathBuf};
 /// image layer (placements + any first-time image data).
 #[derive(Serialize, Deserialize)]
 pub struct FrameMsg {
+    /// Changed cells, one JSON object each. Empty when the client asked for
+    /// `spans` (`ClientCaps::packed_cells`); older clients only read this.
+    #[serde(default)]
     pub changes: Vec<CellChange>,
+    /// The same changes packed as same-style runs (see [`Span`]), sent only to
+    /// a client that advertised `packed_cells`. Applied after `changes`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spans: Vec<Span>,
     pub cursor: Option<Point>,
     pub flags: Flags,
     /// Image placements for this frame (where each visible image goes).
@@ -44,6 +51,54 @@ pub struct FrameMsg {
     /// client"). Set on a final frame only.
     #[serde(default)]
     pub notice: Option<String>,
+}
+
+/// A run of changed cells on one row, left to right from `x`, that share
+/// colours and attributes: `[x, y, fg, bg, attrs, text]` on the wire, with
+/// colours as `0xRRGGBBAA` and attrs as bits (bold 1, italic 2, underline 4,
+/// inverse 8). About a tenth the JSON of one `CellChange` object per cell.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Span(pub i32, pub i32, pub u32, pub u32, pub u8, pub String);
+
+fn pack_rgba(c: crate::cell::Rgba) -> u32 { u32::from_be_bytes([c.r, c.g, c.b, c.a]) }
+
+fn unpack_rgba(v: u32) -> crate::cell::Rgba {
+    let [r, g, b, a] = v.to_be_bytes();
+    crate::cell::Rgba { r, g, b, a }
+}
+
+fn pack_attrs(a: crate::cell::CellAttrs) -> u8 {
+    a.bold as u8 | (a.italic as u8) << 1 | (a.underline as u8) << 2 | (a.inverse as u8) << 3
+}
+
+fn unpack_attrs(v: u8) -> crate::cell::CellAttrs {
+    crate::cell::CellAttrs { bold: v & 1 != 0, italic: v & 2 != 0, underline: v & 4 != 0, inverse: v & 8 != 0 }
+}
+
+/// Pack `changes` (in any order) into [`Span`]s: a run continues while the next
+/// change is the next column on the same row with the same style.
+pub fn pack_changes(changes: &[CellChange]) -> Vec<Span> {
+    let mut out: Vec<Span> = Vec::new();
+    let mut end = (i32::MIN, i32::MIN); // (row, column after the open span)
+    for c in changes {
+        let (fg, bg, at) = (pack_rgba(c.cell.fg), pack_rgba(c.cell.bg), pack_attrs(c.cell.attrs));
+        match out.last_mut() {
+            Some(s) if end == (c.y, c.x) && s.2 == fg && s.3 == bg && s.4 == at => s.5.push(c.cell.ch),
+            _ => out.push(Span(c.x, c.y, fg, bg, at, c.cell.ch.to_string())),
+        }
+        end = (c.y, c.x + 1);
+    }
+    out
+}
+
+/// Expand `spans` back into one [`CellChange`] per cell, appended to `out`.
+pub fn unpack_spans(spans: &[Span], out: &mut Vec<CellChange>) {
+    for Span(x, y, fg, bg, at, text) in spans {
+        let (fg, bg, attrs) = (unpack_rgba(*fg), unpack_rgba(*bg), unpack_attrs(*at));
+        for (i, ch) in text.chars().enumerate() {
+            out.push(CellChange { x: x + i as i32, y: *y, cell: crate::cell::Cell { ch, fg, bg, attrs } });
+        }
+    }
 }
 
 /// A request to place image `id` at `rect` (screen cells). `visible=false` tells
