@@ -38,6 +38,17 @@ impl LocalAppHost {
     pub fn dims(&self, id: AppId) -> Option<(i32, i32)> {
         self.apps.get(&id).map(|a| (a.snapshot().width(), a.snapshot().height()))
     }
+
+    /// Whether the app may have changed since the last call (cleared); true for
+    /// an unknown id so the caller notices it is gone.
+    pub fn take_dirty(&self, id: AppId) -> bool {
+        self.apps.get(&id).map(|a| a.take_dirty()).unwrap_or(true)
+    }
+
+    /// Mark every app changed (a theme change recolours all snapshots).
+    pub fn mark_all_dirty(&self) {
+        self.apps.values().for_each(|a| a.mark_dirty());
+    }
 }
 
 impl Default for LocalAppHost {
@@ -168,6 +179,8 @@ impl AppHost for LocalAppHost {
                 cols: 2,
                 rows: 1,
             });
+            drop(g);
+            app.mark_dirty();
         }
     }
 }

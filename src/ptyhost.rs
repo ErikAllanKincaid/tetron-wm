@@ -9,8 +9,9 @@ use alacritty_terminal::vte::ansi::{Color as AColor, NamedColor, Processor, StdS
 use alacritty_terminal::Term;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 // A cell's "default" foreground/background (and the fallback for unresolved
 // named colors) comes from the active desktop theme — `text` and `window_bg` —
@@ -103,6 +104,9 @@ pub struct AppInstance {
     bells: Arc<std::sync::atomic::AtomicU32>,
     clip: Arc<Mutex<Option<String>>>,
     loads: Arc<Mutex<Vec<crate::apphost::proto::ClipReq>>>,
+    /// Set when anything a frame carries may have changed (output parsed,
+    /// resize, scroll); cleared by [`take_dirty`](Self::take_dirty).
+    dirty: Arc<AtomicBool>,
     cols: u16,
     rows: u16,
     /// Wall-clock instant the child was spawned. Used by the activity monitor to
@@ -213,9 +217,12 @@ impl AppInstance {
         let tclone = term.clone();
         let gclone = graphics.clone();
         let wclone = writer.clone();
+        let dirty = Arc::new(AtomicBool::new(true));
+        let dclone = dirty.clone();
         std::thread::spawn(move || {
             let mut parser = Processor::<StdSyncHandler>::new();
             let mut tap = crate::kittygfx::GraphicsTap::new();
+            let mut split = crate::kittygfx::Split::default();
             let mut buf = [0u8; 8192];
             loop {
                 let n = match reader.read(&mut buf) {
@@ -230,9 +237,18 @@ impl AppInstance {
                 // panics too, taking the whole WM down. Contain it to this pane:
                 // log it and stop reading (the dead pane is reaped normally).
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let split = tap.feed(&buf[..n]);
+                    // Plain output (the bulk of it) goes to the emulator as read;
+                    // only chunks touching a graphics APC are copied by the tap.
+                    let chunk = &buf[..n];
+                    let text = if tap.passes_through(chunk) {
+                        split.commands.clear();
+                        chunk
+                    } else {
+                        tap.feed_into(chunk, &mut split);
+                        &split.passthrough[..]
+                    };
                     if let Ok(mut t) = tclone.lock() {
-                        parser.advance(&mut *t, &split.passthrough);
+                        parser.advance(&mut *t, text);
                         if !split.commands.is_empty() {
                             let (col, row) = cursor_cell(&t);
                             if let Ok(mut g) = gclone.lock() {
@@ -253,6 +269,8 @@ impl AppInstance {
                         }
                     }
                 }));
+                dclone.store(true, Ordering::Release);
+                notify_output();
                 if outcome.is_err() {
                     crate::dbg_log(
                         "ptyhost: reader thread caught a panic parsing child output; \
@@ -261,9 +279,25 @@ impl AppInstance {
                     break;
                 }
             }
+            // EOF: the child exited, wake the host so it reports it promptly.
+            dclone.store(true, Ordering::Release);
+            notify_output();
         });
 
-        Ok(AppInstance { term, master: pair.master, writer, child, graphics, bells, clip, loads, cols, rows, spawned_at: Instant::now() })
+        Ok(AppInstance { term, master: pair.master, writer, child, graphics, bells, clip, loads, dirty, cols, rows, spawned_at: Instant::now() })
+    }
+
+    /// Whether the app may have changed since the last call (cleared). Starts
+    /// true. Clear it BEFORE reading state, so output parsed meanwhile marks
+    /// the app dirty again instead of being lost.
+    pub fn take_dirty(&self) -> bool {
+        self.dirty.swap(false, Ordering::Acquire)
+    }
+
+    /// Mark the app changed by something other than its output (a theme change
+    /// recolours the snapshot, a test injects graphics).
+    pub fn mark_dirty(&self) {
+        self.dirty.store(true, Ordering::Release);
     }
 
     /// Bell rings since the last call (drained).
@@ -352,6 +386,7 @@ impl AppInstance {
         if let Ok(mut t) = self.term.lock() {
             t.resize(TermSize::new(self.cols as usize, self.rows as usize));
         }
+        self.mark_dirty();
     }
 
     /// Forward raw input bytes to the child. Any keystroke snaps the view back
@@ -362,6 +397,7 @@ impl AppInstance {
             if let Ok(mut t) = self.term.lock() {
                 t.scroll_display(alacritty_terminal::grid::Scroll::Bottom);
             }
+            self.mark_dirty();
         }
         if let Ok(mut w) = self.writer.lock() {
             let _ = w.write_all(bytes);
@@ -374,6 +410,7 @@ impl AppInstance {
     /// the grid index honours the display offset. Returns the resulting offset
     /// (0 = pinned to the live bottom) so callers can show a scrollbar.
     pub fn scroll(&mut self, lines: i32) -> usize {
+        self.mark_dirty();
         if let Ok(mut t) = self.term.lock() {
             t.scroll_display(alacritty_terminal::grid::Scroll::Delta(lines));
             t.grid().display_offset()
@@ -463,6 +500,32 @@ impl AppInstance {
     pub fn graphics(&self) -> std::sync::MutexGuard<'_, crate::kittygfx::GraphicsState> {
         self.graphics.lock().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+/// Process-wide "some app produced output" signal, so the apphost loop sleeps
+/// until there is work instead of polling. The flag keeps a reader from paying
+/// for a notify while one is already pending.
+static OUTPUT: (Mutex<()>, Condvar) = (Mutex::new(()), Condvar::new());
+static OUTPUT_PENDING: AtomicBool = AtomicBool::new(false);
+
+/// Wake [`wait_output`]. Called by reader threads after parsing a chunk; also
+/// usable by other event sources (frontend commands) to cut a wait short.
+pub fn notify_output() {
+    if !OUTPUT_PENDING.swap(true, Ordering::AcqRel) {
+        let _guard = OUTPUT.0.lock().unwrap_or_else(|e| e.into_inner());
+        OUTPUT.1.notify_all();
+    }
+}
+
+/// Block until [`notify_output`] fires or `timeout` passes; true when woken.
+/// Clears the signal, so the next wait blocks until new output.
+pub fn wait_output(timeout: Duration) -> bool {
+    let guard = OUTPUT.0.lock().unwrap_or_else(|e| e.into_inner());
+    let (_guard, _) = OUTPUT
+        .1
+        .wait_timeout_while(guard, timeout, |_| !OUTPUT_PENDING.load(Ordering::Acquire))
+        .unwrap_or_else(|e| e.into_inner());
+    OUTPUT_PENDING.swap(false, Ordering::AcqRel)
 }
 
 /// The current cursor cell `(col, row)` of the embedded emulator — where a
@@ -608,6 +671,42 @@ mod tests {
                 self.0.lock().unwrap().push(s);
             }
         }
+    }
+
+    /// Output, resize and scroll mark an app dirty; reading clears it, and a
+    /// quiet app stays clean so the apphost can skip its snapshot.
+    #[test]
+    fn dirty_tracks_output_resize_and_scroll() {
+        let mut app = AppInstance::spawn("sh", &["-c".into(), "printf hello; sleep 5".into()], 20, 4, None).unwrap();
+        assert!(app.take_dirty(), "a new app starts dirty");
+        let t0 = Instant::now();
+        while !app.snapshot().get(0, 0).is_some_and(|c| c.ch == 'h') {
+            assert!(t0.elapsed() < Duration::from_secs(5), "no output");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(app.take_dirty(), "output marks the app dirty");
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!app.take_dirty(), "a quiet app stays clean");
+        app.resize(30, 5);
+        assert!(app.take_dirty(), "resize marks dirty");
+        app.scroll(1);
+        assert!(app.take_dirty(), "scroll marks dirty");
+        app.kill();
+    }
+
+    #[test]
+    fn notify_output_wakes_a_waiter() {
+        notify_output();
+        assert!(wait_output(Duration::from_secs(5)), "a pending notify returns at once");
+        let t = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(50));
+            notify_output();
+        });
+        let t0 = Instant::now();
+        // Other tests' readers may notify too; either way the wait ends early.
+        assert!(wait_output(Duration::from_secs(5)));
+        assert!(t0.elapsed() < Duration::from_secs(4));
+        t.join().unwrap();
     }
 
     #[test]

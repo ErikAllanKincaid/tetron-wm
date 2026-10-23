@@ -198,3 +198,73 @@ fn chunked_transmit_and_display_places_after_completion() {
     assert_eq!((p.col, p.row, p.cols, p.rows), (6, 3, 4, 2));
     assert!(st.png(0).is_some());
 }
+
+type Cmds = Vec<(Vec<(char, String)>, Vec<u8>)>;
+
+/// Feed `stream` in chunks cut at `cuts`, collecting all passthrough bytes and
+/// commands (as control + payload) across the feeds.
+fn feed_chunked(stream: &[u8], cuts: &[usize]) -> (Vec<u8>, Cmds) {
+    let mut tap = GraphicsTap::new();
+    let (mut pass, mut cmds) = (Vec::new(), Vec::new());
+    let mut out = tetron_wm::kittygfx::Split::default();
+    let mut at = 0;
+    for &c in cuts.iter().chain(std::iter::once(&stream.len())) {
+        let chunk = &stream[at..c];
+        if tap.passes_through(chunk) {
+            // The reader's zero-copy path must agree with feed.
+            let mut probe = GraphicsTap::new();
+            let o = probe.feed(chunk);
+            assert_eq!(o.passthrough, chunk, "passes_through lied for {chunk:?}");
+            assert!(o.commands.is_empty());
+        }
+        tap.feed_into(chunk, &mut out);
+        pass.extend_from_slice(&out.passthrough);
+        cmds.extend(out.commands.drain(..).map(|c| (c.control, c.payload)));
+        at = c;
+    }
+    (pass, cmds)
+}
+
+/// The bulk-scanning tap gives the same result however the stream is split
+/// across reads: whole, at every single cut point, and one byte at a time
+/// (one byte per feed exercises only the per-byte state machine).
+#[test]
+fn split_escapes_across_reads_match_whole_feed() {
+    let mut streams: Vec<Vec<u8>> = vec![
+        b"hello\x1b[31mred\x1b[0m".to_vec(),
+        [b"a".as_slice(), &apc("a=T,f=100,i=1", "AAAA"), b"b\x1b_Xother\x1b\\c"].concat(),
+        b"\x1b\x1b_Gi=2,a=q\x1b\\\x1b\x1bx".to_vec(),
+        b"\x1b_Gm=1;pay\x1bload\x1b\x1b\\tail\x1b".to_vec(),
+        b"\x1b_X\x1b\x1bdata\x1b\\\x1b]0;t\x07".to_vec(),
+    ];
+    // Pseudo-random streams over the bytes that drive the state machine.
+    let alphabet = b"\x1b_G;\\Xa=1,t";
+    let mut seed: u32 = 12345;
+    for _ in 0..200 {
+        let len = 1 + (seed % 40) as usize;
+        let mut s = Vec::with_capacity(len);
+        for _ in 0..len {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            s.push(alphabet[(seed >> 16) as usize % alphabet.len()]);
+        }
+        streams.push(s);
+    }
+    for s in &streams {
+        let whole = feed_chunked(s, &[]);
+        for cut in 0..=s.len() {
+            assert_eq!(feed_chunked(s, &[cut]), whole, "cut at {cut} of {s:?}");
+        }
+        let bytes: Vec<usize> = (1..s.len()).collect();
+        assert_eq!(feed_chunked(s, &bytes), whole, "byte at a time {s:?}");
+    }
+}
+
+#[test]
+fn passes_through_only_in_plain_text_state() {
+    let mut tap = GraphicsTap::new();
+    assert!(tap.passes_through(b"plain \x1b[1mbold\x1b[m"));
+    assert!(!tap.passes_through(b"x\x1b_Gi=1\x1b\\"));
+    assert!(!tap.passes_through(b"ends with esc\x1b"));
+    tap.feed(b"\x1b_Gi=1;partial");
+    assert!(!tap.passes_through(b"plain"), "mid-APC bytes are not text");
+}
