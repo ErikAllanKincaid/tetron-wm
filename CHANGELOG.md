@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.15] — 2026-10-22
+
 ### Added
 - New config key `scrollback`: lines of scrollback kept per app window, default 10000 as before, 0 to 100000. It is the main memory cost of a busy window (two full 10000-line windows took about 40 MB; 1000 lines, about 4 MB). Read when a window opens, so a change applies to new windows without restarting the app server.
 - The suite installer offers the recommended tools (chafa, sshpass, htop, btop, upower, alsa-utils, and xclip or wl-clipboard on a desktop; default yes) and, as a separate question that defaults to no, the system services PipeWire, NetworkManager and BlueZ. Only missing packages are installed, with apt, dnf, pacman or Homebrew. Flags `--extras` / `--no-extras`, `--services` / `--no-services`; `--dry-run` lists what would be installed.
