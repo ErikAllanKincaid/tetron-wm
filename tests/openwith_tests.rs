@@ -40,3 +40,22 @@ fn directory_and_unknown() {
     assert_eq!(classify(Path::new("/x/folder"), true), Role::Directory);
     assert_eq!(classify(Path::new("/x/mystery"), false), Role::Other);
 }
+
+#[test]
+fn fresh_keeps_its_tab_list() {
+    use tetron_wm::openwith::{open_with, OpenAction};
+    let p = std::path::Path::new("/x/notes.txt");
+    assert_eq!(
+        open_with("fresh", p),
+        OpenAction::RunApp { command: "fresh".into(), args: vec!["--restore".into(), "/x/notes.txt".into()] }
+    );
+    assert_eq!(
+        open_with("/usr/bin/fresh --no-restore", p),
+        OpenAction::RunApp { command: "/usr/bin/fresh".into(), args: vec!["--no-restore".into(), "/x/notes.txt".into()] },
+        "an explicit choice is kept"
+    );
+    assert_eq!(
+        open_with("nvim", p),
+        OpenAction::RunApp { command: "nvim".into(), args: vec!["/x/notes.txt".into()] }
+    );
+}

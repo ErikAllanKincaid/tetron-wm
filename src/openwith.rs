@@ -121,6 +121,13 @@ pub fn open_with(cmd: &str, path: &Path) -> OpenAction {
             let mut parts = cmd.split_whitespace().map(String::from);
             let program = parts.next().unwrap_or_default();
             let mut args: Vec<String> = parts.collect();
+            // fresh opened with a file skips its saved workspace and then saves
+            // one holding only that file, losing the folder's tab list.
+            // `--restore` keeps the tabs and adds the file.
+            let is_fresh = Path::new(&program).file_name().is_some_and(|n| n == "fresh");
+            if is_fresh && !args.iter().any(|a| a == "--restore" || a == "--no-restore") {
+                args.insert(0, "--restore".into());
+            }
             args.push(path.to_string_lossy().to_string());
             OpenAction::RunApp { command: program, args }
         }
