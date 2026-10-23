@@ -370,6 +370,13 @@ fn serve_client_inner(
     // cells and kept image placements the incremental diff/delete stream no
     // longer knows about, so only a full re-baseline is trustworthy.
     let mut clear_pending = true;
+    // The last composited frame's inputs, so an unchanged frame skips
+    // composite/diff/commit; the last sent idle message, so an identical one is
+    // not re-sent; and a message the idle wait received early.
+    let mut prev: Option<(Vec<crate::compositor::Layer>, Option<crate::geometry::Point>, crate::cell::Rgba)> = None;
+    let mut last_idle_msg: Vec<u8> = Vec::new();
+    let mut idle_ticks = 0u32;
+    let mut pending: Option<ClientMsg> = None;
 
     loop {
         // A new connection while this client is attached: `attach -d` evicts
@@ -389,7 +396,11 @@ fn serve_client_inner(
         }
         // Apply all pending input.
         loop {
-            match rx.try_recv() {
+            let next = match pending.take() {
+                Some(msg) => Ok(msg),
+                None => rx.try_recv(),
+            };
+            match next {
                 Ok(ClientMsg::Resize { w, h, .. }) => {
                     comp.resize(w, h);
                     core.apply(ClientMsg::Resize { w, h, takeover: false });
@@ -398,6 +409,9 @@ fn serve_client_inner(
                     sent_image_ids.clear();
                 }
                 Ok(msg) => {
+                    // Input usually changes the screen a moment later (the
+                    // app's echo), so leave the idle backoff at once.
+                    idle_ticks = 0;
                     if let Some(msg) = wake_or_pass(core, msg) {
                         core.apply(msg);
                     }
@@ -425,14 +439,26 @@ fn serve_client_inner(
         core.poll_desktop_dir();
         let frame = core.build_frame();
         let shot = core.take_screenshot();
-        let composed = comp.composite(&frame.layers, frame.cursor);
-        if let Some(path) = shot {
-            match crate::screenshot::save_png(composed, std::path::Path::new(&path)) {
-                Ok(()) => crate::dbg_log(&format!("screenshot: wrote {path}")),
-                Err(e) => crate::dbg_log(&format!("screenshot: {path}: {e}")),
+        // The compositor's output depends only on the layers, the cursor and the
+        // theme's desktop fill, so when all three match the last composite the
+        // screen is unchanged: skip composite, diff and commit.
+        let bg = crate::theme::current().desktop_bg;
+        let unchanged = !clear_pending
+            && shot.is_none()
+            && prev.as_ref().is_some_and(|(l, c, b)| *c == frame.cursor && *b == bg && same_layers(l, &frame.layers));
+        let changes = if unchanged {
+            Vec::new()
+        } else {
+            let composed = comp.composite(&frame.layers, frame.cursor);
+            if let Some(path) = shot {
+                match crate::screenshot::save_png(composed, std::path::Path::new(&path)) {
+                    Ok(()) => crate::dbg_log(&format!("screenshot: wrote {path}")),
+                    Err(e) => crate::dbg_log(&format!("screenshot: {path}: {e}")),
+                }
             }
-        }
-        let changes = comp.diff();
+            comp.diff()
+        };
+        let had_changes = !changes.is_empty();
         let flags = Flags {
             launcher_open: core.launcher_open(),
             spotlight_open: core.spotlight_open(),
@@ -478,6 +504,11 @@ fn serve_client_inner(
                 }
             }
         }
+        let clipboard = core.take_clipboard();
+        // A message carrying nothing one-shot (cells, wipe, image bytes, clipboard)
+        // is fully described by its bytes; one identical to the last such is not
+        // re-sent, so an idle desktop sends nothing.
+        let idle_msg = !had_changes && !clear_pending && image_data.is_empty() && clipboard.is_none();
         let mut buf = serde_json::to_vec(&FrameMsg {
             changes,
             cursor: frame.cursor,
@@ -486,15 +517,22 @@ fn serve_client_inner(
             image_data,
             clear: clear_pending,
             switch_to: core.switch_spec(),
-            clipboard: core.take_clipboard(),
+            clipboard,
             notice: None,
         })
             .unwrap_or_default();
         buf.push(b'\n');
-        if writer.write_all(&buf).is_err() {
+        if !(idle_msg && buf == last_idle_msg) && writer.write_all(&buf).is_err() {
             return None; // client gone
         }
-        comp.commit();
+        if idle_msg { last_idle_msg = buf } else { last_idle_msg.clear() }
+        if unchanged {
+            idle_ticks = idle_ticks.saturating_add(1);
+        } else {
+            comp.commit();
+            prev = Some((frame.layers, frame.cursor, bg));
+            idle_ticks = 0;
+        }
         clear_pending = false;
 
         if core.quit_requested() {
@@ -506,8 +544,35 @@ fn serve_client_inner(
         if core.reload_requested() {
             return None; // reload flag delivered; daemon will restart, apphost untouched
         }
-        std::thread::sleep(Duration::from_millis(16));
+        // After IDLE_AFTER unchanged frames, tick slower but wake at once on
+        // client input. While active, plain sleep so a burst of input (mouse
+        // motion) is batched per frame rather than rendered per message.
+        if idle_ticks >= IDLE_AFTER {
+            match rx.recv_timeout(Duration::from_millis(IDLE_TICK_MS)) {
+                Ok(msg) => pending = Some(msg),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => return None, // client gone
+            }
+        } else {
+            std::thread::sleep(Duration::from_millis(16));
+        }
     }
+}
+
+/// Unchanged frames (16 ms each) before the render loop backs off to
+/// [`IDLE_TICK_MS`]: half a second of nothing happening.
+const IDLE_AFTER: u32 = 30;
+/// Render-loop tick while idle. Bounds how late a time-driven change (clock,
+/// app output after a quiet spell, a control-socket message) is drawn.
+const IDLE_TICK_MS: u64 = 50;
+
+/// Whether two layer stacks would composite identically (same order, origin,
+/// cells, opacity and scissor).
+fn same_layers(a: &[crate::compositor::Layer], b: &[crate::compositor::Layer]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            x.z == y.z && x.origin == y.origin && x.opacity == y.opacity && x.scissor == y.scissor && x.buf == y.buf
+        })
 }
 
 /// While the screensaver is up, any input from the attached client ends it and is
@@ -643,6 +708,29 @@ mod tests {
         let passed = wake_or_pass(&mut c, ClientMsg::Resize { w: 100, h: 30, takeover: false });
         assert!(matches!(passed, Some(ClientMsg::Resize { .. })));
         assert!(c.screensaver_active(), "resizing the terminal must not end it");
+        c.shutdown();
+    }
+
+    #[test]
+    fn idle_frames_compare_equal_and_any_change_does_not() {
+        let mut c = core();
+        // Two builds of an idle desktop match (retry once in case the bar clock
+        // ticked between them).
+        let same = (0..2).any(|_| same_layers(&c.build_frame().layers, &c.build_frame().layers));
+        assert!(same, "an idle desktop must build identical frames");
+        let a = c.build_frame().layers;
+        let mut b = c.build_frame().layers;
+        let top = b.last_mut().unwrap();
+        let mut cell = *top.buf.get(0, 0).unwrap();
+        cell.ch = if cell.ch == 'x' { 'y' } else { 'x' };
+        top.buf.set(0, 0, cell);
+        assert!(!same_layers(&a, &b), "one changed cell must force a composite");
+        let mut b = c.build_frame().layers;
+        b[0].opacity *= 0.5;
+        assert!(!same_layers(&a, &b), "opacity must force a composite");
+        let mut b = c.build_frame().layers;
+        b.pop();
+        assert!(!same_layers(&a, &b), "a removed layer must force a composite");
         c.shutdown();
     }
 }
