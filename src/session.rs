@@ -4255,7 +4255,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     .and_then(|a| a.rsplit('/').next())
                     .unwrap_or(&command)
                     .to_string();
-                self.launch_in(name, command, args, cwd);
+                self.open_file_in(name, command, args, cwd);
             }
             None => {}
         }
@@ -4285,7 +4285,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                             .unwrap_or(&command)
                             .to_string();
                         let cwd = path.parent().map(|p| p.to_path_buf());
-                        self.launch_in(name, command, args, cwd);
+                        self.open_file_in(name, command, args, cwd);
                     }
                     crate::openwith::OpenAction::OpenWithMenu => {}
                 }
@@ -4445,6 +4445,64 @@ or a remote-side error — its authorized_keys was left untouched)",
 
     /// Spawn a new PTY-backed window, starting the child in `cwd` (or the user's
     /// home when `None`).
+    /// Open a file with its handler. A file for fresh goes into a fresh window
+    /// that is already open, as a new tab, when that fresh can be reached
+    /// (fresh 0.5 or later registers each window as `local-<pid>-…`); otherwise
+    /// the handler starts in a new window.
+    fn open_file_in(&mut self, name: String, command: String, args: Vec<String>, cwd: Option<std::path::PathBuf>) {
+        if is_fresh(&command) {
+            if let Some(file) = args.last() {
+                if self.open_in_running_fresh(&command, file) {
+                    return;
+                }
+            }
+        }
+        self.launch_in(name, command, args, cwd);
+    }
+
+    /// Send `file` to a fresh window tetron-wm hosts (most recently raised
+    /// first) and focus it. `false` when there is none, or fresh is too old to
+    /// list its instances: `--cmd daemon list` then fails and nothing else runs
+    /// (older fresh would start a background server on `open-file`).
+    fn open_in_running_fresh(&mut self, program: &str, file: &str) -> bool {
+        let wins: Vec<(WindowId, u32)> = self
+            .wm
+            .z_ordered()
+            .iter()
+            .rev()
+            .filter_map(|w| match self.contents.get(&w.id) {
+                Some(WinContent::App(aid)) => {
+                    let (cmd, _) = self.apphost.launch_cmd(*aid)?;
+                    if !is_fresh(&cmd) || !self.apphost.is_alive(*aid) {
+                        return None;
+                    }
+                    Some((w.id, self.apphost.pid(*aid)?))
+                }
+                _ => None,
+            })
+            .collect();
+        if wins.is_empty() {
+            return false;
+        }
+        let Some(list) = crate::system::run_capped(program, &["--cmd", "daemon", "list"], 2) else {
+            crate::dbg_log("open with fresh: no instance list (fresh older than 0.5?), new window");
+            return false;
+        };
+        for (id, pid) in wins {
+            let Some(name) = fresh_instance_name(&list, pid) else { continue };
+            // fresh reports on stderr, so success is the exit status.
+            match crate::system::run_capped_status(program, &["--cmd", "daemon", "open-file", name, file], 3) {
+                crate::system::Capped::Done => {
+                    crate::dbg_log(&format!("open with fresh: {file} as a tab in window {id:?} ({name})"));
+                    self.focus_window(id);
+                    return true;
+                }
+                other => crate::dbg_log(&format!("open with fresh: open-file into {name} failed: {other:?}")),
+            }
+        }
+        false
+    }
+
     fn launch_in(&mut self, name: String, command: String, args: Vec<String>, cwd: Option<std::path::PathBuf>) {
         // A bare launch of an app that exits without a URL (w3m) gets the start page.
         let args = if args.is_empty() && !self.cfg.web_home.is_empty() && crate::catalog::needs_url(&command) {
@@ -4970,7 +5028,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                         crate::openwith::OpenAction::Builtin("@image") => self.open_image(path.to_string_lossy().to_string()),
                         crate::openwith::OpenAction::RunApp { command, args } => {
                             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| command.clone());
-                            self.launch_in(name, command, args, path.parent().map(|p| p.to_path_buf()));
+                            self.open_file_in(name, command, args, path.parent().map(|p| p.to_path_buf()));
                         }
                         _ => {}
                     }
@@ -5925,6 +5983,18 @@ fn near_edge(p: Point, work: Rect, threshold: i32) -> bool {
 /// cursor happens to be on (an icon painted over an arbitrary spot, typically
 /// seen right after a resize). Origins past the right/bottom edge are dropped
 /// too; they would be entirely invisible anyway.
+/// The name fresh gives the instance with process `pid` in its
+/// `--cmd daemon list` output (`local-<pid>-<hash>`), if it is listed.
+fn fresh_instance_name(list: &str, pid: u32) -> Option<&str> {
+    let prefix = format!("local-{pid}-");
+    list.split_whitespace().find(|t| t.starts_with(&prefix))
+}
+
+/// Whether `command` runs the fresh editor (bare name or a path to it).
+fn is_fresh(command: &str) -> bool {
+    std::path::Path::new(command).file_name().is_some_and(|n| n == "fresh")
+}
+
 fn sanitize_images(images: &mut Vec<crate::protocol::ImagePlacement>, w: i32, h: i32) {
     images.retain(|p| p.rect.x >= 0 && p.rect.y >= 0 && p.rect.x < w && p.rect.y < h);
 }
@@ -6251,6 +6321,16 @@ mod tests {
             name: cmd.into(), command: cmd.into(), args: Vec::new(), category: None,
             requires_cwd: None, cwd: None, cli: None, warn: None,
         }
+    }
+
+    #[test]
+    fn fresh_instance_name_matches_the_window_pid_only() {
+        let list = "Cleaned up 1 stale daemon(s).\nRunning daemons:\n  local-1646983-a62c05d247\n  local-16469-0000\n  /tmp/d  (name: tmp_d)\n";
+        assert_eq!(fresh_instance_name(list, 1646983), Some("local-1646983-a62c05d247"));
+        assert_eq!(fresh_instance_name(list, 16469), Some("local-16469-0000"), "not a prefix of a longer pid");
+        assert_eq!(fresh_instance_name(list, 42), None);
+        assert_eq!(fresh_instance_name("Unknown command: daemon list", 42), None);
+        assert!(is_fresh("fresh") && is_fresh("/usr/bin/fresh") && !is_fresh("freshclam"));
     }
 
     #[test]
