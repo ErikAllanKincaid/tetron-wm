@@ -70,8 +70,19 @@ pub fn run() -> std::io::Result<()> {
         }
     });
 
+    // Apps killed over the control socket while no frontend is attached. A
+    // frontend's loop drops dead apps itself (and sends `Gone`); with none
+    // attached, drop them here once they exit, so `kill-app` clears them.
+    let mut reap: HashSet<AppId> = HashSet::new();
     loop {
-        answer_ctl(&mut local, &ctl_rx);
+        reap.extend(answer_ctl(&mut local, &ctl_rx));
+        reap.retain(|&id| {
+            if local.is_alive(id) {
+                return true;
+            }
+            local.remove(id);
+            false
+        });
         match fe_rx.recv_timeout(Duration::from_millis(50)) {
             Ok(stream) => {
                 serve_frontend(&mut local, stream, &mut shutdown, &ctl_rx);
@@ -115,9 +126,11 @@ fn serve_ctl(listener: UnixListener, tx: mpsc::Sender<CtlReq>) {
     }
 }
 
-/// Answer pending control requests. Only `ListApps` and `Kill` are accepted;
-/// anything else (spawns, input) belongs on a frontend connection.
-fn answer_ctl(local: &mut LocalAppHost, rx: &mpsc::Receiver<CtlReq>) {
+/// Answer pending control requests and return the apps killed. Only `ListApps`
+/// and `Kill` are accepted; anything else (spawns, input) belongs on a
+/// frontend connection.
+fn answer_ctl(local: &mut LocalAppHost, rx: &mpsc::Receiver<CtlReq>) -> Vec<AppId> {
+    let mut killed = Vec::new();
     while let Ok((req, reply)) = rx.try_recv() {
         match req {
             HostReq::ListApps => {
@@ -126,10 +139,12 @@ fn answer_ctl(local: &mut LocalAppHost, rx: &mpsc::Receiver<CtlReq>) {
             HostReq::Kill { app } => {
                 crate::dbg_log(&format!("apphost: ctl kill app {app}"));
                 local.kill(AppId(app));
+                killed.push(AppId(app));
             }
             other => crate::dbg_log(&format!("apphost: ctl ignored {other:?}")),
         }
     }
+    killed
 }
 
 /// Every hosted app, for `ps` / `kill-app`.
@@ -236,6 +251,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 Err(mpsc::TryRecvError::Disconnected) => return, // frontend gone
             }
         }
+        // Killed apps are dropped by the liveness check below.
         answer_ctl(local, ctl);
 
         // Push frames for every app whose grid / placements / images changed.
