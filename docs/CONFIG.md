@@ -108,6 +108,7 @@ These behaviors are fixed in tetron-wm and do not need configuration:
 - Clipboard: `Ctrl+Shift+C` copies the selection (and to the host via OSC 52), `Ctrl+Shift+V` pastes it.
 - Scrollback: mouse wheel, or `Shift+PageUp` / `Shift+PageDown`.
 - Hold `Shift` to force terminal selection/paste even over an app that is grabbing the mouse.
+- Right-click a desktop icon or a file in Files (or leader `.`): Open, Open with… (apps for the file type, such as `mpv --vo=tct` for video in the window and fresh for text), Set as wallpaper, Copy path, Open terminal here, Rename, Move to Trash, and on a plain Linux console View full screen (fbi or fim). The empty desktop offers New Folder, Open terminal here and Clean Up.
 - Image viewer (open an image from the file manager or desktop): `+` / `-` or the mouse wheel zoom, `0` fits, arrows or a left-button drag pan when zoomed, `n` / `p` (and Left / Right at fit, Space, PageDown / PageUp) step through the images in the folder, `m` switches graphics / cells, `i` toggles the info line, `f` shows it full screen with fbi or fim (plain Linux console only, not kmscon or a GUI terminal; `q` in fbi returns), `Esc` or `q` closes.
 
 ## Leader keys

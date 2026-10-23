@@ -133,6 +133,15 @@ SESSIONS:\n\
 \x20 Windows opened inside a session inherit it (TETRON_WM_SESSION), so tetron-wm commands run\n\
 \x20 in a window reach that window's session. Names: 1-32 chars of A-Z a-z 0-9 _ -.\n\
 \x20 The launcher button shows the session name with launcher_label = \"@session\".\n\n\
+RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
+\x20 Open, Open with... (apps for the file type: mpv --vo=tct plays video in the window,\n\
+\x20 fresh and other editors for text), Set as wallpaper, Copy path, Open terminal here,\n\
+\x20 Rename, Move to Trash. View full screen shows images with fbi or fim on a plain Linux\n\
+\x20 console (not kmscon, ssh or a GUI terminal); q in fbi returns, apps keep running.\n\n\
+IMAGE VIEWER (open an image; image_viewer = auto | graphics | cells):\n\
+\x20 Kitty graphics where the terminal has them, else chafa cells (any terminal).\n\
+\x20 + - or the wheel zoom, 0 fits, arrows or a drag pan, n p next/previous in the folder,\n\
+\x20 m graphics/cells, i info line, f full screen (plain console), Esc or q closes.\n\n\
 LAUNCHER SYSTEM SECTION (click the top-left button):\n\
 \x20 Systems  switch to a saved remote machine over ssh\n\
 \x20 Detach   leave; apps keep running        Reload  restart the UI, apps keep running\n\
@@ -201,6 +210,9 @@ mod tests {
             "TETRON_WM_SESSION",
             "@session",
             "SESSIONS:",
+            "RIGHT-CLICK MENU",
+            "IMAGE VIEWER",
+            "View full screen",
             "Power ",
             "[power_commands]",
             "screensaver [on|off|toggle|list]",

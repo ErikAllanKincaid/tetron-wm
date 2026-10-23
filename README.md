@@ -75,8 +75,9 @@ tetron-wm
 2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), `Ctrl+Space` then `f` lists every window to pick one by number, and `Ctrl+Space` then `w` moves the focused window with the arrow keys (`r` to resize, Enter when done).
 3. **Get apps.** Open the **Store** (`Ctrl+Space`, then `S`), search and install. If an app needs a toolchain you do not have, the installer notices and offers to set it up first.
 4. **Find things fast.** `Ctrl+Space` then `space` opens a search over every app.
-5. **See all shortcuts.** `Ctrl+Space` then `?`.
-6. **Leave without closing anything.** `Ctrl+Space` then `q` detaches. Run `tetron-wm` again to come back.
+5. **Open files.** Double-click a desktop icon or a file in **Files**. Right-click it (or `Ctrl+Space` then `.`) for **Open with…** (for example mpv for video, played right in the window, or fresh for text), **Set as wallpaper**, **Copy path** and **Open terminal here**. Images open in the built-in viewer on any terminal; on a plain Linux console, **View full screen** shows them with fbi.
+6. **See all shortcuts.** `Ctrl+Space` then `?`.
+7. **Leave without closing anything.** `Ctrl+Space` then `q` detaches. Run `tetron-wm` again to come back.
 
 `Ctrl+Space` is the **leader**: press it, release it, then press the next key. It keeps tetron-wm shortcuts from colliding with your terminal or the apps inside it. Every key, and how to change it, is in [docs/KEYS_tetron-wm_leader_key_table.md](docs/KEYS_tetron-wm_leader_key_table.md).
 
@@ -118,6 +119,8 @@ Common first changes:
 | A different leader key                   | `leader = "ctrl+b"`                                                                                                        |
 | No Power menu on a server                | `power_menu = false`                                                                                                       |
 | Less memory per window                   | `scrollback = 2000` (lines kept per window; default 10000)                                                                 |
+| Black and white, or fewer colors         | Settings → Appearance → Colors, or `colors = "mono"` (also `"16"`, `"256"`, `"truecolor"`)                                  |
+| Images always drawn as characters        | `image_viewer = "cells"` (default `"auto"` uses Kitty graphics where the terminal has them)                                 |
 
 ## Bare console (no X11 or Wayland)
 
