@@ -28,6 +28,12 @@ pub enum HostReq {
     /// daemon always sends resolved colors, since the apphost may not know a
     /// theme file that was added after it started.
     SetColors { theme: String, terminal_bg: Option<String>, terminal_fg: Option<String> },
+    /// The frontend's [`PROTO_VERSION`], sent right after the `Roster` (protocol
+    /// v5+). It tells the apphost which `Frame` encodings this frontend reads:
+    /// from v5 the apphost sends [`PackedGrid`]s instead of JSON cell grids.
+    /// Sent only to apphosts reporting proto >= 5 (an older one would log and
+    /// skip the unknown variant); a frontend that never says gets JSON grids.
+    Hello { proto: u32 },
 }
 
 /// An app asked to READ a clipboard through OSC 52 (`ESC ] 52 ; c ; ? ST`).
@@ -62,7 +68,13 @@ pub struct ImgBlob {
 /// restart. A new request variant is unknown to older apphosts, so the frontend
 /// sends it only when the apphost reports proto >= 4 (`RemoteAppHost`). Do NOT
 /// bump `MIN_COMPAT`: an older apphost just keeps its start-up colors.
-pub const PROTO_VERSION: u32 = 4;
+///
+/// v5 — added `HostReq::Hello` and `HostEvt::Frame::packed`: once a frontend
+/// says it speaks v5, the apphost sends each changed grid as a [`PackedGrid`]
+/// (run-length binary, changed rows only) and leaves `grid` empty. JSON cell
+/// grids cost the daemon about half its CPU under heavy output. Both sides
+/// stay on JSON grids unless both are v5+, so no `MIN_COMPAT` bump.
+pub const PROTO_VERSION: u32 = 5;
 
 /// v3 — added `clip_reqs` to `HostEvt::Frame`: OSC 52 clipboard READ queries
 /// from the app, so the frontend can answer them. `#[serde(default)]`; an old
@@ -121,6 +133,10 @@ pub enum HostEvt {
         /// OSC 52 clipboard read queries from the app (default none).
         #[serde(default)]
         clip_reqs: Vec<ClipReq>,
+        /// v5+: the grid in compact form, replacing `grid` (sent empty). Only
+        /// sent to a frontend that announced v5 with `HostReq::Hello`.
+        #[serde(default)]
+        packed: Option<PackedGrid>,
     },
     /// The app's child exited.
     Gone { app: u64 },
@@ -144,6 +160,121 @@ pub enum HostEvt {
     },
     /// Reply to `HostReq::ListApps`.
     AppList { apps: Vec<AppListEntry> },
+}
+
+/// A `w` x `h` grid as base64 of binary rows, each `y` (varint) followed by
+/// runs of `count` (varint) + one cell (UTF-8 char, fg RGBA, bg RGBA, attrs
+/// bits) covering the row. Only rows that differ from the previous grid sent
+/// to this frontend are present; the frontend applies them over its cached
+/// copy, or over a blank grid when it has none of this size.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct PackedGrid {
+    pub w: i32,
+    pub h: i32,
+    pub rows: String,
+}
+
+fn put_varint(out: &mut Vec<u8>, mut v: u32) {
+    while v >= 0x80 {
+        out.push(v as u8 | 0x80);
+        v >>= 7;
+    }
+    out.push(v as u8);
+}
+
+fn get_varint(b: &[u8], i: &mut usize) -> Option<u32> {
+    let mut v = 0u32;
+    for shift in (0..35).step_by(7) {
+        let x = *b.get(*i)?;
+        *i += 1;
+        v |= ((x & 0x7f) as u32) << shift;
+        if x & 0x80 == 0 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn put_cell(out: &mut Vec<u8>, c: &crate::cell::Cell) {
+    let mut u = [0u8; 4];
+    out.extend_from_slice(c.ch.encode_utf8(&mut u).as_bytes());
+    out.extend_from_slice(&[c.fg.r, c.fg.g, c.fg.b, c.fg.a, c.bg.r, c.bg.g, c.bg.b, c.bg.a]);
+    let a = c.attrs;
+    out.push(a.bold as u8 | (a.italic as u8) << 1 | (a.underline as u8) << 2 | (a.inverse as u8) << 3);
+}
+
+fn get_cell(b: &[u8], i: &mut usize) -> Option<crate::cell::Cell> {
+    use crate::cell::{Cell, CellAttrs, Rgba};
+    let n = match *b.get(*i)? {
+        x if x < 0x80 => 1,
+        x if x >= 0xf0 => 4,
+        x if x >= 0xe0 => 3,
+        _ => 2,
+    };
+    let ch = std::str::from_utf8(b.get(*i..*i + n)?).ok()?.chars().next()?;
+    let r = b.get(*i + n..*i + n + 9)?;
+    *i += n + 9;
+    let attrs = CellAttrs { bold: r[8] & 1 != 0, italic: r[8] & 2 != 0, underline: r[8] & 4 != 0, inverse: r[8] & 8 != 0 };
+    Some(Cell { ch, fg: Rgba::new(r[0], r[1], r[2], r[3]), bg: Rgba::new(r[4], r[5], r[6], r[7]), attrs })
+}
+
+/// Pack the rows of `grid` that differ from `prev` (all rows when `prev` is
+/// `None` or another size). Returns `None` when nothing changed.
+pub fn pack_grid(grid: &CellBuffer, prev: Option<&CellBuffer>) -> Option<PackedGrid> {
+    let (w, h) = (grid.width(), grid.height());
+    let prev = prev.filter(|p| p.width() == w && p.height() == h);
+    let mut out = Vec::new();
+    let mut any = prev.is_none();
+    for y in 0..h {
+        if let Some(p) = prev {
+            if (0..w).all(|x| grid.get(x, y) == p.get(x, y)) {
+                continue;
+            }
+        }
+        any = true;
+        put_varint(&mut out, y as u32);
+        let mut x = 0;
+        while x < w {
+            let c = grid.get(x, y).unwrap();
+            let mut n = 1;
+            while x + n < w && grid.get(x + n, y) == Some(c) {
+                n += 1;
+            }
+            put_varint(&mut out, n as u32);
+            put_cell(&mut out, c);
+            x += n;
+        }
+    }
+    use base64::Engine;
+    any.then(|| PackedGrid { w, h, rows: base64::engine::general_purpose::STANDARD.encode(&out) })
+}
+
+/// Apply `p` over `base` (used only when it has the same size, else a blank
+/// grid). `None` if the payload is malformed.
+pub fn unpack_grid(p: &PackedGrid, base: Option<CellBuffer>) -> Option<CellBuffer> {
+    use base64::Engine;
+    let b = base64::engine::general_purpose::STANDARD.decode(&p.rows).ok()?;
+    let mut g = base.filter(|g| g.width() == p.w && g.height() == p.h).unwrap_or_else(|| CellBuffer::new(p.w, p.h));
+    let mut i = 0;
+    while i < b.len() {
+        let y = get_varint(&b, &mut i)? as i32;
+        if y >= p.h {
+            return None;
+        }
+        let mut x = 0;
+        while x < p.w {
+            let n = get_varint(&b, &mut i)? as i32;
+            let c = get_cell(&b, &mut i)?;
+            if n == 0 || x + n > p.w {
+                return None;
+            }
+            for dx in 0..n {
+                g.set(x + dx, y, c);
+            }
+            x += n;
+        }
+    }
+    Some(g)
 }
 
 /// Write a newline-JSON message. Returns `Err` if the peer is gone.
@@ -281,13 +412,14 @@ mod tests {
             bells: 2,
             clip: Some("copied".into()),
             clip_reqs: vec![ClipReq { kind: 'c', bel: true }],
+            packed: None,
         };
         let mut buf: Vec<u8> = Vec::new();
         send(&mut buf, &evt).unwrap();
         let mut r = std::io::BufReader::new(&buf[..]);
         let back: HostEvt = recv(&mut r).unwrap().unwrap();
         match back {
-            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, cursor, bells, clip, clip_reqs } => {
+            HostEvt::Frame { app, grid: g, placements, images, alive, mouse, cursor, bells, clip, clip_reqs, .. } => {
                 assert_eq!(app, 5);
                 assert_eq!(g, grid);
                 assert_eq!(placements.len(), 1);
@@ -301,5 +433,86 @@ mod tests {
             }
             _ => panic!("wrong variant"),
         }
+    }
+
+    /// A 200x50 grid like a busy terminal: coloured text, blank tails, a wide glyph.
+    fn busy_grid(seed: u32) -> CellBuffer {
+        use crate::cell::{CellAttrs, Rgba};
+        let mut g = CellBuffer::new(200, 50);
+        for y in 0..50 {
+            for x in 0..(120 + (y * 7 + seed as i32) % 80) {
+                let k = (x as u32).wrapping_mul(31).wrapping_add(y as u32 * 17 + seed);
+                let ch = if x == 3 { '\u{1F4C1}' } else { (b'!' + (k % 90) as u8) as char };
+                let fg = Rgba::rgb((k % 7 * 30) as u8, 200, (k % 5 * 50) as u8);
+                g.set(x, y, Cell { ch, fg, bg: Rgba::TRANSPARENT, attrs: CellAttrs { bold: k.is_multiple_of(3), ..Default::default() } });
+            }
+        }
+        g
+    }
+
+    #[test]
+    fn packed_grid_round_trips_full_and_delta() {
+        let a = busy_grid(1);
+        let full = pack_grid(&a, None).unwrap();
+        assert_eq!(unpack_grid(&full, None).unwrap(), a);
+        // Unchanged: nothing to send.
+        assert!(pack_grid(&a, Some(&a)).is_none());
+        // One changed row: only that row rides, and applies over the cache.
+        let mut b = a.clone();
+        b.set(5, 7, Cell { ch: 'Z', ..Default::default() });
+        let delta = pack_grid(&b, Some(&a)).unwrap();
+        assert!(delta.rows.len() < full.rows.len() / 20, "delta {} vs full {}", delta.rows.len(), full.rows.len());
+        assert_eq!(unpack_grid(&delta, Some(a.clone())).unwrap(), b);
+        // A size change sends every row and ignores a mismatched cache.
+        let c = CellBuffer::new(10, 3);
+        assert_eq!(unpack_grid(&pack_grid(&c, Some(&a)).unwrap(), Some(a.clone())).unwrap(), c);
+        // Malformed payloads are rejected, not panicked on.
+        assert!(unpack_grid(&PackedGrid { w: 4, h: 1, rows: "AAAA".into() }, None).is_none());
+        assert!(unpack_grid(&PackedGrid { w: 4, h: 1, rows: "!!".into() }, None).is_none());
+    }
+
+    #[test]
+    fn frame_skew_parses_both_ways() {
+        // A v4 apphost frame (no `packed`) parses on this frontend.
+        let mut buf: Vec<u8> = Vec::new();
+        let grid = busy_grid(2);
+        send(&mut buf, &HostEvt::Frame { app: 1, grid: grid.clone(), placements: vec![], images: vec![], alive: true, mouse: Default::default(), cursor: None, bells: 0, clip: None, clip_reqs: vec![], packed: None }).unwrap();
+        let line = String::from_utf8(buf).unwrap().replace(",\"packed\":null", "");
+        assert!(!line.contains("packed"));
+        match recv::<HostEvt, _>(&mut std::io::BufReader::new(line.as_bytes())).unwrap().unwrap() {
+            HostEvt::Frame { grid: g, packed, .. } => { assert_eq!(g, grid); assert!(packed.is_none()); }
+            _ => panic!("wrong variant"),
+        }
+        // Hello is a plain unit-ish variant an old apphost skips as unparseable.
+        let mut buf: Vec<u8> = Vec::new();
+        send(&mut buf, &HostReq::Hello { proto: PROTO_VERSION }).unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), format!("{{\"Hello\":{{\"proto\":{PROTO_VERSION}}}}}\n"));
+    }
+
+    /// Timing, old JSON grid vs packed (run with `--ignored --nocapture`, release).
+    #[test]
+    #[ignore]
+    fn packed_grid_timing() {
+        let frames: Vec<CellBuffer> = (0..50).map(busy_grid).collect();
+        let t = std::time::Instant::now();
+        let mut bytes = 0;
+        for g in &frames {
+            let s = serde_json::to_string(g).unwrap();
+            bytes += s.len();
+            let _: CellBuffer = serde_json::from_str(&s).unwrap();
+        }
+        let json = t.elapsed() / frames.len() as u32;
+        let jbytes = bytes / frames.len();
+        let t = std::time::Instant::now();
+        let mut bytes = 0;
+        for g in &frames {
+            let s = serde_json::to_string(&pack_grid(g, None).unwrap()).unwrap();
+            bytes += s.len();
+            let p: PackedGrid = serde_json::from_str(&s).unwrap();
+            unpack_grid(&p, None).unwrap();
+        }
+        let packed = t.elapsed() / frames.len() as u32;
+        let pbytes = bytes / frames.len();
+        println!("200x50 full grid encode+decode: json {json:?} {jbytes} B, packed {packed:?} {pbytes} B");
     }
 }
