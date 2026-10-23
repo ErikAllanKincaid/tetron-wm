@@ -27,6 +27,19 @@ fn splits_graphics_from_text() {
 }
 
 #[test]
+fn records_where_each_command_sat_in_the_text() {
+    let mut tap = GraphicsTap::new();
+    let mut input = b"ab".to_vec();
+    input.extend(apc("a=p,i=1", ""));
+    input.extend_from_slice(b"cde");
+    input.extend(apc("a=p,i=2", ""));
+    input.extend_from_slice(b"f");
+    let out = tap.feed(&input);
+    assert_eq!(out.passthrough, b"abcdef");
+    assert_eq!(out.at, vec![2, 5]);
+}
+
+#[test]
 fn reassembles_apc_split_across_feeds() {
     let mut tap = GraphicsTap::new();
     let full = apc("a=t,i=9", "XYZ");

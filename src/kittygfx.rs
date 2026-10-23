@@ -35,6 +35,10 @@ impl GraphicsCmd {
 pub struct Split {
     pub passthrough: Vec<u8>,
     pub commands: Vec<GraphicsCmd>,
+    /// For each command, the `passthrough` length when it ended: the emulator
+    /// must have parsed exactly that much text for the cursor to be where the
+    /// app drew it (text after the command in the same read moves the cursor).
+    pub at: Vec<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -87,6 +91,7 @@ impl GraphicsTap {
     pub fn feed_into(&mut self, bytes: &[u8], out: &mut Split) {
         out.passthrough.clear();
         out.commands.clear();
+        out.at.clear();
         // Bulk runs: text, payload and other-APC bytes are copied up to the
         // next ESC in one go; only ESC and what follows it go byte by byte.
         let run_to = |i: usize| memchr::memchr(0x1b, &bytes[i..]).map_or(bytes.len(), |n| i + n);
@@ -151,6 +156,7 @@ impl GraphicsTap {
                 St::GfxEsc => {
                     if b == b'\\' {
                         out.commands.push(GraphicsCmd::parse(&self.control, std::mem::take(&mut self.payload)));
+                        out.at.push(out.passthrough.len());
                         self.control.clear();
                         self.st = St::Text;
                     } else {

@@ -254,24 +254,31 @@ impl AppInstance {
                         &split.passthrough[..]
                     };
                     if let Ok(mut t) = tclone.lock() {
-                        parser.advance(&mut *t, text);
-                        if !split.commands.is_empty() {
-                            let (col, row) = cursor_cell(&t);
-                            if let Ok(mut g) = gclone.lock() {
-                                for cmd in &split.commands {
-                                    g.apply(cmd, col, row);
-                                }
-                                // Answer any `a=q` support queries on the PTY so apps
-                                // proceed to actually transmit graphics.
-                                if !g.queries.is_empty() {
-                                    if let Ok(mut w) = wclone.lock() {
-                                        for q in g.queries.drain(..) {
-                                            let _ = w.write_all(&q);
-                                        }
-                                        let _ = w.flush();
+                        if split.commands.is_empty() {
+                            parser.advance(&mut *t, text);
+                        } else if let Ok(mut g) = gclone.lock() {
+                            // Each command applies at the cursor where it sat in
+                            // the stream, not where the whole read left it.
+                            let mut done = 0;
+                            for (cmd, &at) in split.commands.iter().zip(&split.at) {
+                                parser.advance(&mut *t, &text[done..at]);
+                                done = at;
+                                let (col, row) = cursor_cell(&t);
+                                g.apply(cmd, col, row);
+                            }
+                            parser.advance(&mut *t, &text[done..]);
+                            // Answer any `a=q` support queries on the PTY so apps
+                            // proceed to actually transmit graphics.
+                            if !g.queries.is_empty() {
+                                if let Ok(mut w) = wclone.lock() {
+                                    for q in g.queries.drain(..) {
+                                        let _ = w.write_all(&q);
                                     }
+                                    let _ = w.flush();
                                 }
                             }
+                        } else {
+                            parser.advance(&mut *t, text);
                         }
                     }
                 }));
@@ -677,6 +684,24 @@ mod tests {
                 self.0.lock().unwrap().push(s);
             }
         }
+    }
+
+    /// A graphics command is placed at the cursor where it sat in the output,
+    /// even when the same write then moves the cursor on (w3m does this).
+    #[test]
+    fn graphics_place_at_the_cursor_of_the_command_not_the_end_of_the_read() {
+        // A 1x1 PNG, transmitted and displayed (a=T) at row 3, column 5.
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+        let script = format!(r"printf '\033[3;5H\033_Ga=T,f=100,i=7,c=2,r=1;{png}\033\\\r\n\r\nafter'; sleep 5");
+        let app = AppInstance::spawn("sh", &["-c".into(), script], 20, 8, None).unwrap();
+        let t0 = Instant::now();
+        while !app.snapshot().get(0, 4).is_some_and(|c| c.ch == 'a') {
+            assert!(t0.elapsed() < Duration::from_secs(5), "no output");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let g = app.graphics();
+        let p = g.placements.first().expect("placement captured");
+        assert_eq!((p.col, p.row), (4, 2), "placed where the cursor was at the command");
     }
 
     /// Output, resize and scroll mark an app dirty; reading clears it, and a

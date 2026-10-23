@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- Kitty graphics images sent by an app in a window are placed where the app drew them even when it writes more text in the same output burst; before, the image landed where the cursor ended up after that text.
+
 ## [0.14.15] — 2026-10-22
 
 ### Added
