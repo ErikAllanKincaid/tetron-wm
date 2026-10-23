@@ -232,6 +232,7 @@ fn handshake(stream: UnixStream) -> Conn {
 fn notice_frame(notice: &str) -> Vec<u8> {
     let mut buf = serde_json::to_vec(&FrameMsg {
         changes: Vec::new(),
+        spans: Vec::new(),
         cursor: None,
         flags: Flags { detach: true, ..Default::default() },
         images: Vec::new(),
@@ -377,6 +378,8 @@ fn serve_client_inner(
     let mut last_idle_msg: Vec<u8> = Vec::new();
     let mut idle_ticks = 0u32;
     let mut pending: Option<ClientMsg> = None;
+    // The client reads packed `spans` (it said so in its `Caps`).
+    let mut packed = false;
 
     loop {
         // A new connection while this client is attached: `attach -d` evicts
@@ -408,10 +411,14 @@ fn serve_client_inner(
                     // The client's wipe frees transmitted image data; re-send it.
                     sent_image_ids.clear();
                 }
-                Ok(msg) => {
+                Ok(mut msg) => {
                     // Input usually changes the screen a moment later (the
                     // app's echo), so leave the idle backoff at once.
                     idle_ticks = 0;
+                    // A wire fact for this connection; the session never sees it.
+                    if let ClientMsg::Caps(c) = &mut msg {
+                        packed = std::mem::take(&mut c.packed_cells);
+                    }
                     if let Some(msg) = wake_or_pass(core, msg) {
                         core.apply(msg);
                     }
@@ -509,8 +516,14 @@ fn serve_client_inner(
         // is fully described by its bytes; one identical to the last such is not
         // re-sent, so an idle desktop sends nothing.
         let idle_msg = !had_changes && !clear_pending && image_data.is_empty() && clipboard.is_none();
+        let (changes, spans) = if packed {
+            (Vec::new(), crate::protocol::pack_changes(&changes))
+        } else {
+            (changes, Vec::new())
+        };
         let mut buf = serde_json::to_vec(&FrameMsg {
             changes,
+            spans,
             cursor: frame.cursor,
             flags,
             images: frame.images.clone(),

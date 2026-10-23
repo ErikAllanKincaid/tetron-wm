@@ -74,6 +74,11 @@ pub struct ClientCaps {
     /// The terminal accepts Kitty graphics (image icons, image viewer).
     #[serde(default)]
     pub kitty_graphics: bool,
+    /// The client reads `FrameMsg::spans`, so the daemon may send cells packed
+    /// instead of in `changes`. A wire fact, not a display one: the daemon
+    /// takes it out before the caps reach the session.
+    #[serde(default)]
+    pub packed_cells: bool,
 }
 
 /// The 16 ANSI colours as the Linux console (VGA text mode) renders them. The

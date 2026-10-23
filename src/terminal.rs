@@ -57,7 +57,7 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics }
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false }
     }
 }
 
@@ -149,8 +149,10 @@ const MIN_CONTRAST_16: f64 = 2.0;
 const MONO_REVERSE_LUM: f64 = 0.2;
 
 /// Push the colour SGR parameters (and, for mono, the attributes that stand in
-/// for colour) for one cell onto `sgr`.
-fn push_colors(fg: Rgba, bg: Rgba, caps: &Caps, sgr: &mut Vec<String>) {
+/// for colour) for one cell onto `sgr`, each with a leading `;`. Written in
+/// place because this runs for every changed cell.
+fn push_colors(fg: Rgba, bg: Rgba, caps: &Caps, sgr: &mut String) {
+    use std::fmt::Write as _;
     match caps.depth {
         ColorDepth::TrueColor => {
             // On a bare VT the kernel reduces this to 16 colours itself.
@@ -159,8 +161,7 @@ fn push_colors(fg: Rgba, bg: Rgba, caps: &Caps, sgr: &mut Vec<String>) {
             } else {
                 fg
             };
-            sgr.push(format!("38;2;{};{};{}", fg.r, fg.g, fg.b));
-            sgr.push(format!("48;2;{};{};{}", bg.r, bg.g, bg.b));
+            let _ = write!(sgr, ";38;2;{};{};{};48;2;{};{};{}", fg.r, fg.g, fg.b, bg.r, bg.g, bg.b);
         }
         ColorDepth::Ansi256 => {
             let (mut fi, mut bi) = (ansi256(fg), ansi256(bg));
@@ -182,29 +183,27 @@ fn push_colors(fg: Rgba, bg: Rgba, caps: &Caps, sgr: &mut Vec<String>) {
                     fi = ansi256(g);
                 }
             }
-            sgr.push(format!("38;5;{fi}"));
-            sgr.push(format!("48;5;{bi}"));
+            let _ = write!(sgr, ";38;5;{fi};48;5;{bi}");
         }
         ColorDepth::Ansi16 => {
             // A bare VT has only the dark half for backgrounds (SGR 40-47);
             // terminals forced to 16 colours also take 100-107.
             let bi = ansi16(bg, if caps.vt { 8 } else { 16 });
             let fi = readable_fg16(ansi16(fg, 16), bi);
-            sgr.push(format!("{}", if fi < 8 { 30 + fi } else { 90 + fi - 8 }));
-            sgr.push(format!("{}", if bi < 8 { 40 + bi } else { 100 + bi - 8 }));
+            let _ = write!(sgr, ";{};{}", if fi < 8 { 30 + fi } else { 90 + fi - 8 }, if bi < 8 { 40 + bi } else { 100 + bi - 8 });
         }
         ColorDepth::Mono => {
             // No colour at all: brightness becomes attributes. A light
             // background is a highlight (reverse video); on normal cells a dark
             // fg is secondary text (dim) and a near-white fg is emphasis (bold).
             if crate::theme::luminance(bg) >= MONO_REVERSE_LUM {
-                sgr.push("7".into());
+                sgr.push_str(";7");
             } else {
                 let l = crate::theme::luminance(fg);
                 if l < 0.3 {
-                    sgr.push("2".into());
+                    sgr.push_str(";2");
                 } else if l > 0.9 {
-                    sgr.push("1".into());
+                    sgr.push_str(";1");
                 }
             }
         }
@@ -336,7 +335,11 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
     if changes.is_empty() {
         return String::new();
     }
-    let mut s = String::new();
+    use std::fmt::Write as _;
+    // One allocation per frame (a truecolor cell is about 45 bytes), and one
+    // reused parameter buffer.
+    let mut s = String::with_capacity(changes.len() * 48 + 4);
+    let mut sgr = String::with_capacity(48);
     for ch in changes {
         // Continuation cell (right half of a double-width glyph): the glyph to its
         // left already covers this column, so skip it — painting it would erase the
@@ -345,9 +348,9 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
             continue;
         }
         // CUP: move cursor to 1-based (row, col).
-        s.push_str(&format!("\x1b[{};{}H", ch.y + 1, ch.x + 1));
+        let _ = write!(s, "\x1b[{};{}H", ch.y + 1, ch.x + 1);
         let a = &ch.cell.attrs;
-        let mut sgr = Vec::with_capacity(4);
+        sgr.clear();
         // Reverse video is applied here, by swapping the colours before they
         // are encoded, rather than sent as SGR 7: a kernel VT can not show a
         // bright background, so reversing bright text there gives a black
@@ -355,14 +358,13 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
         // would cancel the reverse that stands in for a light background.
         let (fg, bg) = if a.inverse { (ch.cell.bg, ch.cell.fg) } else { (ch.cell.fg, ch.cell.bg) };
         push_colors(fg, bg, caps, &mut sgr);
-        if a.bold      { sgr.push("1".into()); }
-        if a.italic    { sgr.push("3".into()); }
-        if a.underline { sgr.push("4".into()); }
-        if sgr.is_empty() {
-            s.push_str("\x1b[0m");
-        } else {
-            s.push_str(&format!("\x1b[0;{}m", sgr.join(";")));
-        }
+        if a.bold      { sgr.push_str(";1"); }
+        if a.italic    { sgr.push_str(";3"); }
+        if a.underline { sgr.push_str(";4"); }
+        // `sgr` is empty or starts with `;`: `ESC[0m` or `ESC[0;…m`.
+        s.push_str("\x1b[0");
+        s.push_str(&sgr);
+        s.push('m');
         s.push(ch.cell.ch);
     }
     s.push_str("\x1b[0m");
@@ -520,5 +522,102 @@ mod tests {
         std::env::set_var("TETRON_WM_TRUECOLOR", "false");
         assert_eq!(truecolor_override(), Some(false));
         std::env::remove_var("TETRON_WM_TRUECOLOR");
+    }
+
+    /// The `push_colors` before it wrote in place, kept as the reference.
+    fn old_push_colors(fg: Rgba, bg: Rgba, caps: &Caps, sgr: &mut Vec<String>) {
+        match caps.depth {
+            ColorDepth::TrueColor => {
+                let fg = if caps.vt { kernel_readable_fg(fg, fg, bg) } else { fg };
+                sgr.push(format!("38;2;{};{};{}", fg.r, fg.g, fg.b));
+                sgr.push(format!("48;2;{};{};{}", bg.r, bg.g, bg.b));
+            }
+            ColorDepth::Ansi256 => {
+                let (mut fi, mut bi) = (ansi256(fg), ansi256(bg));
+                if caps.vt {
+                    if kernel_bg(kernel_rgb_256(bi)) != kernel_bg(bg) { bi = kernel_bg(bg); }
+                    if kernel_fg(kernel_rgb_256(fi)) != kernel_fg(fg) { fi = kernel_fg(fg); }
+                    let g = kernel_readable_fg(fg, kernel_rgb_256(fi), kernel_rgb_256(bi));
+                    if g != fg { fi = ansi256(g); }
+                }
+                sgr.push(format!("38;5;{fi}"));
+                sgr.push(format!("48;5;{bi}"));
+            }
+            ColorDepth::Ansi16 => {
+                let bi = ansi16(bg, if caps.vt { 8 } else { 16 });
+                let fi = readable_fg16(ansi16(fg, 16), bi);
+                sgr.push(format!("{}", if fi < 8 { 30 + fi } else { 90 + fi - 8 }));
+                sgr.push(format!("{}", if bi < 8 { 40 + bi } else { 100 + bi - 8 }));
+            }
+            ColorDepth::Mono => {
+                if crate::theme::luminance(bg) >= MONO_REVERSE_LUM {
+                    sgr.push("7".into());
+                } else {
+                    let l = crate::theme::luminance(fg);
+                    if l < 0.3 { sgr.push("2".into()); } else if l > 0.9 { sgr.push("1".into()); }
+                }
+            }
+        }
+    }
+
+    /// The `frame_to_ansi` before it wrote in place, kept as the reference.
+    fn old_frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
+        if changes.is_empty() { return String::new(); }
+        let mut s = String::new();
+        for ch in changes {
+            if ch.cell.ch == '\0' { continue; }
+            s.push_str(&format!("\x1b[{};{}H", ch.y + 1, ch.x + 1));
+            let a = &ch.cell.attrs;
+            let mut sgr = Vec::with_capacity(4);
+            let (fg, bg) = if a.inverse { (ch.cell.bg, ch.cell.fg) } else { (ch.cell.fg, ch.cell.bg) };
+            old_push_colors(fg, bg, caps, &mut sgr);
+            if a.bold { sgr.push("1".into()); }
+            if a.italic { sgr.push("3".into()); }
+            if a.underline { sgr.push("4".into()); }
+            if sgr.is_empty() { s.push_str("\x1b[0m"); } else { s.push_str(&format!("\x1b[0;{}m", sgr.join(";"))); }
+            s.push(ch.cell.ch);
+        }
+        s.push_str("\x1b[0m");
+        s
+    }
+
+    #[test]
+    fn frame_to_ansi_bytes_match_the_reference_at_every_depth() {
+        use crate::cell::{Cell, CellAttrs};
+        let mut seed = 7u32;
+        let mut rnd = || { seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223); seed >> 8 };
+        let changes: Vec<CellChange> = (0..4000).map(|i| {
+            let (r, q) = (rnd(), rnd());
+            let attrs = CellAttrs { bold: r & 1 != 0, italic: r & 2 != 0, underline: r & 4 != 0, inverse: r & 8 != 0 };
+            let ch = match q % 9 { 0 => '\0', 1 => '\u{1F4C1}', 2 => '▀', _ => (b'!' + (q % 90) as u8) as char };
+            let cell = Cell { ch, fg: Rgba::new(r as u8, (r >> 4) as u8, q as u8, 255), bg: Rgba::new((q >> 8) as u8, (q >> 2) as u8, (r >> 12) as u8, 255), attrs };
+            CellChange { x: i % 200, y: i / 200, cell }
+        }).collect();
+        for depth in [ColorDepth::TrueColor, ColorDepth::Ansi256, ColorDepth::Ansi16, ColorDepth::Mono] {
+            for vt in [false, true] {
+                let caps = Caps { depth, vt, pixel_mouse: false, kitty_graphics: false };
+                assert_eq!(frame_to_ansi(&changes, &caps), old_frame_to_ansi(&changes, &caps), "{depth:?} vt={vt}");
+            }
+        }
+        let caps = Caps { depth: ColorDepth::TrueColor, vt: false, pixel_mouse: false, kitty_graphics: false };
+        assert_eq!(frame_to_ansi(&[], &caps), "");
+    }
+
+    /// `cargo test --release --lib frame_to_ansi_speed -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn frame_to_ansi_speed() {
+        use crate::cell::Cell;
+        let changes: Vec<CellChange> = (0..10_000).map(|i| CellChange { x: i % 200, y: i / 200, cell: Cell {
+            ch: 'x', fg: Rgba::rgb(i as u8, 100, 200), bg: Rgba::rgb(10, (i / 7) as u8, 30), attrs: Default::default() } }).collect();
+        let caps = Caps { depth: ColorDepth::TrueColor, vt: false, pixel_mouse: false, kitty_graphics: false };
+        let n = 100;
+        let t = std::time::Instant::now();
+        for _ in 0..n { std::hint::black_box(old_frame_to_ansi(&changes, &caps)); }
+        let a = t.elapsed() / n;
+        let t = std::time::Instant::now();
+        for _ in 0..n { std::hint::black_box(frame_to_ansi(&changes, &caps)); }
+        let b = t.elapsed() / n;
+        println!("10000 cells: old {a:?}, new {b:?}");
     }
 }
