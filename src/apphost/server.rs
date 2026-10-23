@@ -106,6 +106,11 @@ pub fn run() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Minimum time between frame passes.
+const FRAME: Duration = Duration::from_millis(16);
+/// Longest idle wait, so exited apps are still noticed without output.
+const IDLE: Duration = Duration::from_millis(100);
+
 /// A control-socket request and where its reply goes.
 type CtlReq = (HostReq, mpsc::Sender<HostEvt>);
 
@@ -120,6 +125,7 @@ fn serve_ctl(listener: UnixListener, tx: mpsc::Sender<CtlReq>) {
         if tx.send((req, rtx)).is_err() {
             return;
         }
+        crate::ptyhost::notify_output();
         if let Ok(evt) = rrx.recv_timeout(Duration::from_secs(5)) {
             let _ = send(&mut writer, &evt);
         }
@@ -189,7 +195,9 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
             if tx.send(req).is_err() {
                 break;
             }
+            crate::ptyhost::notify_output();
         }
+        crate::ptyhost::notify_output();
     });
 
     // Roster so the frontend can rebuild its windows.
@@ -240,8 +248,8 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 Ok(HostReq::SetColors { theme, terminal_bg, terminal_fg }) => {
                     crate::dbg_log(&format!("apphost: colors -> theme '{theme}' bg {terminal_bg:?} fg {terminal_fg:?}"));
                     crate::theme::set_with_terminal(&theme, terminal_bg.as_deref(), terminal_fg.as_deref());
-                    // No dirty hook needed: the loop below re-snapshots every app
-                    // each tick and sends a frame whenever the grid differs.
+                    // The new colours change every snapshot.
+                    local.mark_all_dirty();
                 }
                 Ok(HostReq::Shutdown) => {
                     *shutdown = true;
@@ -255,6 +263,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
         answer_ctl(local, ctl);
 
         // Push frames for every app whose grid / placements / images changed.
+        let mut busy = false;
         for id in local.list() {
             let alive = local.is_alive(id);
             if !alive {
@@ -267,6 +276,12 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                 sent_images.remove(&id);
                 continue;
             }
+            // Only apps with new output (or a resize/scroll/theme change) can
+            // have a different frame; skip the snapshot and compare otherwise.
+            if !local.take_dirty(id) && last_grid.contains_key(&id) {
+                continue;
+            }
+            busy = true;
             let Some(grid) = local.snapshot(id) else { continue };
             let placements = local.placements(id);
             let mouse = local.mouse_mode(id);
@@ -294,18 +309,26 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
             // so it must be tracked separately or the caret would never update.
             let cursor_changed = last_cursor.get(&id) != Some(&cursor);
             if grid_changed || placements_changed || mouse_changed || cursor_changed || !images.is_empty() || bells > 0 || clip.is_some() || !clip_reqs.is_empty() {
-                let evt = HostEvt::Frame { app: id.0, grid: grid.clone(), placements: placements.clone(), images, alive: true, mouse, cursor, bells, clip, clip_reqs };
+                let evt = HostEvt::Frame { app: id.0, grid, placements, images, alive: true, mouse, cursor, bells, clip, clip_reqs };
                 if send(&mut writer, &evt).is_err() {
                     return;
                 }
-                last_grid.insert(id, grid);
-                last_placements.insert(id, placements);
+                // Keep the sent grid as the baseline without cloning it.
+                if let HostEvt::Frame { grid, placements, .. } = evt {
+                    last_grid.insert(id, grid);
+                    last_placements.insert(id, placements);
+                }
                 last_mouse.insert(id, mouse);
                 last_cursor.insert(id, cursor);
             }
         }
 
-        std::thread::sleep(Duration::from_millis(16));
+        // At most one frame per app per FRAME (bursts like `yes` coalesce);
+        // with nothing changing, sleep until output or a command arrives.
+        std::thread::sleep(FRAME);
+        if !busy {
+            crate::ptyhost::wait_output(IDLE);
+        }
     }
 }
 

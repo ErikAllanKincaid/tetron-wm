@@ -23,6 +23,7 @@ mime_guess = "2"
 base64 = "0.22"
 flate2 = "1"
 libc = "0.2"
+memchr = "2"
 # tetron (P2P mesh VPN) IPC: the message enum + wire types, the single source of
 # truth shared with tetron-systray and tetron-webui. We only read Status, framed
 # ourselves synchronously (4-byte BE length + msgpack) so we avoid tetron-proto's

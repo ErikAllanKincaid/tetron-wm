@@ -68,7 +68,53 @@ impl GraphicsTap {
 
     pub fn feed(&mut self, bytes: &[u8]) -> Split {
         let mut out = Split::default();
-        for &b in bytes {
+        self.feed_into(bytes, &mut out);
+        out
+    }
+
+    /// Whether `feed(bytes)` would pass `bytes` through unchanged and leave the
+    /// tap in its text state: no sequence is pending and the chunk holds no
+    /// `ESC _` nor a trailing ESC that could start one. The reader then hands
+    /// the chunk to the emulator directly, skipping the copy.
+    pub fn passes_through(&self, bytes: &[u8]) -> bool {
+        self.st == St::Text
+            && bytes.last() != Some(&0x1b)
+            && !memchr::memchr_iter(0x1b, bytes).any(|i| bytes.get(i + 1) == Some(&b'_'))
+    }
+
+    /// [`feed`](Self::feed) into a caller-owned `Split`, cleared first, so a
+    /// reader loop reuses its buffers instead of allocating per read.
+    pub fn feed_into(&mut self, bytes: &[u8], out: &mut Split) {
+        out.passthrough.clear();
+        out.commands.clear();
+        // Bulk runs: text, payload and other-APC bytes are copied up to the
+        // next ESC in one go; only ESC and what follows it go byte by byte.
+        let run_to = |i: usize| memchr::memchr(0x1b, &bytes[i..]).map_or(bytes.len(), |n| i + n);
+        let mut i = 0;
+        while i < bytes.len() {
+            match self.st {
+                St::Text => {
+                    let e = run_to(i);
+                    out.passthrough.extend_from_slice(&bytes[i..e]);
+                    i = e;
+                    if i == bytes.len() { break; }
+                }
+                St::GfxPayload => {
+                    let e = run_to(i);
+                    self.payload.extend_from_slice(&bytes[i..e]);
+                    i = e;
+                    if i == bytes.len() { break; }
+                }
+                St::OtherApc => {
+                    let e = run_to(i);
+                    self.other.extend_from_slice(&bytes[i..e]);
+                    i = e;
+                    if i == bytes.len() { break; }
+                }
+                _ => {}
+            }
+            let b = bytes[i];
+            i += 1;
             match self.st {
                 St::Text => {
                     if b == 0x1b { self.st = St::Esc; } else { out.passthrough.push(b); }
@@ -128,7 +174,6 @@ impl GraphicsTap {
                 }
             }
         }
-        out
     }
 }
 

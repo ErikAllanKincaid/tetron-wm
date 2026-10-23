@@ -95,23 +95,35 @@ impl Compositor {
         order.sort_by_key(|l| l.z);
 
         for layer in order {
-            for ly in 0..layer.buf.height() {
-                for lx in 0..layer.buf.width() {
-                    let gx = layer.origin.x + lx;
-                    let gy = layer.origin.y + ly;
-                    // Clip to compositor bounds.
-                    if gx < 0 || gy < 0 || gx >= self.w || gy >= self.h {
-                        continue;
+            // Clip the layer to the screen and its scissor once, as layer-local
+            // ranges, instead of testing every cell.
+            let (ox, oy) = (layer.origin.x, layer.origin.y);
+            let (mut x0, mut x1) = (0.max(-ox), layer.buf.width().min(self.w - ox));
+            let (mut y0, mut y1) = (0.max(-oy), layer.buf.height().min(self.h - oy));
+            if let Some(s) = layer.scissor {
+                x0 = x0.max(s.x - ox);
+                x1 = x1.min(s.x + s.w - ox);
+                y0 = y0.max(s.y - oy);
+                y1 = y1.min(s.y + s.h - oy);
+            }
+            if x0 >= x1 || y0 >= y1 {
+                continue;
+            }
+            // `with_opacity` per alpha value, hoisted out of the cell loop (it
+            // rounds a float); identity when the layer is fully opaque.
+            let lut: Option<[u8; 256]> = (layer.opacity != 1.0).then(|| {
+                std::array::from_fn(|a| Rgba::new(0, 0, 0, a as u8).with_opacity(layer.opacity).a)
+            });
+            let (gx0, gx1) = ((ox + x0) as usize, (ox + x1) as usize);
+            for ly in y0..y1 {
+                let src = &layer.buf.row(ly)[x0 as usize..x1 as usize];
+                let dst = &mut self.back.row_mut(oy + ly)[gx0..gx1];
+                for (d, s) in dst.iter_mut().zip(src) {
+                    let mut src_bg = s.bg;
+                    if let Some(lut) = &lut {
+                        src_bg.a = lut[src_bg.a as usize];
                     }
-                    // Apply scissor rect if set.
-                    if let Some(s) = layer.scissor {
-                        if !s.contains(Point::new(gx, gy)) {
-                            continue;
-                        }
-                    }
-                    let src = *layer.buf.get(lx, ly).unwrap();
-                    let dst = *self.back.get(gx, gy).unwrap();
-                    self.back.set(gx, gy, blend_cell(src, dst, layer.opacity));
+                    *d = blend_with(*s, src_bg, *d);
                 }
             }
         }
@@ -122,11 +134,10 @@ impl Compositor {
         // column overwrites and erases the glyph's right half (it then only shows
         // when the cursor happens to invalidate just the glyph cell).
         for y in 0..self.h {
-            for x in 0..self.w - 1 {
-                if is_wide(self.back.get(x, y).unwrap().ch) {
-                    let mut cont = *self.back.get(x + 1, y).unwrap();
-                    cont.ch = '\0';
-                    self.back.set(x + 1, y, cont);
+            let row = self.back.row_mut(y);
+            for x in 1..row.len() {
+                if is_wide(row[x - 1].ch) {
+                    row[x].ch = '\0';
                 }
             }
         }
@@ -146,11 +157,13 @@ impl Compositor {
     pub fn diff(&self) -> Vec<CellChange> {
         let mut out = Vec::new();
         for y in 0..self.h {
-            for x in 0..self.w {
-                let b = self.back.get(x, y).unwrap();
-                let f = self.front.get(x, y).unwrap();
+            let (b, f) = (self.back.row(y), self.front.row(y));
+            if b == f {
+                continue;
+            }
+            for (x, (b, f)) in b.iter().zip(f).enumerate() {
                 if b != f {
-                    out.push(CellChange { x, y, cell: *b });
+                    out.push(CellChange { x: x as i32, y, cell: *b });
                 }
             }
         }
@@ -159,8 +172,11 @@ impl Compositor {
 
     /// Promote the back buffer to the front (mark it as "what the terminal shows").
     /// Call this after the terminal backend has written all changes from [`diff`](Self::diff).
+    /// Swaps instead of copying: the old front becomes the next back buffer,
+    /// which [`composite`](Self::composite) refills completely, so call
+    /// `composite` before the next `diff`.
     pub fn commit(&mut self) {
-        self.front = self.back.clone();
+        std::mem::swap(&mut self.front, &mut self.back);
     }
 }
 
@@ -169,7 +185,9 @@ impl Compositor {
 /// scripts; good enough for the cell grid (full Unicode width tables aren't
 /// needed here).
 fn is_wide(c: char) -> bool {
-    matches!(c as u32,
+    let c = c as u32;
+    // Fast path: everything below Hangul Jamo (ASCII, Latin, box drawing) is narrow.
+    c >= 0x1100 && matches!(c,
         0x1100..=0x115F        // Hangul Jamo
         | 0x2E80..=0xA4CF      // CJK radicals … Yi
         | 0xAC00..=0xD7A3      // Hangul syllables
@@ -191,8 +209,14 @@ fn is_wide(c: char) -> bool {
 ///    whatever was beneath (a normal window's empty area must hide lower windows).
 /// 3. `src` is blank with a **translucent** background → a shadow/tint: blend the
 ///    background but keep the glyph from below showing through.
+#[cfg(test)]
 fn blend_cell(src: Cell, dst: Cell, opacity: f32) -> Cell {
-    let src_bg = src.bg.with_opacity(opacity);
+    blend_with(src, src.bg.with_opacity(opacity), dst)
+}
+
+/// [`blend_cell`] with `src.bg` already scaled by the layer opacity.
+#[inline]
+fn blend_with(src: Cell, src_bg: Rgba, dst: Cell) -> Cell {
     let out_bg = src_bg.over(dst.bg);
     if src.ch != ' ' {
         Cell {
@@ -252,6 +276,143 @@ mod tests {
         // A double-width emoji at (0,0); the rest are blank spaces.
         buf.set(0, 0, Cell { ch: '\u{1F4C1}', fg: Rgba::rgb(255, 255, 255), bg: Rgba::TRANSPARENT, attrs: Default::default() });
         Layer { z: 0, origin: Point::new(0, 0), buf, opacity: 1.0, scissor: None }
+    }
+
+    /// The original per-cell composite, kept as the reference the fast path
+    /// must match exactly.
+    fn reference_composite(w: i32, h: i32, layers: &[Layer], cursor: Option<Point>) -> CellBuffer {
+        let t = crate::theme::current();
+        let mut back = CellBuffer::new(w, h);
+        back.fill(Cell { ch: ' ', fg: Rgba::rgb(90, 100, 120), bg: t.desktop_bg, attrs: Default::default() });
+        let mut order: Vec<&Layer> = layers.iter().collect();
+        order.sort_by_key(|l| l.z);
+        for layer in order {
+            for ly in 0..layer.buf.height() {
+                for lx in 0..layer.buf.width() {
+                    let (gx, gy) = (layer.origin.x + lx, layer.origin.y + ly);
+                    if gx < 0 || gy < 0 || gx >= w || gy >= h { continue; }
+                    if let Some(s) = layer.scissor {
+                        if !s.contains(Point::new(gx, gy)) { continue; }
+                    }
+                    let src = *layer.buf.get(lx, ly).unwrap();
+                    let dst = *back.get(gx, gy).unwrap();
+                    back.set(gx, gy, blend_cell(src, dst, layer.opacity));
+                }
+            }
+        }
+        for y in 0..h {
+            for x in 0..w - 1 {
+                if is_wide(back.get(x, y).unwrap().ch) {
+                    let mut cont = *back.get(x + 1, y).unwrap();
+                    cont.ch = '\0';
+                    back.set(x + 1, y, cont);
+                }
+            }
+        }
+        if let Some(p) = cursor {
+            if let Some(c) = back.get(p.x, p.y) {
+                back.set(p.x, p.y, cursor_cell(*c));
+            }
+        }
+        back
+    }
+
+    /// Small xorshift so the test needs no dependency and is reproducible.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 { self.0 ^= self.0 << 13; self.0 ^= self.0 >> 7; self.0 ^= self.0 << 17; self.0 }
+        fn range(&mut self, lo: i32, hi: i32) -> i32 { lo + (self.next() % (hi - lo + 1) as u64) as i32 }
+        fn u8(&mut self) -> u8 { self.next() as u8 }
+        fn alpha(&mut self) -> u8 { match self.next() % 4 { 0 => 0, 1 => 255, _ => self.u8() } }
+    }
+
+    fn random_layer(r: &mut Rng, w: i32, h: i32) -> Layer {
+        let (lw, lh) = (r.range(0, w + 4), r.range(0, h + 4));
+        let mut buf = CellBuffer::new(lw, lh);
+        const CHARS: [char; 8] = [' ', 'a', '\u{1F4C1}', '\u{4E2D}', '\u{2580}', '\0', '\u{1100}', 'Z'];
+        for y in 0..lh {
+            for x in 0..lw {
+                let ch = CHARS[(r.next() % 8) as usize];
+                let fg = Rgba::new(r.u8(), r.u8(), r.u8(), r.alpha());
+                let bg = Rgba::new(r.u8(), r.u8(), r.u8(), r.alpha());
+                let attrs = crate::cell::CellAttrs { bold: r.next().is_multiple_of(2), italic: false, underline: r.next().is_multiple_of(3), inverse: false };
+                buf.set(x, y, Cell { ch, fg, bg, attrs });
+            }
+        }
+        let opacity = match r.next() % 4 { 0 | 1 => 1.0, 2 => 0.0, _ => (r.next() % 1001) as f32 / 1000.0 };
+        let scissor = (r.next().is_multiple_of(2)).then(|| crate::geometry::Rect::new(r.range(-3, w), r.range(-3, h), r.range(-2, w + 3), r.range(-2, h + 3)));
+        Layer { z: r.range(-2, 2), origin: Point::new(r.range(-lw - 2, w + 2), r.range(-lh - 2, h + 2)), buf, opacity, scissor }
+    }
+
+    #[test]
+    fn fast_composite_matches_reference() {
+        let mut r = Rng(0x9E3779B97F4A7C15);
+        for _ in 0..3000 {
+            let (w, h) = (r.range(0, 24), r.range(0, 10));
+            let layers: Vec<Layer> = (0..r.range(0, 5)).map(|_| random_layer(&mut r, w, h)).collect();
+            let cursor = (r.next().is_multiple_of(2)).then(|| Point::new(r.range(-1, w), r.range(-1, h)));
+            let mut comp = Compositor::new(w, h);
+            // Dirty both buffers first: the swap in commit must not leak old cells.
+            let junk = random_layer(&mut r, w, h);
+            comp.composite(std::slice::from_ref(&junk), None);
+            comp.commit();
+            comp.composite(&[junk], cursor);
+            let got = comp.composite(&layers, cursor).clone();
+            assert_eq!(got, reference_composite(w, h, &layers, cursor));
+        }
+    }
+
+    #[test]
+    fn diff_after_commit_matches_full_compare() {
+        let mut r = Rng(42);
+        let (w, h) = (20, 8);
+        let mut comp = Compositor::new(w, h);
+        let mut prev = CellBuffer::new(w, h);
+        for _ in 0..300 {
+            let layers: Vec<Layer> = (0..r.range(0, 4)).map(|_| random_layer(&mut r, w, h)).collect();
+            let back = comp.composite(&layers, None).clone();
+            let want: Vec<CellChange> = (0..h).flat_map(|y| (0..w).map(move |x| (x, y)))
+                .filter(|&(x, y)| back.get(x, y) != prev.get(x, y))
+                .map(|(x, y)| CellChange { x, y, cell: *back.get(x, y).unwrap() }).collect();
+            assert_eq!(comp.diff(), want);
+            comp.commit();
+            prev = back;
+        }
+    }
+
+    #[test]
+    fn with_opacity_lut_matches_per_cell() {
+        for o in (0..=1000).map(|i| i as f32 / 1000.0).chain([1.5, -0.5, f32::NAN]) {
+            let lut: [u8; 256] = std::array::from_fn(|a| Rgba::new(0, 0, 0, a as u8).with_opacity(o).a);
+            for a in 0..=255u8 {
+                assert_eq!(lut[a as usize], Rgba::new(1, 2, 3, a).with_opacity(o).a);
+            }
+        }
+    }
+
+    /// `cargo test --release -- --ignored composite_timing --nocapture`
+    #[test]
+    #[ignore]
+    fn composite_timing() {
+        let (w, h) = (200, 50);
+        let mut r = Rng(7);
+        let full = |r: &mut Rng, x, y, lw, lh, opacity| {
+            let mut l = random_layer(r, 1, 1);
+            l.buf = CellBuffer::new(lw, lh);
+            for yy in 0..lh { l.buf.write_str(0, yy, &"x".repeat(lw as usize), Rgba::rgb(200, 200, 200), Rgba::rgb(20, 20, 30)); }
+            l.origin = Point::new(x, y); l.opacity = opacity; l.scissor = None; l
+        };
+        // Wallpaper, two windows, a translucent shadow: the shape of a desktop frame.
+        let layers = vec![full(&mut r, 0, 0, w, h, 1.0), full(&mut r, 5, 3, 120, 35, 1.0), full(&mut r, 60, 10, 120, 35, 1.0), full(&mut r, 61, 11, 120, 35, 0.5)];
+        let n = 2000;
+        let t = std::time::Instant::now();
+        for _ in 0..n { std::hint::black_box(reference_composite(w, h, &layers, Some(Point::new(3, 3)))); }
+        let old = t.elapsed();
+        let mut comp = Compositor::new(w, h);
+        let t = std::time::Instant::now();
+        for _ in 0..n { comp.composite(&layers, Some(Point::new(3, 3))); std::hint::black_box(comp.diff()); comp.commit(); }
+        let new = t.elapsed();
+        println!("per frame: reference {:?} (composite only), fast {:?} (composite+diff+commit)", old / n, new / n);
     }
 
     #[test]

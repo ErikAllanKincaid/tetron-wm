@@ -3427,6 +3427,7 @@ dependencies = [
  "image",
  "infer",
  "libc",
+ "memchr",
  "mime_guess",
  "portable-pty",
  "rmp-serde",
