@@ -320,6 +320,7 @@ impl<F: FsOps> FileManager<F> {
                 cols: rect.w.max(1) as u16,
                 rows: rect.h.max(1) as u16,
                 visible,
+                src: None,
             });
         }
         out.sort_by_key(|p| p.id); // deterministic order

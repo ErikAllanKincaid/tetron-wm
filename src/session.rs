@@ -156,7 +156,7 @@ enum WinContent {
     /// The native settings panel (boxed: by far the largest variant, and there
     /// is at most one settings window).
     Settings(Box<Settings>),
-    /// A native image viewer (placeholder cells + a Kitty graphics placement).
+    /// The built-in image viewer (Kitty graphics, chafa cells or half blocks).
     ImageView(crate::imageview::ImageView),
     /// The native file manager (local disk or a remote system over ssh).
     FileManager(crate::filemanager::DynFileManager),
@@ -526,6 +526,8 @@ pub enum ClientMsg {
     LogsRefresh,
     /// Logs viewer: close the window.
     LogsClose,
+    /// A key for the focused image viewer.
+    ImageKey(crate::imageview::ImageKey),
 }
 
 // ── Output frame type ─────────────────────────────────────────────────────────
@@ -868,6 +870,36 @@ impl SessionCore {
 
     /// Drain finished thumbnails into the image store, then (re)assign them to the
     /// desktop and the open file manager. Called once per frame; cheap (no I/O).
+    /// Drive the image viewers: collect finished decodes and renders, start
+    /// the renders their current size, zoom and client need, and keep each
+    /// window title in step with the shown file.
+    pub fn pump_images(&mut self) {
+        let caps = crate::display::get();
+        let focused = self.wm.focused();
+        let simple = self.simple.then(|| self.simple_content_rect());
+        let views: Vec<(WindowId, crate::geometry::Rect, bool)> = self
+            .wm
+            .z_ordered()
+            .iter()
+            .filter(|w| !w.minimized && matches!(self.contents.get(&w.id), Some(WinContent::ImageView(_))))
+            .map(|w| match simple {
+                Some(r) if focused == Some(w.id) => (w.id, r, true),
+                _ => (w.id, w.content_rect(), self.fully_unobstructed(w)),
+            })
+            .collect();
+        for (id, r, unobstructed) in views {
+            let Some(WinContent::ImageView(v)) = self.contents.get_mut(&id) else { continue };
+            v.poll(r.w, r.h, caps, unobstructed, &mut self.images);
+            let title = v.title();
+            if let Some(t) = self.titles.iter_mut().find(|(w, _)| *w == id) {
+                if t.1 != title {
+                    t.1 = title.clone();
+                    self.wm.rename_window(id, title);
+                }
+            }
+        }
+    }
+
     pub fn pump_thumbnails(&mut self) {
         for r in self.thumb_loader.drain() {
             let id = self.images.store_png(r.png, r.w, r.h);
@@ -1505,17 +1537,16 @@ impl SessionCore {
     /// Open an image file in a new ImageView window.
     fn open_image(&mut self, path: String) {
         crate::dbg_log(&format!("open_image: {}", path));
-        let expanded = expand_tilde(&path);
-        // Bound the decode to a screen-sized image (assume an 8×16 px cell).
-        let id = self.images.load(&expanded, (self.w.max(1) as u32) * 8, (self.h.max(1) as u32) * 16);
-        let dims = id.and_then(|i| self.images.dimensions(i)).unwrap_or((0, 0));
-        let w = 60.min((self.w - 4).max(20));
-        let h = 24.min((self.h - 4).max(8));
+        // Decoding happens on the viewer's own thread, never on the desktop loop.
+        let method = crate::imageview::Method::parse(&self.cfg.image_viewer);
+        let view = crate::imageview::ImageView::new(expand_tilde(&path), method);
+        let w = 90.min((self.w - 4).max(20));
+        let h = 32.min((self.h - 4).max(8));
         let rect = Rect::new((self.w - w) / 2, 2, w, h);
-        let label = format!("image: {}", path.rsplit('/').next().unwrap_or(&path));
+        let label = view.title();
         let id_win = self.wm.add_window(label.clone(), rect);
         self.app_keys.insert(id_win, label.clone());
-        self.contents.insert(id_win, WinContent::ImageView(crate::imageview::ImageView::new(path, id, dims)));
+        self.contents.insert(id_win, WinContent::ImageView(view));
         self.titles.push((id_win, label));
     }
 
@@ -3265,6 +3296,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 }
             }
             ClientMsg::LogsRefresh => { if let Some(l) = self.focused_logs_mut() { l.reload(); } }
+            ClientMsg::ImageKey(k) => {
+                if let Some(id) = self.wm.focused() {
+                    if let Some(WinContent::ImageView(v)) = self.contents.get_mut(&id) {
+                        if v.key(k) {
+                            self.close(id);
+                        }
+                    }
+                }
+            }
             ClientMsg::LogsClose => {
                 if let Some(id) = self.wm.focused() {
                     if matches!(self.contents.get(&id), Some(WinContent::Logs(_))) {
@@ -3645,6 +3685,14 @@ or a remote-side error — its authorized_keys was left untouched)",
         self.contents.insert(id, WinContent::Logs(crate::logsview::LogsView::new()));
         self.titles.push((id, "Logs".into()));
         self.logs_win = Some(id);
+    }
+
+    /// `true` when the focused window is an image viewer (keyboard routing).
+    pub fn focused_is_image(&self) -> bool {
+        matches!(
+            self.wm.focused().and_then(|id| self.contents.get(&id)),
+            Some(WinContent::ImageView(_))
+        )
     }
 
     /// `true` when the focused window hosts the logs viewer (keyboard routing).
@@ -5376,18 +5424,18 @@ or a remote-side error — its authorized_keys was left untouched)",
             if w.minimized {
                 continue;
             }
-            let id = match self.contents.get(&w.id) {
-                Some(WinContent::ImageView(v)) => v.image_id(),
+            let place = match self.contents.get(&w.id) {
+                Some(WinContent::ImageView(v)) => v.placement(w.content_rect()),
                 _ => None,
             };
-            if let Some(id) = id {
-                let cr = w.content_rect();
+            if let Some((id, rect, src)) = place {
                 images.push(crate::protocol::ImagePlacement {
                     id,
-                    rect: cr,
-                    cols: cr.w.max(1) as u16,
-                    rows: cr.h.max(1) as u16,
+                    rect,
+                    cols: rect.w.max(1) as u16,
+                    rows: rect.h.max(1) as u16,
                     visible: self.fully_unobstructed(w),
+                    src: Some(src),
                 });
             }
         }
@@ -5449,6 +5497,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                         cols,
                         rows,
                         visible: vis,
+                        src: None,
                     });
                 }
             }
@@ -5560,18 +5609,20 @@ or a remote-side error — its authorized_keys was left untouched)",
                                 cols,
                                 rows,
                                 visible: true,
+                                src: None,
                             });
                         }
                     }
                 }
                 Some(WinContent::ImageView(v)) => {
-                    if let Some(id) = v.image_id() {
+                    if let Some((id, rect, src)) = v.placement(wa) {
                         images.push(crate::protocol::ImagePlacement {
                             id,
-                            rect: wa,
-                            cols: wa.w.max(1) as u16,
-                            rows: wa.h.max(1) as u16,
+                            rect,
+                            cols: rect.w.max(1) as u16,
+                            rows: rect.h.max(1) as u16,
                             visible: true,
+                            src: Some(src),
                         });
                     }
                 }
@@ -6346,6 +6397,7 @@ mod tests {
             cols: 4,
             rows: 3,
             visible: true,
+            src: None,
         }
     }
 

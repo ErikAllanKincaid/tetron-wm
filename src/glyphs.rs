@@ -27,6 +27,11 @@ pub const UNICODE_SAFE: &str = concat!(
     "✦⊞▦✕▢❐★☆⏎⌕⌘○✓▣‖▯⌨▤⚙◇◉♪♫▫↯⇄⚠",
 );
 
+/// Upper half block, for image art only (two pixels per cell), never chrome.
+/// The kernel VT fonts lack it, so callers use coloured spaces on a VT; DejaVu
+/// (kmscon) and GUI terminals have it, as the chafa wallpaper already assumes.
+pub const HALF_BLOCK_UPPER: char = '\u{2580}';
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Glyph {
     Assistant,

@@ -23,6 +23,7 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | Feature | Program | Without it | Notes |
 | --- | --- | --- | --- |
 | Image wallpaper | `chafa` | Plain colored desktop | Renders the picture as colored cells, so it works on every terminal. [chafa](https://hpjansson.org/chafa/) |
+| Image viewer on terminals without Kitty graphics (bare console, kmscon, tmux, ssh) | `chafa` | Coarser built-in half blocks (colored blocks on a bare console) | Draws the image as colored cells, dithered for 8 and 16 colors. Terminals with Kitty graphics show the real image either way. [chafa](https://hpjansson.org/chafa/) |
 | Mouse on a bare Linux console | `gpm` | No mouse on a raw VT | Not needed under kmscon or in a GUI terminal. `sudo apt install gpm && sudo systemctl enable --now gpm` |
 | Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
 | Volume (menubar, leader `=`, Settings → Sound) | `wpctl` (PipeWire, package `wireplumber`) | Volume shows no level and can not change; Settings says so | Also lists and switches outputs (HDMI, headphones, speakers). macOS uses its built-in `osascript`. |

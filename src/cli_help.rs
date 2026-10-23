@@ -20,6 +20,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("truecolor", "auto", "force 24-bit color on/off"),
     ("wallpaper", "default", "wallpaper image: default (built-in), a file in wallpapers/, or a full path (needs chafa)"),
     ("wallpaper_enabled", "true", "master wallpaper toggle"),
+    ("image_viewer", "auto", "image viewer: auto (Kitty graphics if the terminal has them, cells on a bare VT) | graphics | cells"),
     ("icon_style", "auto", "icon glyphs: auto (ascii on a bare console, else unicode) | ascii | unicode | nerd | emoji"),
     ("default_project_dir", "~", "root of the working-directory picker"),
     ("recent_dirs", "[]", "legacy: now in ~/.local/share/tetron-wm/state.toml"),

@@ -545,6 +545,7 @@ impl<F: FsOps> DesktopIcons<F> {
                     cols: r.w.max(1) as u16,
                     rows: r.h.max(1) as u16,
                     visible: visible(tile),
+                    src: None,
                 });
             }
         }

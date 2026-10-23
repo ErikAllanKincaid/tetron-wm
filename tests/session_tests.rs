@@ -85,23 +85,52 @@ fn open_settings_creates_focused_settings_window() {
 }
 
 #[test]
-fn image_window_emits_a_visible_placement() {
-    // Write a tiny real PNG to a temp file.
+fn image_window_draws_cells_then_a_fitted_kitty_placement() {
+    // A real 40x20 PNG in a temp folder.
     let dir = std::env::temp_dir().join(format!("tetron-wm-img-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("x.png");
-    let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([10, 20, 30, 255]));
+    let img = image::RgbaImage::from_pixel(40, 20, image::Rgba([10, 200, 30, 255]));
     image::DynamicImage::ImageRgba8(img).save(&path).unwrap();
 
-    // Disable the desktop so the only image placement is the ImageView's (desktop
-    // icons now emit their own image placements).
+    // Disable the desktop so the only image placement is the viewer's (desktop
+    // icons emit their own image placements).
     let mut core = SessionCore::new(80, 24, Config { apps: vec![], desktop_enabled: false, ..Config::default() });
     core.apply(ClientMsg::OpenImage(path.to_string_lossy().to_string()));
-    let frame = core.build_frame();
-    assert_eq!(frame.images.len(), 1, "one image placement");
-    assert!(frame.images[0].visible, "unobstructed → visible");
-    assert!(frame.images[0].cols >= 1 && frame.images[0].rows >= 1);
+    assert!(core.focused_is_image());
 
+    // No Kitty graphics: the image arrives as cells, with no placement.
+    let green = |c: &tetron_wm::cell::Cell| c.bg.g > 150 && c.bg.r < 60;
+    let mut drawn = false;
+    for _ in 0..500 {
+        core.pump_images();
+        let frame = core.build_frame();
+        assert!(frame.images.is_empty(), "no placement without graphics support");
+        if frame.layers.iter().any(|l| (0..l.buf.height()).any(|y| (0..l.buf.width()).any(|x| green(l.buf.get(x, y).unwrap())))) {
+            drawn = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(drawn, "image drawn as cells");
+
+    // A Kitty-capable client: a visible placement, aspect-fitted (not the whole
+    // window) with the source crop.
+    let before = tetron_wm::display::get();
+    core.apply(ClientMsg::Caps(tetron_wm::display::ClientCaps { kitty_graphics: true, ..before }));
+    core.pump_images();
+    let frame = core.build_frame();
+    tetron_wm::display::set(before);
+    assert_eq!(frame.images.len(), 1, "one image placement");
+    let p = &frame.images[0];
+    assert!(p.visible, "unobstructed: visible");
+    assert_eq!(p.src, Some([0, 0, 40, 20]));
+    // A 2:1 image, in cells twice as tall as wide, spans 4 columns per row.
+    assert_eq!(p.cols as i32, 4 * p.rows as i32, "aspect kept: {p:?}");
+
+    // Esc closes the viewer.
+    core.apply(ClientMsg::ImageKey(tetron_wm::imageview::ImageKey::Close));
+    assert!(!core.focused_is_image());
     let _ = std::fs::remove_dir_all(&dir);
 }
 

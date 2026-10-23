@@ -6,7 +6,11 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- The built-in image viewer works on every terminal. It uses Kitty graphics where the terminal supports them (kitty, Ghostty, WezTerm) and otherwise draws the image as colored cells with chafa, dithered on 8 and 16 colors, so images show on a bare Linux console, kmscon, tmux and over ssh; without chafa it falls back to half blocks. The image keeps its aspect ratio (Kitty graphics used to stretch it over the whole window). Zoom with `+` / `-` or the wheel, `0` fits, arrows pan, `n` / `p` step through the images in the folder, `m` switches graphics / cells, `i` toggles an info line, `Esc` closes. Decoding and drawing run in the background, so a large image no longer stalls the desktop while it opens. New config key `image_viewer` (`auto`, `graphics`, `cells`).
+
 ### Fixed
+- Images drawn by chafa (the wallpaper and the new image viewer) no longer show black cells at the start of some rows. chafa draws a solid cell as inverse video plus a space, and the inverse was ignored.
 - Kitty graphics images sent by an app in a window are placed where the app drew them even when it writes more text in the same output burst; before, the image landed where the cursor ended up after that text.
 
 ## [0.14.15] — 2026-10-22

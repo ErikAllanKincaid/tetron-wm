@@ -1,17 +1,17 @@
-use tetron_wm::imageview::ImageView;
+use tetron_wm::imageview::{fit, ImageView, Method};
 
 #[test]
-fn placeholder_shows_filename_and_reports_id() {
-    let v = ImageView::new("/x/cat.png".into(), Some(7), (64, 48));
+fn a_new_view_shows_loading_until_decoded() {
+    let v = ImageView::new("/nonexistent/cat.png", Method::Auto);
     let buf = v.render(30, 8);
-    let mut text = String::new();
-    for y in 0..buf.height() {
-        for x in 0..buf.width() {
-            if let Some(c) = buf.get(x, y) {
-                text.push(c.ch);
-            }
-        }
-    }
-    assert!(text.contains("cat.png"));
-    assert_eq!(v.image_id(), Some(7));
+    let text: String = (0..buf.height()).flat_map(|y| (0..buf.width()).map(move |x| (x, y))).map(|(x, y)| buf.get(x, y).unwrap().ch).collect();
+    assert!(text.contains("cat.png"), "{text}");
+    assert_eq!(v.title(), "image: cat.png");
+}
+
+#[test]
+fn fit_is_public_and_centres_a_tall_image() {
+    let f = fit(10, 100, 40, 10, 1.0, 0.5, 0.5).unwrap();
+    assert_eq!((f.dw, f.dh), (2, 10));
+    assert_eq!(f.dx, 19);
 }

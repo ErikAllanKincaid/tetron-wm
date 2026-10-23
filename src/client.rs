@@ -75,7 +75,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
             // Image ids already transmitted, and the placement geometry currently
             // displayed for each (so we only re-place on move/resize).
             let mut transmitted: std::collections::HashSet<u64> = std::collections::HashSet::new();
-            let mut active: std::collections::HashMap<u32, (u64, i32, i32, u16, u16)> = std::collections::HashMap::new();
+            let mut active: std::collections::HashMap<u32, Placed> = std::collections::HashMap::new();
             loop {
                 line.clear();
                 match r.read_line(&mut line) {
@@ -553,6 +553,10 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                             KeyCode::Char(c) if !ctrl => send(&mut out_stream, &ClientMsg::RenameChar(c))?,
                             _ => {}
                         }
+                    } else if let Some(key) = image_key(k.code).filter(|_| f.image_focused && !ctrl && !ctrl_alt) {
+                        // The focused image viewer: after every overlay and
+                        // text field, so those keep their keys.
+                        send(&mut out_stream, &ClientMsg::ImageKey(key))?;
                     } else if ctrl_alt {
                         match k.code {
                             KeyCode::Char('q') => break,
@@ -622,13 +626,37 @@ fn help_key(code: KeyCode) -> Option<ClientMsg> {
     })
 }
 
+/// The image viewer's keys. Plain keys only (no terminal control keys); others
+/// fall through to the normal routing.
+fn image_key(code: KeyCode) -> Option<crate::imageview::ImageKey> {
+    use crate::imageview::ImageKey as K;
+    Some(match code {
+        KeyCode::Char('+') | KeyCode::Char('=') => K::ZoomIn,
+        KeyCode::Char('-') | KeyCode::Char('_') => K::ZoomOut,
+        KeyCode::Char('0') => K::Fit,
+        KeyCode::Left => K::Left,
+        KeyCode::Right => K::Right,
+        KeyCode::Up => K::Up,
+        KeyCode::Down => K::Down,
+        KeyCode::Char('n') | KeyCode::Char(' ') | KeyCode::PageDown => K::Next,
+        KeyCode::Char('p') | KeyCode::Backspace | KeyCode::PageUp => K::Prev,
+        KeyCode::Char('m') => K::Mode,
+        KeyCode::Char('i') => K::Info,
+        KeyCode::Esc | KeyCode::Char('q') => K::Close,
+        _ => return None,
+    })
+}
+
+/// A placement the terminal holds: image id, cell origin, size and source crop.
+type Placed = (u64, i32, i32, u16, u16, Option<[u32; 4]>);
+
 /// Build the Kitty graphics escapes for a frame: transmit not-yet-seen image
 /// blobs, (re)place images whose geometry changed, and delete placements that are
 /// now hidden or gone. The cursor is saved/restored so cell rendering is intact.
 fn reconcile_images(
     msg: &FrameMsg,
     transmitted: &mut std::collections::HashSet<u64>,
-    active: &mut std::collections::HashMap<u32, (u64, i32, i32, u16, u16)>,
+    active: &mut std::collections::HashMap<u32, Placed>,
 ) -> String {
     use std::fmt::Write;
     let mut g = String::new();
@@ -640,13 +668,13 @@ fn reconcile_images(
     // Key placements by screen position, not image id, so one image (e.g. a shared
     // file-type icon) can appear at many spots. `active` maps placement-key →
     // (image_id, x, y, cols, rows).
-    let mut now: std::collections::HashMap<u32, (u64, i32, i32, u16, u16)> = std::collections::HashMap::new();
+    let mut now: std::collections::HashMap<u32, Placed> = std::collections::HashMap::new();
     for p in &msg.images {
         // A negative origin can't be addressed: CUP parameters are 1-based, and
         // a 0/negative parameter aborts the escape, dropping the image at the
         // current cursor position — i.e. painted at an arbitrary screen spot.
         if p.visible && p.rect.x >= 0 && p.rect.y >= 0 {
-            now.insert(place_key(p.rect.x, p.rect.y), (p.id, p.rect.x, p.rect.y, p.cols, p.rows));
+            now.insert(place_key(p.rect.x, p.rect.y), (p.id, p.rect.x, p.rect.y, p.cols, p.rows, p.src));
         }
     }
     let mut ops = String::new();
@@ -658,10 +686,10 @@ fn reconcile_images(
         }
     }
     // (Re)place new or moved/changed placements.
-    for (&pk, &(img, x, y, c, r)) in now.iter() {
-        if active.get(&pk) != Some(&(img, x, y, c, r)) {
+    for (&pk, &(img, x, y, c, r, src)) in now.iter() {
+        if active.get(&pk) != Some(&(img, x, y, c, r, src)) {
             let _ = write!(ops, "\x1b[{};{}H", y + 1, x + 1);
-            ops.push_str(&crate::kitty::place(img, pk, c, r));
+            ops.push_str(&crate::kitty::place_src(img, pk, c, r, src));
         }
     }
     if !ops.is_empty() {
@@ -781,6 +809,8 @@ pub(crate) fn route_mouse(
         (_, A::ScrollDown) if f.filemanager_focused => send(out, &ClientMsg::FileManagerDown)?,
         (_, A::ScrollUp) if f.help_focused => send(out, &ClientMsg::HelpScroll(-3))?,
         (_, A::ScrollDown) if f.help_focused => send(out, &ClientMsg::HelpScroll(3))?,
+        (_, A::ScrollUp) if f.image_focused => send(out, &ClientMsg::ImageKey(crate::imageview::ImageKey::ZoomIn))?,
+        (_, A::ScrollDown) if f.image_focused => send(out, &ClientMsg::ImageKey(crate::imageview::ImageKey::ZoomOut))?,
         (_, A::ScrollUp) if f.logs_focused => send(out, &ClientMsg::LogsUp)?,
         (_, A::ScrollDown) if f.logs_focused => send(out, &ClientMsg::LogsDown)?,
         // Anywhere else, the wheel scrolls the scrollback of the PTY window
@@ -902,6 +932,7 @@ mod tests {
             cols: 4,
             rows: 2,
             visible: true,
+            src: None,
         }]);
         let mut transmitted = std::collections::HashSet::new();
         let mut active = std::collections::HashMap::new();
@@ -921,6 +952,7 @@ mod tests {
             cols: 4,
             rows: 2,
             visible: true,
+            src: None,
         }]);
         let mut transmitted = std::collections::HashSet::new();
         let mut active = std::collections::HashMap::new();
@@ -933,7 +965,7 @@ mod tests {
     fn deletes_placement_that_disappeared() {
         let mut transmitted = std::collections::HashSet::new();
         let mut active = std::collections::HashMap::new();
-        active.insert(place_key(2, 3), (7u64, 2, 3, 4u16, 2u16));
+        active.insert(place_key(2, 3), (7u64, 2, 3, 4u16, 2u16, None));
         let g = reconcile_images(&frame_with(Vec::new()), &mut transmitted, &mut active);
         assert!(g.contains("a=d,d=i,i=7"), "stale placement deleted: {g:?}");
         assert!(active.is_empty());

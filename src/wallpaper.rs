@@ -243,6 +243,27 @@ pub fn from_image(path: &str, w: i32, h: i32) -> Option<CellBuffer> {
     Some(parse_ansi(&String::from_utf8_lossy(&out), w, h))
 }
 
+/// Render `path` into exactly `w`×`h` cells for the image viewer, with the same
+/// symbols and palette as the wallpaper. The caller already fitted the aspect
+/// ratio, hence `--stretch`. Small palettes are dithered, which chafa only
+/// does when asked and which keeps photos readable on a VT. `None` when chafa
+/// is missing or fails.
+pub fn viewer_cells(path: &std::path::Path, w: i32, h: i32) -> Option<CellBuffer> {
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let size = format!("{w}x{h}");
+    let colors = color_mode(crate::display::get());
+    let path = path.to_string_lossy();
+    let mut args = vec!["-f", "symbols", "-c", colors, "--symbols", symbol_set(), "--stretch", "-s", &size];
+    if matches!(colors, "2" | "8" | "16") {
+        args.extend(["--dither", "diffusion"]);
+    }
+    args.push(&path);
+    let out = run_chafa_capped(&args, std::time::Duration::from_secs(8))?;
+    Some(parse_ansi(&String::from_utf8_lossy(&out), w, h))
+}
+
 /// Run chafa with stdin closed and a hard timeout, draining stdout on a thread
 /// so a full pipe can never deadlock the child. Returns its stdout on success,
 /// or `None` if chafa is missing, fails, or outruns `timeout` (then killed).
@@ -296,6 +317,9 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
     let mut buf = CellBuffer::new(w, h);
     buf.fill(Cell { ch: ' ', fg: def, bg: def, attrs: Default::default() });
     let (mut fg, mut bg) = (def, def);
+    // chafa writes a cell of solid foreground as inverse video plus a space,
+    // typically at the start of a row; ignoring it left black notches there.
+    let mut inverse = false;
     let (mut x, mut y) = (0i32, 0i32);
     let mut it = s.chars().peekable();
     while let Some(c) = it.next() {
@@ -314,7 +338,7 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
                         params.push(p);
                     }
                     if final_byte == 'm' {
-                        apply_sgr(&params, &mut fg, &mut bg, def);
+                        apply_sgr(&params, &mut fg, &mut bg, &mut inverse, def);
                     }
                 }
             }
@@ -325,6 +349,7 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
             '\r' => x = 0,
             _ => {
                 if x < w && y < h {
+                    let (fg, bg) = if inverse { (bg, fg) } else { (fg, bg) };
                     buf.set(x, y, Cell { ch: c, fg, bg, attrs: Default::default() });
                 }
                 x += 1;
@@ -339,8 +364,9 @@ fn parse_ansi(s: &str, w: i32, h: i32) -> CellBuffer {
 
 /// Apply one SGR parameter string, updating `fg`/`bg` (truecolor `38;2;r;g;b` /
 /// `48;2;r;g;b`, 256-colour `38;5;n`, the 16 ANSI colours `30-37/90-97` and
-/// `40-47/100-107`, plus reset/default). Non-color attributes are ignored.
-fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
+/// `40-47/100-107`, plus reset/default) and inverse (`7` / `27`). Other
+/// attributes are ignored.
+fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, inverse: &mut bool, def: Rgba) {
     let toks: Vec<&str> = params.split(';').collect();
     let num = |t: Option<&&str>| t.and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
     let mut i = 0;
@@ -349,6 +375,15 @@ fn apply_sgr(params: &str, fg: &mut Rgba, bg: &mut Rgba, def: Rgba) {
             "" | "0" => {
                 *fg = def;
                 *bg = def;
+                *inverse = false;
+                i += 1;
+            }
+            "7" => {
+                *inverse = true;
+                i += 1;
+            }
+            "27" => {
+                *inverse = false;
                 i += 1;
             }
             "39" => {
@@ -414,10 +449,22 @@ mod tests {
     fn sgr_parses_16_and_256_colour_forms() {
         let (mut fg, mut bg) = (Rgba::rgb(1, 1, 1), Rgba::rgb(1, 1, 1));
         let def = Rgba::rgb(0, 0, 0);
-        apply_sgr("0;94;41", &mut fg, &mut bg, def);
+        let mut inv = false;
+        apply_sgr("0;94;41", &mut fg, &mut bg, &mut inv, def);
         assert_eq!((fg, bg), (crate::display::VGA16[12], crate::display::VGA16[1]));
-        apply_sgr("38;5;196;48;5;232", &mut fg, &mut bg, def);
+        apply_sgr("38;5;196;48;5;232", &mut fg, &mut bg, &mut inv, def);
         assert_eq!((fg, bg), (Rgba::rgb(255, 0, 0), Rgba::rgb(8, 8, 8)));
+    }
+
+    /// chafa's solid cell: inverse video plus a space, as it writes at a row
+    /// start. It must come out in the foreground colour, not black.
+    #[test]
+    fn inverse_space_is_a_solid_foreground_cell() {
+        let out = "\x1b[7m\x1b[38;2;6;9;50m \x1b[0m\x1b[38;2;1;2;3;48;2;4;5;6m\u{2580}";
+        let buf = parse_ansi(out, 2, 1);
+        assert_eq!(buf.get(0, 0).unwrap().bg, Rgba::rgb(6, 9, 50), "inverse space shows the fg colour");
+        let c = buf.get(1, 0).unwrap();
+        assert_eq!((c.fg, c.bg), (Rgba::rgb(1, 2, 3), Rgba::rgb(4, 5, 6)), "reset ends inverse");
     }
 
     #[test]

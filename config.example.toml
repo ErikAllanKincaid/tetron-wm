@@ -82,6 +82,10 @@ launcher_label = "tetron"
 wallpaper = "default"
 ## Master switch. false = solid desktop (theme desktop_bg) even if wallpaper is set.
 wallpaper_enabled = true
+## Image viewer: "auto" (Kitty graphics when the terminal has them, never on a
+## bare console; otherwise colored cells via chafa, or half blocks without it),
+## "graphics", or "cells". In the viewer, m switches for that window.
+image_viewer = "auto"
 
 ## ── Desktop icons ─────────────────────────────────────────────────────────
 ## Show icons on the desktop (the contents of ~/Desktop plus [[desktop_pins]]).

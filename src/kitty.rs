@@ -52,8 +52,16 @@ pub fn transmit(id: u64, png: &[u8]) -> String {
 /// under placement id `place`. A distinct `place` lets one image (e.g. a shared
 /// file-type icon) appear at many spots at once.
 pub fn place(id: u64, place: u32, cols: u16, rows: u16) -> String {
+    place_src(id, place, cols, rows, None)
+}
+
+/// [`place`] showing only the `src` crop (x, y, w, h in image pixels).
+pub fn place_src(id: u64, place: u32, cols: u16, rows: u16, src: Option<[u32; 4]>) -> String {
     let id = id as u32; // Kitty image ids are 32-bit
-    format!("\x1b_Ga=p,i={id},p={place},c={cols},r={rows},q=2\x1b\\")
+    match src {
+        Some([x, y, w, h]) => format!("\x1b_Ga=p,i={id},p={place},x={x},y={y},w={w},h={h},c={cols},r={rows},q=2\x1b\\"),
+        None => format!("\x1b_Ga=p,i={id},p={place},c={cols},r={rows},q=2\x1b\\"),
+    }
 }
 
 /// Delete the placement `place` of image `id` (keeps the transmitted data).

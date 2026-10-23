@@ -110,6 +110,10 @@ pub struct ImagePlacement {
     pub cols: u16,
     pub rows: u16,
     pub visible: bool,
+    /// Source crop in image pixels (x, y, w, h) for a zoomed or panned view;
+    /// `None` shows the whole image. Older clients ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src: Option<[u32; 4]>,
 }
 
 /// PNG bytes for image `id`, base64-encoded, sent once per attach.
@@ -201,6 +205,9 @@ pub struct Flags {
     pub clipmenu_open: bool,
     /// The logs-viewer window is focused; the client routes scroll/copy keys to it.
     pub logs_focused: bool,
+    /// An image viewer is focused; the client routes zoom, pan and next/previous
+    /// keys and the wheel to it.
+    pub image_focused: bool,
     /// The activity monitor is the focused window; the client routes
     /// navigation / kill keys to it.
     pub activity_focused: bool,

@@ -441,6 +441,7 @@ fn serve_client_inner(
         core.refresh_app_graphics();
         core.sync_app_meta();
         core.pump_thumbnails();
+        core.pump_images();
         core.poll_power();
         core.tick_screensaver();
         core.refresh_activity();
@@ -492,6 +493,7 @@ fn serve_client_inner(
             launch_warn: core.launch_warn_open(),
             power_editing: core.power_form_editing(),
             logs_focused: core.focused_is_logs(),
+            image_focused: core.focused_is_image(),
             activity_focused: core.focused_is_activity(),
             activity_confirming: core.activity_confirming(),
             detach: core.quit_requested(),
