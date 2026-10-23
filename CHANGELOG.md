@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.16] — 2026-10-23
+
 ### Added
 - Right-click menu, more actions: Extract here and List contents for archives (tar, zip, 7z, rar and single gz/xz/bz2/zst files, in a window that shows the result), Get Info on the desktop (opens Files with the item's info), Send to… a saved Systems entry (scp in a window, so password and host-key prompts work), and Play full screen for video on a plain Linux console (`mpv --vo=drm`, or `cvlc --vout fb`; the same handoff as View full screen). With no `[default_apps]` handler set, Open plays video and audio in the window with mpv instead of asking.
 - A window's title bar has a right-click menu: Minimize, Maximize, Move (keyboard move mode), Rename and Close, with the same keys and hover as the file menu.
