@@ -81,6 +81,11 @@ impl RemoteAppHost {
         if let Ok(Some(evt)) = crate::apphost::proto::recv::<crate::apphost::proto::HostEvt, _>(&mut buf_reader) {
             apply_evt(evt, &cache, &pending, &inflight);
         }
+        // Ask for packed grids; an apphost older than v5 would only log the unknown variant.
+        let mut writer = writer;
+        if cache.lock().unwrap().proto >= 5 {
+            let _ = send(&mut writer, &HostReq::Hello { proto: crate::apphost::proto::PROTO_VERSION });
+        }
 
         {
             let cache = cache.clone();
@@ -148,10 +153,19 @@ fn apply_evt(evt: HostEvt, cache: &Arc<Mutex<Cache>>, pending: &Pending, infligh
                 let _ = tx.send(Err(error));
             }
         }
-        HostEvt::Frame { app, grid, placements, images, alive, mouse, cursor, bells, clip, clip_reqs } => {
+        HostEvt::Frame { app, grid, placements, images, alive, mouse, cursor, bells, clip, clip_reqs, packed } => {
             let mut c = cache.lock().unwrap();
             let entry = c.apps.entry(AppId(app)).or_default();
-            entry.grid = Some(grid);
+            if let Some(p) = packed {
+                match crate::apphost::proto::unpack_grid(&p, entry.grid.take()) {
+                    Some(g) => entry.grid = Some(g),
+                    None => crate::dbg_log(&format!("apphost: bad packed grid for app {app}")),
+                }
+            } else if grid.width() > 0 || grid.height() > 0 {
+                // A v5 apphost sends an empty grid with no `packed` when only
+                // the cursor, mouse mode, etc. changed: keep the cached grid.
+                entry.grid = Some(grid);
+            }
             entry.placements = placements;
             entry.alive = alive;
             entry.mouse = mouse;
@@ -387,9 +401,59 @@ mod tests {
         }
         assert!(got, "expected a frame for the spawned app");
         assert!(remote.is_alive(id));
+        // Typed text arrives through packed delta frames applied over the cache.
+        remote.input(id, b"hello packed\n");
+        let row = |g: &CellBuffer, y: i32| (0..g.width()).map(|x| g.get(x, y).unwrap().ch).collect::<String>();
+        let mut seen = false;
+        for _ in 0..100 {
+            if let Some(g) = remote.snapshot(id) {
+                if (0..g.height()).any(|y| row(&g, y).contains("hello packed")) {
+                    seen = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(seen, "typed text should reach the cached grid");
 
         remote.kill(id);
         remote.shutdown_apphost();
+        let _ = std::fs::remove_file(&path);
+        let _ = server.join();
+    }
+
+    /// A frontend that never sends `Hello` (v4 and older) keeps getting JSON
+    /// grids from a v5 apphost.
+    #[test]
+    fn legacy_frontend_gets_json_grids() {
+        let path = crate::protocol::socket_dir().join("apphost-legacy-test.sock");
+        std::fs::create_dir_all(crate::protocol::socket_dir()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut local = crate::apphost::LocalAppHost::new();
+            let mut shutdown = false;
+            if let Some(Ok(stream)) = listener.incoming().next() {
+                crate::apphost::server::server_serve_for_test(&mut local, stream, &mut shutdown);
+            }
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        let mut s = UnixStream::connect(&path).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut r = BufReader::new(s.try_clone().unwrap());
+        assert!(matches!(recv::<HostEvt, _>(&mut r).unwrap(), Some(HostEvt::Roster { proto: 5.., .. })));
+        send(&mut s, &HostReq::Spawn { req_id: 1, cmd: "cat".into(), args: vec![], cwd: None, cols: 30, rows: 4 }).unwrap();
+        let mut ok = false;
+        for _ in 0..20 {
+            if let Some(HostEvt::Frame { grid, packed, .. }) = recv::<HostEvt, _>(&mut r).unwrap() {
+                assert!(packed.is_none(), "no packed grids without Hello");
+                assert_eq!((grid.width(), grid.height()), (30, 4));
+                ok = true;
+                break;
+            }
+        }
+        assert!(ok, "expected a JSON grid frame");
+        send(&mut s, &HostReq::Shutdown).unwrap();
         let _ = std::fs::remove_file(&path);
         let _ = server.join();
     }

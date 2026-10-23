@@ -220,6 +220,8 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
     let mut last_mouse: HashMap<AppId, crate::mouse::AppMouse> = HashMap::new();
     let mut last_cursor: HashMap<AppId, Option<(u16, u16)>> = HashMap::new();
     let mut sent_images: HashMap<AppId, HashSet<u32>> = HashMap::new();
+    // The frontend announced v5 (`HostReq::Hello`): send packed grids.
+    let mut packed_ok = false;
 
     loop {
         // Drain commands.
@@ -251,6 +253,7 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                     // The new colours change every snapshot.
                     local.mark_all_dirty();
                 }
+                Ok(HostReq::Hello { proto }) => packed_ok = proto >= 5,
                 Ok(HostReq::Shutdown) => {
                     *shutdown = true;
                     return;
@@ -302,20 +305,23 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
             let bells = local.take_bells(id);
             let clip = local.take_clipboard(id);
             let clip_reqs = local.take_clip_requests(id);
-            let grid_changed = last_grid.get(&id) != Some(&grid);
+            let packed = if packed_ok { crate::apphost::proto::pack_grid(&grid, last_grid.get(&id)) } else { None };
+            let grid_changed = if packed_ok { packed.is_some() } else { last_grid.get(&id) != Some(&grid) };
             let placements_changed = last_placements.get(&id) != Some(&placements);
             let mouse_changed = last_mouse.get(&id) != Some(&mouse);
             // A bare cursor move (e.g. arrow keys in a shell) changes no cells,
             // so it must be tracked separately or the caret would never update.
             let cursor_changed = last_cursor.get(&id) != Some(&cursor);
             if grid_changed || placements_changed || mouse_changed || cursor_changed || !images.is_empty() || bells > 0 || clip.is_some() || !clip_reqs.is_empty() {
-                let evt = HostEvt::Frame { app: id.0, grid, placements, images, alive: true, mouse, cursor, bells, clip, clip_reqs };
+                // A packed frame leaves `grid` empty; no `packed` then means "grid unchanged".
+                let (wire_grid, kept) = if packed_ok { (crate::buffer::CellBuffer::new(0, 0), Some(grid)) } else { (grid, None) };
+                let evt = HostEvt::Frame { app: id.0, grid: wire_grid, placements, images, alive: true, mouse, cursor, bells, clip, clip_reqs, packed };
                 if send(&mut writer, &evt).is_err() {
                     return;
                 }
                 // Keep the sent grid as the baseline without cloning it.
                 if let HostEvt::Frame { grid, placements, .. } = evt {
-                    last_grid.insert(id, grid);
+                    last_grid.insert(id, kept.unwrap_or(grid));
                     last_placements.insert(id, placements);
                 }
                 last_mouse.insert(id, mouse);
