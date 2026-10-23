@@ -349,12 +349,18 @@ fn serve_client_inner(
         loop {
             line.clear();
             match r.read_line(&mut line) {
-                Ok(0) | Err(_) => break, // EOF == detached
+                Ok(0) | Err(_) => {
+                    // EOF == detached; the dropped sender ends the session at once.
+                    drop(tx);
+                    wake();
+                    break;
+                }
                 Ok(_) => {
                     if let Ok(msg) = serde_json::from_str::<ClientMsg>(line.trim()) {
                         if tx.send(msg).is_err() {
                             break;
                         }
+                        wake();
                     }
                 }
             }
@@ -373,11 +379,10 @@ fn serve_client_inner(
     let mut clear_pending = true;
     // The last composited frame's inputs, so an unchanged frame skips
     // composite/diff/commit; the last sent idle message, so an identical one is
-    // not re-sent; and a message the idle wait received early.
+    // not re-sent.
     let mut prev: Option<(Vec<crate::compositor::Layer>, Option<crate::geometry::Point>, crate::cell::Rgba)> = None;
     let mut last_idle_msg: Vec<u8> = Vec::new();
     let mut idle_ticks = 0u32;
-    let mut pending: Option<ClientMsg> = None;
     // The client reads packed `spans` (it said so in its `Caps`).
     let mut packed = false;
 
@@ -399,11 +404,7 @@ fn serve_client_inner(
         }
         // Apply all pending input.
         loop {
-            let next = match pending.take() {
-                Some(msg) => Ok(msg),
-                None => rx.try_recv(),
-            };
-            match next {
+            match rx.try_recv() {
                 Ok(ClientMsg::Resize { w, h, .. }) => {
                     comp.resize(w, h);
                     core.apply(ClientMsg::Resize { w, h, takeover: false });
@@ -558,14 +559,13 @@ fn serve_client_inner(
             return None; // reload flag delivered; daemon will restart, apphost untouched
         }
         // After IDLE_AFTER unchanged frames, tick slower but wake at once on
-        // client input. While active, plain sleep so a burst of input (mouse
-        // motion) is batched per frame rather than rendered per message.
+        // client input, a control message or app server output (see [`wake`]).
+        // While active, plain sleep so a burst of input (mouse motion) is
+        // batched per frame rather than rendered per message.
         if idle_ticks >= IDLE_AFTER {
-            match rx.recv_timeout(Duration::from_millis(IDLE_TICK_MS)) {
-                Ok(msg) => pending = Some(msg),
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => return None, // client gone
-            }
+            // The screensaver animates on its own clock with no wake event.
+            let tick = if core.screensaver_active() { SAVER_TICK_MS } else { IDLE_TICK_MS };
+            wait_wake(Duration::from_millis(tick));
         } else {
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -575,9 +575,50 @@ fn serve_client_inner(
 /// Unchanged frames (16 ms each) before the render loop backs off to
 /// [`IDLE_TICK_MS`]: half a second of nothing happening.
 const IDLE_AFTER: u32 = 30;
-/// Render-loop tick while idle. Bounds how late a time-driven change (clock,
-/// app output after a quiet spell, a control-socket message) is drawn.
-const IDLE_TICK_MS: u64 = 50;
+/// Render-loop tick while idle. Input, control messages and app output wake
+/// the loop at once, so this only bounds how late a time-driven change (the
+/// clock, the tray, a notice expiring) is drawn.
+const IDLE_TICK_MS: u64 = 250;
+/// Idle tick while the screensaver is up, so its frames stay on time.
+const SAVER_TICK_MS: u64 = 50;
+
+/// A level-triggered wake-up: [`Wake::set`] marks it, [`Wake::wait`] blocks
+/// until marked (or a timeout) and clears it.
+struct Wake(std::sync::Mutex<bool>, std::sync::Condvar);
+
+impl Wake {
+    const fn new() -> Self {
+        Wake(std::sync::Mutex::new(false), std::sync::Condvar::new())
+    }
+
+    fn set(&self) {
+        let mut w = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if !*w {
+            *w = true;
+            self.1.notify_all();
+        }
+    }
+
+    /// A mark set while nobody waited returns at once.
+    fn wait(&self, timeout: Duration) {
+        let w = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut w, _) = self.1.wait_timeout_while(w, timeout, |w| !*w).unwrap_or_else(|e| e.into_inner());
+        *w = false;
+    }
+}
+
+static WAKE: Wake = Wake::new();
+
+/// Cut the render loop's idle wait short: something it reads changed (client
+/// input, a queued control message, an app server event).
+pub fn wake() {
+    WAKE.set();
+}
+
+/// Block until [`wake`] fires or `timeout` passes, then clear the signal.
+fn wait_wake(timeout: Duration) {
+    WAKE.wait(timeout);
+}
 
 /// Whether two layer stacks would composite identically (same order, origin,
 /// cells, opacity and scissor).
@@ -644,8 +685,14 @@ fn serve_control(
         let mut line = String::new();
         if r.read_line(&mut line).is_ok() {
             match serde_json::from_str::<ClientMsg>(line.trim()) {
-                Ok(ClientMsg::Shutdown) => ctl.store(CTL_SHUTDOWN, Ordering::SeqCst),
-                Ok(ClientMsg::Reload) => ctl.store(CTL_RELOAD, Ordering::SeqCst),
+                Ok(ClientMsg::Shutdown) => {
+                    ctl.store(CTL_SHUTDOWN, Ordering::SeqCst);
+                    wake();
+                }
+                Ok(ClientMsg::Reload) => {
+                    ctl.store(CTL_RELOAD, Ordering::SeqCst);
+                    wake();
+                }
                 // `tetron-wm ls`: one JSON line back; an older daemon never replies.
                 Ok(ClientMsg::Status) => {
                     if let Ok(mut buf) = serde_json::to_vec(&status.snapshot()) {
@@ -670,6 +717,7 @@ fn serve_control(
                 Ok(msg) => {
                     crate::dbg_log(&format!("ctl: queued {msg:?}"));
                     queue.lock().unwrap_or_else(|e| e.into_inner()).push(msg);
+                    wake();
                 }
                 Err(_) => {}
             }
@@ -684,6 +732,31 @@ mod tests {
 
     fn core() -> SessionCore {
         SessionCore::new(80, 24, Config::default())
+    }
+
+    #[test]
+    fn wake_cuts_the_idle_wait_short_and_is_cleared() {
+        use std::time::Instant;
+        // A local instance: other tests' app server readers set the global one.
+        static W: Wake = Wake::new();
+        // A wake before the wait (the loop was busy) returns at once.
+        W.set();
+        let t = Instant::now();
+        W.wait(Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_secs(1), "pending wake returns at once");
+        // A wake from another thread ends a wait in progress.
+        let h = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(50));
+            W.set();
+        });
+        let t = Instant::now();
+        W.wait(Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_secs(2), "woken by another thread");
+        h.join().unwrap();
+        // Cleared: with no new wake, the wait runs to its timeout.
+        let t = Instant::now();
+        W.wait(Duration::from_millis(60));
+        assert!(t.elapsed() >= Duration::from_millis(50), "signal was cleared");
     }
 
     #[test]
