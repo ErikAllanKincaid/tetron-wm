@@ -322,10 +322,49 @@ fn ansi256(c: Rgba) -> u8 {
 
 // ── Pure ANSI frame writer ────────────────────────────────────────────────────
 
+/// Whether every terminal advances the cursor exactly one column after printing
+/// `c`: printable ASCII, Latin-1, box drawing, block elements and braille. Only
+/// after these does [`frame_to_ansi`] trust its own idea of the cursor column;
+/// emoji, CJK and the rest have widths terminals disagree on, so the next cell
+/// after one of them is positioned absolutely.
+fn advances_one(c: char) -> bool {
+    matches!(c as u32, 0x20..=0x7E | 0xA1..=0xAC | 0xAE..=0xFF | 0x2500..=0x259F | 0x2800..=0x28FF)
+}
+
+/// Move the cursor to 0-based (`x`, `y`) with the shortest sequence, given the
+/// cursor position `at` if known: nothing when it is already there, CUF or CHA
+/// on the same row, else CUP (`ESC[rowH` alone for column 1).
+fn push_move(s: &mut String, x: i32, y: i32, at: Option<(i32, i32)>) {
+    use std::fmt::Write as _;
+    match at {
+        Some((cx, cy)) if cy == y && cx == x => {}
+        // CUF (`ESC[C` moves one, `ESC[nC` n) when no longer than CHA.
+        Some((cx, cy)) if cy == y && x > cx && (x - cx == 1 || digits(x - cx) <= digits(x + 1)) => {
+            if x - cx == 1 { s.push_str("\x1b[C") } else { let _ = write!(s, "\x1b[{}C", x - cx); }
+        }
+        Some((_, cy)) if cy == y => {
+            let _ = write!(s, "\x1b[{}G", x + 1);
+        }
+        _ if x == 0 => {
+            let _ = write!(s, "\x1b[{}H", y + 1);
+        }
+        _ => {
+            let _ = write!(s, "\x1b[{};{}H", y + 1, x + 1);
+        }
+    }
+}
+
+fn digits(n: i32) -> u32 {
+    n.max(1).ilog10() + 1
+}
+
 /// Convert a list of [`CellChange`]s into an ANSI byte string ready for `stdout`.
 ///
-/// Emits a CUP (`\x1b[row;colH`) + SGR for each changed cell, followed by a final
-/// SGR reset. Row/column positions are 1-based as required by the VT100 standard.
+/// For each changed cell: a cursor move unless the cursor is already there
+/// (consecutive cells on a row need none), and the SGR unless it is the same as
+/// the previous cell's; then a final SGR reset. Every SGR starts with a reset
+/// (`ESC[0;…m`), so a cell's look never depends on what came before it.
+/// Row/column positions are 1-based as required by the VT100 standard.
 ///
 /// This function is **pure** — it has no I/O side effects and can be unit-tested
 /// without a real terminal.
@@ -335,11 +374,14 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
     if changes.is_empty() {
         return String::new();
     }
-    use std::fmt::Write as _;
-    // One allocation per frame (a truecolor cell is about 45 bytes), and one
-    // reused parameter buffer.
-    let mut s = String::with_capacity(changes.len() * 48 + 4);
+    // One allocation per frame (a truecolor cell is about 45 bytes), and two
+    // reused parameter buffers: this cell's and the last one emitted.
+    let mut s = String::with_capacity(changes.len() * 24 + 4);
     let mut sgr = String::with_capacity(48);
+    let mut last = String::with_capacity(48);
+    let mut have_last = false;
+    // Where the terminal's cursor is, when we know for sure.
+    let mut at: Option<(i32, i32)> = None;
     for ch in changes {
         // Continuation cell (right half of a double-width glyph): the glyph to its
         // left already covers this column, so skip it — painting it would erase the
@@ -347,8 +389,8 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
         if ch.cell.ch == '\0' {
             continue;
         }
-        // CUP: move cursor to 1-based (row, col).
-        let _ = write!(s, "\x1b[{};{}H", ch.y + 1, ch.x + 1);
+        push_move(&mut s, ch.x, ch.y, at);
+        at = advances_one(ch.cell.ch).then_some((ch.x + 1, ch.y));
         let a = &ch.cell.attrs;
         sgr.clear();
         // Reverse video is applied here, by swapping the colours before they
@@ -361,10 +403,15 @@ pub fn frame_to_ansi(changes: &[CellChange], caps: &Caps) -> String {
         if a.bold      { sgr.push_str(";1"); }
         if a.italic    { sgr.push_str(";3"); }
         if a.underline { sgr.push_str(";4"); }
-        // `sgr` is empty or starts with `;`: `ESC[0m` or `ESC[0;…m`.
-        s.push_str("\x1b[0");
-        s.push_str(&sgr);
-        s.push('m');
+        // `sgr` is empty or starts with `;`: `ESC[0m` or `ESC[0;…m`. Cursor
+        // moves leave the SGR state alone, so an equal one is already in force.
+        if !have_last || sgr != last {
+            s.push_str("\x1b[0");
+            s.push_str(&sgr);
+            s.push('m');
+            std::mem::swap(&mut sgr, &mut last);
+            have_last = true;
+        }
         s.push(ch.cell.ch);
     }
     s.push_str("\x1b[0m");
@@ -581,26 +628,120 @@ mod tests {
         s
     }
 
-    #[test]
-    fn frame_to_ansi_bytes_match_the_reference_at_every_depth() {
+    const W: i32 = 200;
+    const H: i32 = 50;
+
+    /// Random frames shaped like the compositor's diffs: rows of same-styled
+    /// runs with gaps, wide glyphs followed by their `\0` continuation, glyphs
+    /// of every width class, the last column, and (every fourth frame) the
+    /// changes shuffled so the cursor has to move backwards.
+    fn random_frames(seed: u32, n: usize) -> Vec<Vec<CellChange>> {
         use crate::cell::{Cell, CellAttrs};
-        let mut seed = 7u32;
-        let mut rnd = || { seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223); seed >> 8 };
-        let changes: Vec<CellChange> = (0..4000).map(|i| {
-            let (r, q) = (rnd(), rnd());
-            let attrs = CellAttrs { bold: r & 1 != 0, italic: r & 2 != 0, underline: r & 4 != 0, inverse: r & 8 != 0 };
-            let ch = match q % 9 { 0 => '\0', 1 => '\u{1F4C1}', 2 => '▀', _ => (b'!' + (q % 90) as u8) as char };
-            let cell = Cell { ch, fg: Rgba::new(r as u8, (r >> 4) as u8, q as u8, 255), bg: Rgba::new((q >> 8) as u8, (q >> 2) as u8, (r >> 12) as u8, 255), attrs };
-            CellChange { x: i % 200, y: i / 200, cell }
-        }).collect();
+        let mut seed = seed;
+        let mut rnd = move || { seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223); seed >> 8 };
+        const GLYPHS: &[char] = &['a', 'Z', ' ', '~', 'é', 'ÿ', '\u{AD}', '─', '▀', '█', '⣿', '→', '●', '\u{301}', '\u{1F321}', '中'];
+        (0..n).map(|f| {
+            let mut out = Vec::new();
+            for y in 0..H {
+                if rnd() % 3 == 0 { continue; }
+                let mut x = (rnd() % 8) as i32;
+                while x < W {
+                    let (r, q) = (rnd(), rnd());
+                    let attrs = CellAttrs { bold: r & 1 != 0, italic: r & 2 != 0, underline: r & 4 != 0, inverse: r & 8 != 0 };
+                    let fg = Rgba::new(r as u8, (r >> 4) as u8, q as u8, 255);
+                    let bg = Rgba::new((q >> 8) as u8, (q >> 2) as u8, (r >> 12) as u8, 255);
+                    for _ in 0..1 + rnd() % 12 {
+                        if x >= W { break; }
+                        let k = rnd();
+                        if k % 23 == 0 && x + 1 < W {
+                            // A wide glyph and its continuation.
+                            let wide = if k & 64 == 0 { '\u{1F4C1}' } else { '中' };
+                            out.push(CellChange { x, y, cell: Cell { ch: wide, fg, bg, attrs } });
+                            out.push(CellChange { x: x + 1, y, cell: Cell { ch: '\0', fg, bg, attrs } });
+                            x += 2;
+                            continue;
+                        }
+                        let ch = if k % 3 == 0 { GLYPHS[(k >> 4) as usize % GLYPHS.len()] } else { (b'!' + (k % 90) as u8) as char };
+                        out.push(CellChange { x, y, cell: Cell { ch, fg, bg, attrs } });
+                        x += 1;
+                    }
+                    x += (rnd() % 30) as i32 * (rnd() % 2) as i32;
+                }
+            }
+            if f % 4 == 3 {
+                for i in (1..out.len()).rev() {
+                    let j = rnd() as usize % (i + 1);
+                    out.swap(i, j);
+                }
+            }
+            out
+        }).collect()
+    }
+
+    /// The screen a terminal emulator shows after `frames` of output.
+    fn screen(frames: &[String]) -> Vec<alacritty_terminal::term::cell::Cell> {
+        use alacritty_terminal::index::{Column, Line};
+        use alacritty_terminal::term::{test::TermSize, Config};
+        use alacritty_terminal::vte::ansi::{Processor, StdSyncHandler};
+        let mut term = alacritty_terminal::Term::new(Config::default(), &TermSize::new(W as usize, H as usize), alacritty_terminal::event::VoidListener);
+        let mut parser = Processor::<StdSyncHandler>::new();
+        for f in frames {
+            parser.advance(&mut term, f.as_bytes());
+        }
+        let g = term.grid();
+        (0..H).flat_map(|y| (0..W).map(move |x| g[Line(y)][Column(x as usize)].clone())).collect()
+    }
+
+    #[test]
+    fn coalesced_output_draws_the_same_screen_at_every_depth() {
         for depth in [ColorDepth::TrueColor, ColorDepth::Ansi256, ColorDepth::Ansi16, ColorDepth::Mono] {
             for vt in [false, true] {
                 let caps = Caps { depth, vt, pixel_mouse: false, kitty_graphics: false };
-                assert_eq!(frame_to_ansi(&changes, &caps), old_frame_to_ansi(&changes, &caps), "{depth:?} vt={vt}");
+                let frames = random_frames(7 + depth as u32 * 2 + vt as u32, 12);
+                let (mut old, mut new) = (Vec::new(), Vec::new());
+                for f in &frames {
+                    let (o, n) = (old_frame_to_ansi(f, &caps), frame_to_ansi(f, &caps));
+                    assert!(n.len() <= o.len(), "{depth:?} vt={vt}: never longer");
+                    old.push(o);
+                    new.push(n);
+                    let (a, b) = (screen(&old), screen(&new));
+                    if let Some(i) = (0..a.len()).find(|&i| a[i] != b[i]) {
+                        panic!("{depth:?} vt={vt} frame {}: cell ({}, {}) old {:?} new {:?}", old.len(), i as i32 % W, i as i32 / W, a[i], b[i]);
+                    }
+                }
             }
         }
         let caps = Caps { depth: ColorDepth::TrueColor, vt: false, pixel_mouse: false, kitty_graphics: false };
         assert_eq!(frame_to_ansi(&[], &caps), "");
+    }
+
+    #[test]
+    fn moves_use_the_shortest_form() {
+        use crate::cell::Cell;
+        let caps = Caps { depth: ColorDepth::Mono, vt: false, pixel_mouse: false, kitty_graphics: false };
+        let c = |x, y, ch| CellChange { x, y, cell: Cell { ch, fg: Rgba::rgb(200, 200, 200), bg: Rgba::rgb(0, 0, 0), attrs: Default::default() } };
+        // Consecutive: one move, one SGR. Gap of 1: CUF. Back: CHA. Next row at
+        // column 1: row-only CUP. After a wide glyph the next cell is placed absolutely.
+        let out = frame_to_ansi(&[c(3, 0, 'a'), c(4, 0, 'b'), c(6, 0, 'c'), c(0, 0, 'd'), c(0, 1, 'e'), c(5, 1, '中'), c(7, 1, 'f')], &caps);
+        assert_eq!(out, "\x1b[1;4H\x1b[0mab\x1b[Cc\x1b[1Gd\x1b[2He\x1b[4C中\x1b[2;8Hf\x1b[0m");
+    }
+
+    /// `cargo test --release --lib frame_to_ansi_bytes -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn frame_to_ansi_bytes() {
+        use crate::cell::Cell;
+        let caps = Caps { depth: ColorDepth::TrueColor, vt: false, pixel_mouse: false, kitty_graphics: false };
+        // `yes` filling a window: every cell one style.
+        let plain: Vec<CellChange> = (0..W * H).map(|i| CellChange { x: i % W, y: i / W, cell: Cell {
+            ch: b"the quick brown fox "[(i % 20) as usize] as char, fg: Rgba::rgb(220, 220, 220), bg: Rgba::rgb(20, 20, 30), attrs: Default::default() } }).collect();
+        // A coloured redraw: a new style every 8 cells.
+        let colour: Vec<CellChange> = (0..W * H).map(|i| CellChange { x: i % W, y: i / W, cell: Cell {
+            ch: 'x', fg: Rgba::rgb((i / 8) as u8, 100, 200), bg: Rgba::rgb(10, (i / 56) as u8, 30), attrs: Default::default() } }).collect();
+        let mixed = random_frames(3, 1).remove(0);
+        for (name, f) in [("plain 200x50", &plain), ("colour runs of 8", &colour), ("random diff", &mixed)] {
+            println!("{name}: {} cells, old {} B, new {} B", f.len(), old_frame_to_ansi(f, &caps).len(), frame_to_ansi(f, &caps).len());
+        }
     }
 
     /// `cargo test --release --lib frame_to_ansi_speed -- --ignored --nocapture`

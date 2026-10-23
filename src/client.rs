@@ -83,6 +83,8 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                     Ok(_) => {
                         if let Ok(mut msg) = serde_json::from_str::<FrameMsg>(line.trim()) {
                             *flags.lock().unwrap() = msg.flags;
+                            // The whole frame goes out in one write.
+                            let mut frame = String::new();
                             if let Some(text) = msg.notice.take() {
                                 *notice.lock().unwrap() = Some(text);
                             }
@@ -90,7 +92,7 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                                 // OSC 52: set the host terminal's clipboard
                                 // (Ghostty/Kitty/WezTerm; forwarded over ssh).
                                 let b64 = crate::kitty::b64(text.as_bytes());
-                                let _ = out.write_all(format!("\x1b]52;c;{b64}\x07").as_bytes());
+                                frame.push_str(&format!("\x1b]52;c;{b64}\x07"));
                             }
                             if let Some(spec) = msg.switch_to.take() {
                                 crate::dbg_log(&format!("client: switch requested → {} ({})", spec.name, spec.host));
@@ -103,17 +105,16 @@ pub fn run(stream: UnixStream, takeover: bool) -> std::io::Result<ClientExit> {
                                 // composite graphics over text — and after a resize the
                                 // emulator's screen/image state can diverge from our
                                 // incremental model, leaving orphaned icons on screen.
-                                let _ = out.write_all(b"\x1b[0m\x1b[2J\x1b_Ga=d,d=A\x1b\\");
+                                frame.push_str("\x1b[0m\x1b[2J\x1b_Ga=d,d=A\x1b\\");
                                 transmitted.clear();
                                 active.clear();
                             }
                             crate::protocol::unpack_spans(&msg.spans, &mut msg.changes);
-                            let ansi = frame_to_ansi(&msg.changes, &caps);
-                            let _ = out.write_all(ansi.as_bytes());
+                            frame.push_str(&frame_to_ansi(&msg.changes, &caps));
                             if caps.kitty_graphics {
-                                let g = reconcile_images(&msg, &mut transmitted, &mut active);
-                                let _ = out.write_all(g.as_bytes());
+                                frame.push_str(&reconcile_images(&msg, &mut transmitted, &mut active));
                             }
+                            let _ = out.write_all(frame.as_bytes());
                             let _ = out.flush();
                             if msg.flags.reload {
                                 reload.store(true, Ordering::SeqCst);
