@@ -19,8 +19,8 @@
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
-#      extras         — recommended tools: chafa, sshpass, htop, btop, upower,   [Linux, macOS]
-#                       alsa-utils, the DejaVu Sans Mono font, and xclip /
+#      extras         — recommended tools: chafa, mpv, sshpass, htop, btop,      [Linux, macOS]
+#                       upower, alsa-utils, the DejaVu Sans Mono font, and xclip /
 #                       wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
@@ -197,8 +197,11 @@ ensure_truecolor() {
 # field = not offered there). Only entries whose command is missing install,
 # so re-running converges. What each one is for: the DEPENDENCIES doc.
 # A "font=NAME" command field means "is this font installed" instead (see
-# present); DejaVu Sans Mono backs the default icon tier and kmscon.
+# present); DejaVu Sans Mono backs the default icon tier and kmscon. mpv has
+# no Fedora entry: it lives in RPM Fusion there, and one unknown package makes
+# dnf refuse the whole batch.
 EXTRAS="chafa:chafa:chafa:chafa:chafa
+mpv:mpv::mpv:mpv
 sshpass:sshpass:sshpass:sshpass:
 htop:htop:htop:htop:htop
 btop:btop:btop:btop:btop

@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Added
+- The suite installer's recommended tools include mpv (apt, pacman, Homebrew; on Fedora it comes from RPM Fusion), which plays video inside a tetron-wm window on any terminal with `mpv --vo=tct`.
 - The built-in image viewer works on every terminal. It uses Kitty graphics where the terminal supports them (kitty, Ghostty, WezTerm) and otherwise draws the image as colored cells with chafa, dithered on 8 and 16 colors, so images show on a bare Linux console, kmscon, tmux and over ssh; without chafa it falls back to half blocks. The image keeps its aspect ratio (Kitty graphics used to stretch it over the whole window). Zoom with `+` / `-` or the wheel, `0` fits, the arrows or a left-button drag pan, `n` / `p` step through the images in the folder, `m` switches graphics / cells, `i` toggles an info line, `Esc` closes. Decoding and drawing run in the background, so a large image no longer stalls the desktop while it opens. New config key `image_viewer` (`auto`, `graphics`, `cells`).
 
 ### Fixed
