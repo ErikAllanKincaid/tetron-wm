@@ -95,6 +95,9 @@ pub struct Config {
     /// Colour depth: "auto" (what the terminal reports), "mono" (black and
     /// white), "16", "256" or "truecolor". `TETRON_WM_COLORS` overrides it.
     pub colors: String,
+    /// The Chromecast for the right-click "Cast to Chromecast": a device name
+    /// or IP, as catt's `-d` takes it. Empty = catt's own default device.
+    pub cast_device: String,
     /// Force 24-bit ("truecolor") SGR output on/off. Unset = auto-detect from the
     /// terminal (known truecolor terminals + `COLORTERM`). Set `true` when your
     /// terminal supports truecolor but does not advertise it (many set
@@ -147,6 +150,10 @@ pub struct Config {
     /// File-role → handler map for opening files (see `openwith`).
     #[serde(default)]
     pub default_apps: std::collections::BTreeMap<String, String>,
+    /// `[open_with]`: extra programs for the right-click "Open with…" menu, per
+    /// role (`video = ["casttui"]`). Always shown, in addition to the detected ones.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub open_with: std::collections::BTreeMap<String, Vec<String>>,
     /// Persisted default file-manager view (`"icon"` or `"list"`); wired fully in
     /// a later stage — stored here so the config round-trips.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -314,6 +321,7 @@ impl Default for Config {
             scrollback: DEFAULT_SCROLLBACK,
             image_viewer: "auto".into(),
             colors: "auto".into(),
+            cast_device: String::new(),
             truecolor: None,
             wallpaper: default_wallpaper(),
             wallpaper_enabled: true,
@@ -325,6 +333,7 @@ impl Default for Config {
             apps: vec![],
             launcher: vec![],
             default_apps: crate::openwith::default_handlers(),
+            open_with: std::collections::BTreeMap::new(),
             filemanager_view: None,
             desktop_enabled: true,
             desktop_scrim: None,

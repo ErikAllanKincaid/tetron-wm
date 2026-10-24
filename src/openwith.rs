@@ -3,6 +3,20 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::{OnceLock, RwLock};
+
+/// `[open_with]` from the config: extra "Open with…" commands per role key
+/// (`video`, `audio`, …). A process global, set at startup and on every config
+/// change, like the icon style, so the menus need no config handle.
+fn extra_slot() -> &'static RwLock<BTreeMap<String, Vec<String>>> {
+    static SLOT: OnceLock<RwLock<BTreeMap<String, Vec<String>>>> = OnceLock::new();
+    SLOT.get_or_init(|| RwLock::new(BTreeMap::new()))
+}
+
+/// Set the configured extra Open-with commands.
+pub fn set_extra(map: &BTreeMap<String, Vec<String>>) {
+    *extra_slot().write().unwrap() = map.clone();
+}
 
 /// A coarse file category used to pick a default application.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -174,6 +188,23 @@ pub fn default_handlers() -> BTreeMap<String, String> {
 /// (`--vo=tct` draws video as truecolor characters on any terminal); a GUI
 /// player window is offered too when a display exists.
 pub fn candidates(role: Role) -> Vec<String> {
+    let extra = extra_slot().read().unwrap().get(role.key()).cloned().unwrap_or_default();
+    with_extra(detected(role), &extra)
+}
+
+/// `base` plus the configured `extra` commands: always shown (the user chose
+/// them, installed or not), blanks skipped, nothing listed twice.
+pub fn with_extra(mut base: Vec<String>, extra: &[String]) -> Vec<String> {
+    for cmd in extra.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+        if !base.iter().any(|b| b == cmd) {
+            base.push(cmd.to_string());
+        }
+    }
+    base
+}
+
+/// The installed programs that suit `role` (before the `[open_with]` extras).
+fn detected(role: Role) -> Vec<String> {
     let gui = std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
     let mut v = vec![String::new()]; // "" = Open-with menu / unset
     fn add(v: &mut Vec<String>, bin: &str, cmd: &str) {
@@ -196,10 +227,13 @@ pub fn candidates(role: Role) -> Vec<String> {
                 add(&mut v, "mpv", "mpv");
                 add(&mut v, "vlc", "vlc");
             }
+            // Cast it to a Chromecast, with play/pause, seek and volume.
+            add(&mut v, "casttui", "casttui");
         }
         Role::Audio => {
             add(&mut v, "mpv", "mpv --no-video");
             add(&mut v, "cvlc", "cvlc --play-and-exit");
+            add(&mut v, "casttui", "casttui");
         }
         Role::Pdf => {
             add(&mut v, "pdftoppm", "@pdf");

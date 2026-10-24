@@ -68,6 +68,7 @@ pub fn run() -> std::io::Result<()> {
     let cfg = Config::load();
     crate::theme::set(&cfg.theme);
     crate::iconset::set(cfg.icon_style);
+    crate::openwith::set_extra(&cfg.open_with);
     let (w, h) = (100, 30); // provisional until the first client reports its size
     let apphost = ensure_apphost()?;
     let mut core = SessionCore::with_apphost(w, h, cfg.clone(), Box::new(apphost));

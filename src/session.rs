@@ -2202,6 +2202,16 @@ impl SessionCore {
         self.run_in_window(format!("send to {system}"), cmd, dir);
     }
 
+    /// Right-click "Cast to Chromecast": catt serves the file and stays up until
+    /// playback ends, so it runs in a window (closing the window stops the cast).
+    fn cast_file(&mut self, path: &std::path::Path) {
+        let cmd = crate::contextmenu::cast_command(path, &self.cfg.cast_device);
+        crate::dbg_log(&format!("cast: {cmd}"));
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        self.run_in_window(format!("cast {name}"), cmd, dir);
+    }
+
     /// Desktop "Get Info": open Files at the item's folder with its info box.
     fn desktop_get_info(&mut self, path: &std::path::Path) {
         let Some(dir) = path.parent() else { return };
@@ -3838,6 +3848,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
             crate::iconset::set(self.cfg.icon_style);
+            crate::openwith::set_extra(&self.cfg.open_with);
             if changed {
                 if let Err(e) = self.cfg.save() {
                     crate::dbg_log(&format!("config: save failed: {e}"));
@@ -4568,6 +4579,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             Some(crate::filemanager::FileManagerAction::PlayFullscreen(p)) => self.fullscreen_video(&p),
             Some(crate::filemanager::FileManagerAction::Archive { path, list }) => self.archive(&path, list),
             Some(crate::filemanager::FileManagerAction::SendTo { system, path }) => self.send_to(&system, &path),
+            Some(crate::filemanager::FileManagerAction::Cast(path)) => self.cast_file(&path),
             None => {}
         }
     }
@@ -5390,11 +5402,12 @@ or a remote-side error — its authorized_keys was left untouched)",
                     _ => self.terminal_at(&target),
                 }
             }
-            A::PlayFullscreen | A::ExtractHere | A::ListContents | A::SendToSystem(_) | A::GetInfo => {
+            A::PlayFullscreen | A::ExtractHere | A::ListContents | A::SendToSystem(_) | A::CastTo | A::GetInfo => {
                 self.desktop.cancel_overlay();
                 if let Some(p) = path {
                     match action {
                         A::PlayFullscreen => self.fullscreen_video(&p),
+                        A::CastTo => self.cast_file(&p),
                         A::ExtractHere => self.archive(&p, false),
                         A::ListContents => self.archive(&p, true),
                         A::SendToSystem(name) => self.send_to(&name, &p),

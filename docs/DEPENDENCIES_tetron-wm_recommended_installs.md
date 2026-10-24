@@ -16,7 +16,14 @@ macOS with [Homebrew](https://brew.sh):
 brew install chafa mpv poppler fresh-editor blueutil htop btop
 ```
 
-The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
+Chromecast casting, any OS with [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv tool install catt
+uv tool install git+https://github.com/ErikAllanKincaid/casttui
+```
+
+The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, catt and casttui with `uv tool install` (installing uv first if missing), and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
 
 ## By feature
 
@@ -27,6 +34,8 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | Video in a window | `mpv` | Videos open only in a GUI player, if there is one | `mpv --vo=tct FILE` plays in a tetron-wm window on any terminal, kmscon and the bare console included. Fedora: from RPM Fusion. [mpv](https://mpv.io/) |
 | Text editor in Open with… | `fresh` | Other editors on the list (nvim, vim, nano, …) | Easy, mouse-friendly terminal editor, offered first for text. Not in distro repositories: the suite installer runs its official installer on Linux (`curl -fsSL https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh \| sh`, which picks .deb, .rpm, AUR, …); macOS `brew install fresh-editor`. [fresh](https://github.com/sinelaw/fresh) |
 | PDFs in the built-in viewer | `pdftoppm`, `pdfinfo`, `pdftotext` (package `poppler-utils`; `poppler` on Arch and Homebrew) | PDFs offer only the apps you have installed | Renders one page at a time into the image viewer (characters on any terminal, the real page with Kitty graphics); the text view uses `pdftotext`. Optional: `tdf` and `timg` (Store) appear in Open with…, and `fbgs` (with fbi and ghostscript) gives full screen on a plain console. |
+| Cast to Chromecast (right-click on video, audio and images) | `catt` | No Cast to Chromecast item | Serves the file from this machine until playback ends; pick the device with `cast_device`. Not in distro repositories: `uv tool install catt`. [catt](https://github.com/skorokithakis/catt) |
+| Cast remote control (Open with… on video and audio) | `casttui` | Not listed in Open with… | Play/pause, seek, volume and stop for the cast, and converts codecs a Chromecast can not play. `uv tool install git+https://github.com/ErikAllanKincaid/casttui`. [casttui](https://github.com/ErikAllanKincaid/casttui) |
 | Mouse on a bare Linux console | `gpm` | No mouse on a raw VT | Not needed under kmscon or in a GUI terminal. `sudo apt install gpm && sudo systemctl enable --now gpm` |
 | Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
 | Volume (menubar, leader `=`, Settings → Sound) | `wpctl` (PipeWire, package `wireplumber`) | Volume shows no level and can not change; Settings says so | Also lists and switches outputs (HDMI, headphones, speakers). macOS uses its built-in `osascript`. |

@@ -20,7 +20,8 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("truecolor", "auto", "force 24-bit color on/off"),
     ("wallpaper", "default", "wallpaper image: default (built-in), a file in wallpapers/, or a full path (needs chafa)"),
     ("wallpaper_enabled", "true", "master wallpaper toggle"),
-    ("colors", "auto", "color depth: auto | mono (black and white) | 16 | 256 | truecolor (Settings > Appearance; TETRON_WM_COLORS wins)"),
+    ("colors", "auto", "color depth: auto | mono (no color) | 16 | 256 | truecolor (Settings > Appearance; TETRON_WM_COLORS wins)"),
+    ("cast_device", "", "Chromecast for right-click Cast to Chromecast: a name or IP for catt -d; empty = catt's default device"),
     ("image_viewer", "auto", "image viewer: auto (Kitty graphics if the terminal has them, cells on a bare VT) | graphics | cells"),
     ("icon_style", "auto", "icon glyphs: auto (ascii on a bare console, else unicode) | ascii | unicode | nerd | emoji"),
     ("default_project_dir", "~", "root of the working-directory picker"),
@@ -29,6 +30,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("apps", "[]", "[[apps]] auto-started at launch (and docked)"),
     ("launcher", "[]", "[[launcher]] apps in the launcher (falls back to apps)"),
     ("default_apps", "built-in", "[default_apps] file role -> handler"),
+    ("open_with", "none", "[open_with] extra right-click Open with... programs per role, e.g. video = [\"casttui\"]"),
     ("filemanager_view", "-", "default file manager view: icon | list"),
     ("desktop_enabled", "true", "show desktop icons"),
     ("desktop_scrim", "#000000c8", "icon label backdrop over wallpaper; none/off disables"),
@@ -136,8 +138,9 @@ SESSIONS:\n\
 RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
 \x20 Open (video and audio play in the window with mpv), Open with... (apps for the file\n\
 \x20 type, fresh and other editors for text), Set as wallpaper, Extract here / List\n\
-\x20 contents (archives), Copy path, Open terminal here, Get Info, Send to... (scp to a\n\
-\x20 saved system), Rename, Move to Trash. On a plain Linux console (not kmscon, ssh or a\n\
+\x20 contents (archives), Cast to Chromecast (video, audio and images; needs catt, picks\n\
+\x20 `cast_device`, runs in a window and closing it stops the cast), Copy path, Open\n\
+\x20 terminal here, Get Info, Send to... (scp to a saved system), Rename, Move to Trash. On a plain Linux console (not kmscon, ssh or a\n\
 \x20 GUI terminal) View full screen shows images with fbi and Play full screen plays\n\
 \x20 video with mpv; q returns, apps keep running. A window's title bar has Minimize,\n\
 \x20 Maximize, Move, Rename and Close.\n\n\

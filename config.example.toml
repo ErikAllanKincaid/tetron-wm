@@ -86,6 +86,9 @@ wallpaper_enabled = true
 ## "16", "256" or "truecolor". Settings > Appearance > Colors switches it live.
 ## TETRON_WM_COLORS overrides it.
 colors = "auto"
+## Chromecast for the right-click "Cast to Chromecast" (video, audio, images; needs
+## catt installed): a device name or IP, as catt -d takes it. "" = catt's default.
+cast_device = ""
 ## Image viewer: "auto" (Kitty graphics when the terminal has them, never on a
 ## bare console; otherwise colored cells via chafa, or half blocks without it),
 ## "graphics", or "cells". In the viewer, m switches for that window.
@@ -267,6 +270,15 @@ kilo = "yellow"
 #video = "mpv"
 #audio = "mpv"
 #pdf = "zathura"
+
+## ── Extra "Open with…" programs ────────────────────────────────────────────
+## Per role, extra programs for the right-click Open with... menu. They are
+## always listed (installed or not), after the ones tetron-wm detects; the file
+## path is added as the last argument. Roles as above. Also shown in Settings >
+## Default Apps.
+#[open_with]
+#video = ["casttui"]
+#audio = ["casttui"]
 
 ## ── Apps auto-started at launch ───────────────────────────────────────────
 ## Each [[apps]] entry opens a window at launch and appears in the taskbar.

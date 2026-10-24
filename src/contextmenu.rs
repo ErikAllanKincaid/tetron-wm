@@ -51,6 +51,8 @@ pub enum MenuAction {
     PlayFullscreen,
     ExtractHere,
     ListContents,
+    /// Cast a video, audio or image file to a Chromecast with catt, in a window.
+    CastTo,
     /// Replace the menu with the saved Systems to copy the entry to.
     SendTo,
     /// Copy the entry to this Systems entry (by name) with scp.
@@ -88,6 +90,7 @@ impl MenuAction {
             MenuAction::PlayFullscreen => "Play full screen".into(),
             MenuAction::ExtractHere => "Extract here".into(),
             MenuAction::ListContents => "List contents".into(),
+            MenuAction::CastTo => "Cast to Chromecast".into(),
             MenuAction::SendTo => "Send to\u{2026}".into(),
             MenuAction::SendToSystem(name) => name.clone(),
             MenuAction::Minimize => "Minimize".into(),
@@ -110,6 +113,8 @@ pub struct Abilities {
     pub fullscreen_pdf: bool,
     /// Saved Systems exist: "Send to…".
     pub send: bool,
+    /// catt is installed: "Cast to Chromecast" for video, audio and images.
+    pub cast: bool,
 }
 
 impl Abilities {
@@ -122,6 +127,7 @@ impl Abilities {
             fullscreen_video: console && (have("mpv") || have("cvlc")),
             fullscreen_pdf: console && have("fbgs") && have("gs"),
             send: !crate::systems::load().is_empty() && have("scp"),
+            cast: have("catt"),
         }
     }
 }
@@ -148,6 +154,9 @@ pub fn actions_for(surface: Surface, target: Target, can: Abilities) -> Vec<Menu
                 Role::Archive => v.extend([A::ExtractHere, A::ListContents]),
                 _ => {}
             }
+            if can.cast && !is_dir && matches!(role, Role::Video | Role::Audio | Role::Image) {
+                v.push(A::CastTo);
+            }
             v.push(A::Rename);
             if surface == Surface::Files {
                 v.extend([A::Copy, A::Cut]);
@@ -172,6 +181,17 @@ pub fn window_actions() -> Vec<MenuAction> {
 /// The "Send to…" choices: one per saved Systems entry.
 pub fn send_to_actions() -> Vec<MenuAction> {
     crate::systems::load().into_iter().map(|s| MenuAction::SendToSystem(s.name)).collect()
+}
+
+/// The shell command that casts `file` to a Chromecast with catt. `device` is
+/// catt's `-d` value (a name or an IP); empty means catt's default device.
+/// catt serves the file itself and keeps running until playback ends, so this
+/// belongs in a window, where closing it stops the cast.
+pub fn cast_command(file: &Path, device: &str) -> String {
+    let q = |s: &str| crate::systems::sh_quote(s);
+    let device = device.trim();
+    let dev = if device.is_empty() { String::new() } else { format!("-d {} ", q(device)) };
+    format!("catt {dev}cast {}", q(&file.to_string_lossy()))
 }
 
 /// The shell command that extracts (`list` false) or lists `archive` into
@@ -314,10 +334,39 @@ mod tests {
     }
 
     #[test]
+    fn cast_is_offered_for_media_files_only_when_catt_is_there() {
+        use MenuAction as A;
+        let none = Abilities::default();
+        let can = Abilities { cast: true, ..none };
+        let t = |role, is_dir| Target::Entry { is_dir, pinned: false, role };
+        for role in [Role::Video, Role::Audio, Role::Image] {
+            for surface in [Surface::Desktop, Surface::Files] {
+                assert!(actions_for(surface, t(role, false), can).contains(&A::CastTo), "{role:?} on {surface:?}");
+                assert!(!actions_for(surface, t(role, false), none).contains(&A::CastTo), "no catt, no item");
+            }
+        }
+        for role in [Role::Text, Role::Code, Role::Archive, Role::Pdf, Role::Executable, Role::Other] {
+            assert!(!actions_for(Surface::Files, t(role, false), can).contains(&A::CastTo), "{role:?} is not media");
+        }
+        assert!(!actions_for(Surface::Files, t(Role::Video, true), can).contains(&A::CastTo), "a folder is not a file");
+        assert!(!actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true, role: Role::Video }, can).contains(&A::CastTo), "pinned shortcuts only open or unpin");
+        assert_eq!(A::CastTo.label(), "Cast to Chromecast");
+    }
+
+    #[test]
+    fn cast_command_quotes_the_file_and_the_device() {
+        let f = Path::new("/home/u/My Videos/it's here.mp4");
+        assert_eq!(cast_command(f, ""), "catt cast '/home/u/My Videos/it'\\''s here.mp4'");
+        assert_eq!(cast_command(f, "  "), cast_command(f, ""), "blank device means catt default");
+        let c = cast_command(Path::new("/m/a.mp4"), "Living Room; rm -rf ~");
+        assert_eq!(c, "catt -d 'Living Room; rm -rf ~' cast '/m/a.mp4'");
+    }
+
+    #[test]
     fn actions_differ_by_surface_and_target() {
         use MenuAction as A;
         let none = Abilities::default();
-        let all = Abilities { fullscreen_image: true, fullscreen_video: true, fullscreen_pdf: true, send: true };
+        let all = Abilities { fullscreen_image: true, fullscreen_video: true, fullscreen_pdf: true, send: true, cast: false };
         let file = Target::Entry { is_dir: false, pinned: false, role: Role::Text };
         let dir = Target::Entry { is_dir: true, pinned: false, role: Role::Directory };
         let img = Target::Entry { is_dir: false, pinned: false, role: Role::Image };

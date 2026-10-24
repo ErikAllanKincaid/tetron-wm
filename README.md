@@ -43,7 +43,7 @@ tetron-wm works on its own; these make the most of it. Ubuntu or Debian:
 sudo apt install chafa mpv poppler-utils sshpass wireplumber network-manager bluez upower xclip wl-clipboard htop btop alsa-utils fonts-dejavu-core
 ```
 
-The suite installer above offers to install them for you (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper and images in the image viewer on any terminal (chafa), video in a window (mpv), PDFs in the viewer (poppler), a friendly terminal editor ([fresh](https://github.com/sinelaw/fresh), from its own installer on Linux, `brew install fresh-editor` on macOS), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
+The suite installer above offers to install them for you (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper and images in the image viewer on any terminal (chafa), video in a window (mpv), PDFs in the viewer (poppler), a friendly terminal editor ([fresh](https://github.com/sinelaw/fresh), from its own installer on Linux, `brew install fresh-editor` on macOS), casting to a Chromecast ([catt](https://github.com/skorokithakis/catt) and [casttui](https://github.com/ErikAllanKincaid/casttui), installed with `uv tool install`), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md).
 
 Want a bare Linux machine that boots straight into the desktop? Use the suite installer, which can also set up the kmscon console, autologin and autostart, and can undo all of it. See [Bare console](#bare-console-no-x11-or-wayland).
 
@@ -75,7 +75,7 @@ tetron-wm
 2. **Move windows.** Drag a titlebar to move, an edge to resize. The titlebar buttons minimize, maximize and close. From the keyboard, `Ctrl+Space` then `Tab` focuses the next window (keep pressing `Tab` to cycle), `Ctrl+Space` then `f` lists every window to pick one by number, and `Ctrl+Space` then `w` moves the focused window with the arrow keys (`r` to resize, Enter when done).
 3. **Get apps.** Open the **Store** (`Ctrl+Space`, then `S`), search and install. If an app needs a toolchain you do not have, the installer notices and offers to set it up first.
 4. **Find things fast.** `Ctrl+Space` then `space` opens a search over every app.
-5. **Open files.** Double-click a desktop icon or a file in **Files**. Right-click it (or `Ctrl+Space` then `.`) for **Open with…** (for example fresh for text), **Set as wallpaper**, **Extract here**, **Copy path**, **Open terminal here**, **Get Info** and **Send to…** a saved system. Videos play right in the window with mpv; images open in the built-in viewer on any terminal; on a plain Linux console, **View full screen** and **Play full screen** use fbi and mpv. A window's title bar has its own right-click menu.
+5. **Open files.** Double-click a desktop icon or a file in **Files**. Right-click it (or `Ctrl+Space` then `.`) for **Open with…** (for example fresh for text), **Set as wallpaper**, **Extract here**, **Cast to Chromecast** (media files, needs [catt](https://github.com/skorokithakis/catt)), **Copy path**, **Open terminal here**, **Get Info** and **Send to…** a saved system. Videos play right in the window with mpv; images open in the built-in viewer on any terminal; on a plain Linux console, **View full screen** and **Play full screen** use fbi and mpv. A window's title bar has its own right-click menu.
 6. **See all shortcuts.** `Ctrl+Space` then `?`.
 7. **Leave without closing anything.** `Ctrl+Space` then `q` detaches. Run `tetron-wm` again to come back.
 
@@ -119,7 +119,7 @@ Common first changes:
 | A different leader key                   | `leader = "ctrl+b"`                                                                                                        |
 | No Power menu on a server                | `power_menu = false`                                                                                                       |
 | Less memory per window                   | `scrollback = 2000` (lines kept per window; default 10000)                                                                 |
-| Black and white, or fewer colors         | Settings → Appearance → Colors, or `colors = "mono"` (also `"16"`, `"256"`, `"truecolor"`)                                  |
+| Mono (no color), or fewer colors       | Settings → Appearance → Colors, or `colors = "mono"` (also `"16"`, `"256"`, `"truecolor"`)                                  |
 | Images always drawn as characters        | `image_viewer = "cells"` (default `"auto"` uses Kitty graphics where the terminal has them)                                 |
 
 ## Bare console (no X11 or Wayland)
@@ -144,7 +144,7 @@ Inside the app: **Settings → Updates**. The default channel installs the lates
 ## Troubleshooting
 
 - **Colors look washed out.** Your terminal may do 24-bit color without saying so. Set `truecolor = true`, or run once with `TETRON_WM_TRUECOLOR=1 tetron-wm`.
-- **Colors are wrong or unreadable on a basic terminal.** Pick the color depth in Settings → Appearance → Colors (Auto, Black and white, 16, 256, Truecolor; config key `colors`), or force it per terminal: `TETRON_WM_COLORS=16 tetron-wm` (16 colors, the default on the bare Linux console), `TETRON_WM_COLORS=mono` (black and white, also set by `NO_COLOR`), or `256` / `truecolor`.
+- **Colors are wrong or unreadable on a basic terminal.** Pick the color depth in Settings → Appearance → Colors (Auto, Mono, 16, 256, Truecolor; config key `colors`), or force it per terminal: `TETRON_WM_COLORS=16 tetron-wm` (16 colors, the default on the bare Linux console), `TETRON_WM_COLORS=mono` (black and white, also set by `NO_COLOR`), or `256` / `truecolor`.
 - **Nothing happens on `attach`.** Run `tetron-wm ls`. A `detached` session is waiting for you. `recoverable` means the daemon is gone but the apps are alive, so run `tetron-wm` to restore the windows.
 - **Copying text out of an app that grabs the mouse** (vim, w3m): press `Ctrl+Space` then `x`, drag over the text, then `Ctrl+Space` then `C`.
 - **No wallpaper.** Install `chafa`, or set `wallpaper_enabled = false` for a solid desktop.

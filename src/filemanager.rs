@@ -31,6 +31,8 @@ pub enum FileManagerAction {
     Archive { path: PathBuf, list: bool },
     /// Copy to the Systems entry `system` with scp, in a window.
     SendTo { system: String, path: PathBuf },
+    /// Cast the file to a Chromecast with catt, in a window.
+    Cast(PathBuf),
 }
 
 /// Modal overlays drawn on top of the listing.
@@ -649,6 +651,7 @@ impl<F: FsOps> FileManager<F> {
                 }
             }
             A::SendToSystem(system) => self.action = path.map(|path| FileManagerAction::SendTo { system, path }),
+            A::CastTo => self.action = path.map(FileManagerAction::Cast),
             A::Unpin | A::NewFolder | A::CleanUp => {}
             A::Minimize | A::Maximize | A::MoveWindow | A::RenameWindow | A::CloseWindow => {}
         }

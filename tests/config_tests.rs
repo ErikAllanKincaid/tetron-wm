@@ -98,3 +98,14 @@ fn desktop_has_no_default_pins() {
     assert!(c.desktop_pins.is_empty());
     assert!(c.desktop_positions.is_empty());
 }
+
+#[test]
+fn open_with_table_parses_and_survives_a_save() {
+    let c = Config::from_toml_str("[open_with]\nvideo = [\"casttui\", \"vlc --fullscreen\"]\naudio = [\"casttui\"]\n").unwrap();
+    assert_eq!(c.open_with["video"], vec!["casttui".to_string(), "vlc --fullscreen".into()]);
+    assert_eq!(c.open_with["audio"], vec!["casttui".to_string()]);
+    let again = Config::from_toml_str(&toml::to_string(&c).unwrap()).unwrap();
+    assert_eq!(again.open_with, c.open_with, "written out and read back unchanged");
+    assert!(Config::default().open_with.is_empty());
+    assert!(!toml::to_string(&Config::default()).unwrap().contains("open_with"), "nothing is written when unused");
+}

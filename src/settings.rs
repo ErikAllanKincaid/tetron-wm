@@ -869,7 +869,7 @@ impl Settings {
                 buf.write_str(cx, 15, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
                 buf.write_str(cx, 16, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
                 buf.write_str(cx, 17, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
-                buf.write_str(cx, 18, "Colors: auto follows the terminal; TETRON_WM_COLORS wins.", pal_dim(), pal_bg());
+                buf.write_str(cx, 18, "Colors: auto follows the terminal; mono is no color; TETRON_WM_COLORS wins.", pal_dim(), pal_bg());
             }
             2 => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
@@ -1124,7 +1124,7 @@ fn step_u8(v: u8, dir: i32, lo: u8, hi: u8) -> u8 {
 /// The Colors row's choices: the config value and its label.
 const COLOR_CHOICES: [(&str, &str); 5] = [
     ("auto", "Auto"),
-    ("mono", "Black and white"),
+    ("mono", "Mono"),
     ("16", "16 colors"),
     ("256", "256 colors"),
     ("truecolor", "Truecolor"),

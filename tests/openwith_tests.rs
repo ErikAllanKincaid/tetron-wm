@@ -73,3 +73,27 @@ fn pdf_handlers() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn casttui_gets_the_media_file_as_its_argument() {
+    use tetron_wm::openwith::{open_with, OpenAction};
+    let p = std::path::Path::new("/m/My Clip.mp4");
+    assert_eq!(
+        open_with("casttui", p),
+        OpenAction::RunApp { command: "casttui".into(), args: vec!["/m/My Clip.mp4".into()] },
+        "the whole path stays one argument, spaces and all"
+    );
+}
+
+#[test]
+fn configured_extras_join_the_open_with_list() {
+    use tetron_wm::openwith::with_extra;
+    let base = vec![String::new(), "mpv --vo=tct".to_string()];
+    let extra = vec!["casttui".to_string(), "  ".into(), "mpv --vo=tct".into(), " vlc ".into(), "casttui".into()];
+    assert_eq!(
+        with_extra(base.clone(), &extra),
+        vec!["".to_string(), "mpv --vo=tct".into(), "casttui".into(), "vlc".into()],
+        "kept in order after the detected ones; blanks and repeats dropped; trimmed"
+    );
+    assert_eq!(with_extra(base.clone(), &[]), base, "no extras changes nothing");
+}
