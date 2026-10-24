@@ -18,10 +18,47 @@ use serde::{Deserialize, Serialize};
 /// The default spare VT (`tetron-wm fullscreen-waiter --vt N` overrides it).
 pub const DEFAULT_VT: u32 = 9;
 
-/// One play request: the absolute file and the VT to come back to.
+/// What to show. The waiter picks the program itself from this, so a request
+/// can never name a command to run.
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// One video, played with mpv.
+    #[default]
+    Video,
+    /// Images, shown with fbi (or fim), first one first.
+    Images,
+    /// One PDF, shown with fbgs.
+    Pdf,
+}
+
+impl Kind {
+    pub fn parse(s: &str) -> Option<Kind> {
+        match s {
+            "video" => Some(Kind::Video),
+            "images" => Some(Kind::Images),
+            "pdf" => Some(Kind::Pdf),
+            _ => None,
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Kind::Video => "video",
+            Kind::Images => "images",
+            Kind::Pdf => "pdf",
+        }
+    }
+}
+
+/// The most files one request may carry (a folder of images).
+const MAX_FILES: usize = 2000;
+
+/// One request: what to show, the absolute files, and the VT to come back to.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Request {
-    pub path: String,
+    #[serde(default)]
+    pub kind: Kind,
+    pub files: Vec<String>,
     pub return_vt: u32,
 }
 
@@ -71,6 +108,31 @@ pub fn mpv_args(file: &Path) -> Vec<String> {
     .collect();
     v.push(file.to_string_lossy().into_owned());
     v
+}
+
+/// Images with fbi (or fim): autozoom, no status line, `--` before the files.
+fn fbi_args(program: &str, files: &[PathBuf]) -> Vec<String> {
+    let mut v: Vec<String> = if program == "fim" { vec!["-a".into()] } else { vec!["-a".into(), "--noverbose".into()] };
+    v.push("--".into());
+    v.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
+    v
+}
+
+/// The program and arguments for a request, from which programs `have` says
+/// exist. Files are already validated (absolute, regular).
+fn command_for(kind: Kind, files: &[PathBuf], have: &dyn Fn(&str) -> bool) -> Result<(String, Vec<String>), String> {
+    match kind {
+        Kind::Video if files.len() == 1 && have("mpv") => Ok(("mpv".into(), mpv_args(&files[0]))),
+        Kind::Video if files.len() == 1 => Err("mpv is not installed".into()),
+        Kind::Images if !files.is_empty() => {
+            let program = if have("fbi") { "fbi" } else if have("fim") { "fim" } else { return Err("neither fbi nor fim is installed".into()) };
+            Ok((program.into(), fbi_args(program, files)))
+        }
+        // The path is absolute, so it can not be read as an option.
+        Kind::Pdf if files.len() == 1 && have("fbgs") && have("gs") => Ok(("fbgs".into(), vec![files[0].to_string_lossy().into_owned()])),
+        Kind::Pdf if files.len() == 1 => Err("fbgs and ghostscript (gs) are needed for a PDF".into()),
+        _ => Err(format!("a {} request needs a different number of files", kind.name())),
+    }
 }
 
 /// The VT that is showing now, from `/sys/class/tty/tty0/active` ("tty3").
@@ -144,8 +206,8 @@ fn serve_on(sock: &Path, vt: u32) -> std::io::Result<()> {
             continue;
         }
         let mut line = String::new();
-        // 4096 bytes is far more than a path; a longer line is not a request.
-        let read = BufReader::new((&conn).take(4096)).read_line(&mut line);
+        // 1 MiB holds a folder's worth of paths; a longer line is not a request.
+        let read = BufReader::new((&conn).take(1 << 20)).read_line(&mut line);
         if read.map(|n| n == 0).unwrap_or(true) {
             continue; // a ping
         }
@@ -165,13 +227,14 @@ fn serve_on(sock: &Path, vt: u32) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Play one request: validate, switch here, run mpv, switch back.
+/// Show one request: validate, switch here, run the program, switch back.
 fn handle(vt: u32, req: &Request) -> Result<(), String> {
-    let file = validate(&req.path)?;
-    if !crate::catalog::is_installed("mpv") {
-        return Err("mpv is not installed".into());
+    if req.files.is_empty() || req.files.len() > MAX_FILES {
+        return Err(format!("a request needs 1 to {MAX_FILES} files"));
     }
-    crate::dbg_log(&format!("fullscreen waiter: playing {} (back to tty{})", file.display(), req.return_vt));
+    let files = req.files.iter().map(|f| validate(f)).collect::<Result<Vec<_>, _>>()?;
+    let (program, args) = command_for(req.kind, &files, &crate::catalog::is_installed)?;
+    crate::dbg_log(&format!("fullscreen waiter: {} {} file(s) with {program}, first {} (back to tty{})", req.kind.name(), files.len(), files[0].display(), req.return_vt));
     switch_vt(vt)?;
     if !wait_active(vt, 3) {
         let _ = switch_vt(req.return_vt);
@@ -182,37 +245,40 @@ fn handle(vt: u32, req: &Request) -> Result<(), String> {
     // Clear the VT and hide its cursor so neither shows around the video.
     print!("\x1b[2J\x1b[H\x1b[?25l");
     let _ = std::io::stdout().flush();
-    let status = std::process::Command::new("mpv").args(mpv_args(&file)).status();
+    let status = std::process::Command::new(&program).args(&args).status();
     print!("\x1b[?25h");
     let _ = std::io::stdout().flush();
-    crate::dbg_log(&format!("fullscreen waiter: mpv ended with {status:?}"));
+    crate::dbg_log(&format!("fullscreen waiter: {program} ended with {status:?}"));
     switch_vt(req.return_vt)?;
     wait_active(req.return_vt, 3);
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("mpv ended with {s}")),
-        Err(e) => Err(format!("could not run mpv: {e}")),
+        Ok(s) => Err(format!("{program} ended with {s}")),
+        Err(e) => Err(format!("could not run {program}: {e}")),
     }
 }
 
-/// Client side: ask the waiter to play `file` and wait until it is done.
+/// Client side: ask the waiter to show `files` and wait until it is done.
 /// Returns the process exit code for `run_fullscreen`.
-pub fn play(file: &str) -> i32 {
+pub fn play(kind: Kind, files: &[String]) -> i32 {
     let fail = |msg: &str| {
         crate::dbg_log(&format!("fullscreen play: {msg}"));
         eprintln!("tetron-wm: {msg}");
         1
     };
     let Some(return_vt) = active_vt() else { return fail("cannot tell which VT is showing") };
-    let path = match std::path::absolute(file) {
-        Ok(p) => p.to_string_lossy().into_owned(),
-        Err(e) => return fail(&format!("bad path: {e}")),
-    };
+    let mut abs = Vec::with_capacity(files.len());
+    for f in files {
+        match std::path::absolute(f) {
+            Ok(p) => abs.push(p.to_string_lossy().into_owned()),
+            Err(e) => return fail(&format!("bad path: {e}")),
+        }
+    }
     let mut conn = match UnixStream::connect(socket_path()) {
         Ok(c) => c,
         Err(e) => return fail(&format!("the full screen waiter is not running ({e})")),
     };
-    let req = serde_json::to_string(&Request { path, return_vt }).unwrap_or_default();
+    let req = serde_json::to_string(&Request { kind, files: abs, return_vt }).unwrap_or_default();
     if conn.write_all(format!("{req}\n").as_bytes()).is_err() {
         return fail("could not send the request");
     }
@@ -294,16 +360,45 @@ mod tests {
             reply
         };
         assert!(ask("not json\n").starts_with("error: bad request"));
-        assert!(ask("{\"path\":\"relative.mp4\",\"return_vt\":1}\n").starts_with("error: path is not absolute"));
-        assert!(ask("{\"path\":\"/nonexistent/x.mp4\",\"return_vt\":1}\n").starts_with("error: cannot open"));
+        assert!(ask("{\"files\":[\"relative.mp4\"],\"return_vt\":1}\n").starts_with("error: path is not absolute"));
+        assert!(ask("{\"files\":[\"/nonexistent/x.mp4\"],\"return_vt\":1}\n").starts_with("error: cannot open"));
+        assert!(ask("{\"files\":[],\"return_vt\":1}\n").starts_with("error: a request needs 1 to"));
         // A ping (connect and close) must not wedge the waiter.
         drop(UnixStream::connect(&sock).unwrap());
-        assert!(ask("{\"path\":\"/dev/null\",\"return_vt\":1}\n").starts_with("error: not a regular file"));
+        assert!(ask("{\"kind\":\"images\",\"files\":[\"/dev/null\"],\"return_vt\":1}\n").starts_with("error: not a regular file"));
+    }
+
+    #[test]
+    fn command_picks_the_program_per_kind_and_never_takes_one_from_the_request() {
+        let f = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let all = |_: &str| true;
+        let none = |_: &str| false;
+        let only = |n: &'static str| move |b: &str| b == n;
+        let (p, a) = command_for(Kind::Video, &f(&["/v/a.mp4"]), &all).unwrap();
+        assert_eq!((p.as_str(), a.last().unwrap().as_str()), ("mpv", "/v/a.mp4"));
+        assert!(command_for(Kind::Video, &f(&["/a", "/b"]), &all).is_err(), "one video only");
+        assert!(command_for(Kind::Video, &f(&["/a"]), &none).is_err());
+        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all).unwrap();
+        assert_eq!(p, "fbi");
+        assert_eq!(a, ["-a", "--noverbose", "--", "/i/1.png", "/i/2.png"]);
+        assert_eq!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fim")).unwrap().0, "fim");
+        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &none).is_err());
+        assert_eq!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all).unwrap(), ("fbgs".to_string(), vec!["/d/x.pdf".to_string()]));
+        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &only("fbgs")).is_err(), "needs gs too");
+        assert!(command_for(Kind::Images, &[], &all).is_err());
+    }
+
+    #[test]
+    fn kind_names_round_trip() {
+        for k in [Kind::Video, Kind::Images, Kind::Pdf] {
+            assert_eq!(Kind::parse(k.name()), Some(k));
+        }
+        assert_eq!(Kind::parse("rm"), None);
     }
 
     #[test]
     fn request_round_trips() {
-        let r = Request { path: "/v/a b.mp4".into(), return_vt: 1 };
+        let r = Request { kind: Kind::Images, files: vec!["/v/a b.png".into(), "/v/c.png".into()], return_vt: 1 };
         let back: Request = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
         assert_eq!(back, r);
     }

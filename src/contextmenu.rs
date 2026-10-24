@@ -105,11 +105,11 @@ impl MenuAction {
 /// What the client and machine can do, for the actions that depend on it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Abilities {
-    /// A plain console with fbi or fim: "View full screen" for images.
+    /// A plain console (or kmscon with the full screen waiter) with fbi or fim: "View full screen" for images.
     pub fullscreen_image: bool,
     /// A plain console with mpv or cvlc: "Play full screen" for video.
     pub fullscreen_video: bool,
-    /// A plain console with fbgs (and ghostscript): "View full screen" for PDFs.
+    /// A plain console (or kmscon with the waiter) with fbgs and ghostscript: "View full screen" for PDFs.
     pub fullscreen_pdf: bool,
     /// Saved Systems exist: "Send to…".
     pub send: bool,
@@ -124,9 +124,9 @@ impl Abilities {
         let console = caps.fb_console;
         let have = crate::catalog::is_installed;
         Abilities {
-            fullscreen_image: console && (have("fbi") || have("fim")),
+            fullscreen_image: (console || caps.fullscreen_waiter) && (have("fbi") || have("fim")),
             fullscreen_video: (console && (have("mpv") || have("cvlc"))) || (caps.fullscreen_waiter && have("mpv")),
-            fullscreen_pdf: console && have("fbgs") && have("gs"),
+            fullscreen_pdf: (console || caps.fullscreen_waiter) && have("fbgs") && have("gs"),
             send: !crate::systems::load().is_empty() && have("scp"),
             cast: have("catt"),
         }

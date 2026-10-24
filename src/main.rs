@@ -272,8 +272,8 @@ fn run_fullscreen(argv: &[String]) {
     let Some((program, args)) = argv.split_first() else { return };
     // kmscon: ask the waiter on the spare VT (it switches there and back).
     if program == "@fullscreen-play" {
-        if let Some(file) = args.first() {
-            tetron_wm::fullscreen::play(file);
+        if let Some(kind) = args.first().and_then(|k| tetron_wm::fullscreen::Kind::parse(k)) {
+            tetron_wm::fullscreen::play(kind, &args[1..]);
         }
         return;
     }

@@ -2114,8 +2114,20 @@ impl SessionCore {
     /// client detaches, runs it on the real console and re-attaches when it
     /// quits. Only when the client said it is on a plain console.
     fn start_fullscreen(&mut self, files: Vec<std::path::PathBuf>) {
-        if !crate::display::get().fb_console || files.is_empty() {
-            crate::dbg_log("fullscreen: not on a plain console; ignored");
+        if files.is_empty() {
+            return;
+        }
+        if !crate::display::get().fb_console {
+            // kmscon: the waiter on a spare VT shows them (the client runs `@fullscreen-play`).
+            if crate::display::get().fullscreen_waiter {
+                let pdf = crate::imageview::is_pdf(&files[0]);
+                let mut argv = vec!["@fullscreen-play".to_string(), if pdf { "pdf" } else { "images" }.to_string()];
+                argv.extend(files.iter().take(if pdf { 1 } else { usize::MAX }).map(|p| p.to_string_lossy().into_owned()));
+                crate::dbg_log(&format!("fullscreen: handing {} file(s) to the waiter", argv.len() - 2));
+                self.hand_over(argv);
+            } else {
+                crate::dbg_log("fullscreen: not on a plain console and no waiter; ignored");
+            }
             return;
         }
         // A PDF goes to fbgs (ghostscript + fbi), one document at a time.
@@ -2156,7 +2168,7 @@ impl SessionCore {
             // kmscon: the waiter on a spare VT plays it (the client runs `@fullscreen-play`).
             if caps.fullscreen_waiter && crate::catalog::is_installed("mpv") {
                 crate::dbg_log("fullscreen: handing the video to the waiter");
-                self.hand_over(vec!["@fullscreen-play".into(), f]);
+                self.hand_over(vec!["@fullscreen-play".into(), "video".into(), f]);
             } else {
                 crate::dbg_log("fullscreen video: not on a plain console and no waiter; ignored");
             }
