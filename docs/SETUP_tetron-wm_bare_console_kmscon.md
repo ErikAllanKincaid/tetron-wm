@@ -47,8 +47,8 @@ terminal and tetron-wm just runs in it.
 Shortcut: `install-tetron-wm-suite.sh` does all of Path A and the
 login console and autostart from "Persist on tty1" in one prompted run
 (`--profile login`: a normal login prompt, tetron-wm starts after you log in;
-`--profile appliance` adds autologin with no password, which is never the
-default; `--dry-run` to preview, `--uninstall` to undo). The
+it then asks "Do you want to log in automatically?", default no, and
+`--autologin` answers yes; `--dry-run` to preview, `--uninstall` to undo). The
 steps below are what it automates.
 
 ### A1. Install tetron-wm (+ optional deps)

@@ -12,10 +12,11 @@
 #              Installs the binary + config only.
 #   console    a VC tty with kmscon (truecolor + mouse) and a normal login
 #              prompt. You log in and run `tetron-wm` yourself.
-#   login      the same, and tetron-wm starts after you log in (you still
-#              type your password; this is the default on a console-only box).
-#   appliance  a VC tty with kmscon that logs in for you with no password and
-#              starts tetron-wm at boot (autologin + autostart). Never a default:
+#   login      the same, and tetron-wm starts after you log in (this is the
+#              default on a console-only box). Both then ask "Do you want to
+#              log in automatically?" (default no).
+#   appliance  not in the menu, for scripts: kmscon, autologin with no password
+#              and tetron-wm at boot (autologin + autostart). Never preselected:
 #              anyone at the keyboard gets your account.
 #   custom     answer each question yourself.
 #
@@ -570,8 +571,9 @@ apply_profile() {  # set any WANT_ flag the user has not already set on the comm
   set_default() { eval "[ -n \"\$$1\" ] || $1=$2"; }
   case "$1" in
     gui)       set_default WANT_KMSCON n; set_default WANT_CONSOLE n; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
-    console)   set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
-    login)     set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART y ;;
+    # console and login leave autologin unset: it is asked about below, default no.
+    console)   set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOSTART n ;;
+    login)     set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOSTART y ;;
     appliance) set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN y; set_default WANT_AUTOSTART y ;;
   esac
 }
@@ -590,9 +592,8 @@ main() {
         "A desktop machine: tetron-wm in a terminal window  (gui)" \
         "A VC tty with kmscon, normal login prompt, start tetron-wm yourself  (console)" \
         "A VC tty with kmscon, normal login prompt, tetron-wm starts after you log in  (login)" \
-        "A console appliance: autologin with NO password, tetron-wm starts at boot  (appliance)" \
         "Custom: ask me about each piece"
-      case "$CHOICE" in 1) PROFILE=gui ;; 2) PROFILE=console ;; 3) PROFILE=login ;; 4) PROFILE=appliance ;; esac
+      case "$CHOICE" in 1) PROFILE=gui ;; 2) PROFILE=console ;; 3) PROFILE=login ;; esac
     fi
     [ -n "$PROFILE" ] && apply_profile "$PROFILE"
   else
@@ -627,7 +628,7 @@ main() {
     resolve WANT_CONSOLE   "Run kmscon on a VT in place of the kernel login prompt?" n
     if [ "$WANT_CONSOLE" = y ]; then
       resolve_vt
-      resolve WANT_AUTOLOGIN "Log in automatically on tty$VT (no password prompt)?" n
+      resolve WANT_AUTOLOGIN "Do you want to log in automatically on tty$VT (no password; anyone at the keyboard gets your account)?" n
     else
       [ -z "$WANT_AUTOLOGIN" ] && WANT_AUTOLOGIN=n
     fi
