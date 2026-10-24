@@ -705,7 +705,7 @@ main() {
 
   echo
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN${WANT_FULLSCREEN:+ (tty$FSVT)}"
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
     return 0
   fi
   [ "$WANT_WM" = y ]        && install_wm
