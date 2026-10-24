@@ -52,6 +52,10 @@
 #   --kmscon / --no-kmscon     force the kmscon step on/off
 #   --console / --no-console   run kmscon on a VT (replaces getty there)
 #   --vt N                     which VT (default 1, the console that opens at boot)
+#   --fullscreen / --no-fullscreen   install the full screen video helper: a service as your
+#                              user on a spare VT that plays videos full screen from kmscon
+#                              (no sudo at play time; default no)
+#   --fullscreen-vt N          the spare VT for it (default 9; it must not be a VT you use)
 #   --autologin / --no-autologin   log in on that VT without a prompt (implies --console)
 #   --autostart / --no-autostart   launch tetron-wm on login at that VT only (--vt)
 #   --tty1                     shorthand for the full appliance on tty1 (older flag)
@@ -88,8 +92,8 @@ fetch() {
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 ASSUME_YES=0
-WANT_WM=""; WANT_CONFIG=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""
-VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
+WANT_WM=""; WANT_CONFIG=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""; WANT_FULLSCREEN=""
+FSVT=9; VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -y|--yes)     ASSUME_YES=1 ;;
@@ -103,6 +107,8 @@ while [ $# -gt 0 ]; do
     --console)    WANT_CONSOLE=y ;;   --no-console)   WANT_CONSOLE=n ;;
     --autologin)  WANT_AUTOLOGIN=y ;; --no-autologin) WANT_AUTOLOGIN=n ;;
     --autostart)  WANT_AUTOSTART=y ;; --no-autostart) WANT_AUTOSTART=n ;;
+    --fullscreen) WANT_FULLSCREEN=y ;; --no-fullscreen) WANT_FULLSCREEN=n ;;
+    --fullscreen-vt) shift; FSVT="${1:-}" ;;
     --vt)         shift; VT="${1:-}" ;;
     --tty1)       WANT_CONSOLE=y; WANT_AUTOLOGIN=y; WANT_AUTOSTART=y; VT=1 ;;
     --no-tty1)    WANT_CONSOLE=n; WANT_AUTOLOGIN=n; WANT_AUTOSTART=n ;;
@@ -116,6 +122,7 @@ while [ $# -gt 0 ]; do
 done
 case "$PROFILE" in ""|gui|console|login|appliance) ;; *) die "--profile must be gui, console, login or appliance" ;; esac
 case "$VT" in ""|[1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--vt must be a VT number 1-63" ;; esac
+case "$FSVT" in [1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--fullscreen-vt must be a VT number 1-63" ;; esac
 
 OS="$(uname -s)"
 IS_LINUX=0; [ "$OS" = "Linux" ] && IS_LINUX=1
@@ -476,6 +483,51 @@ EOF
   log "autostart set in $prof (tetron-wm starts on tty$vt only)"
 }
 
+# ── Step 4c: full screen video helper (kmscon) ─────────────────────────────────
+# kmscon owns the display, so a player started from it can not draw or read keys.
+# A waiter runs as the user on a spare VT in its own login session; the client
+# asks it to play, it switches there through logind (no root), runs mpv and
+# switches back. See src/fullscreen.rs. The unit runs as the user, never root.
+FS_UNIT=/etc/systemd/system/tetron-wm-fullscreen.service
+setup_fullscreen() {
+  local vt="$1" wm user; wm="$(wm_bin)"
+  have systemctl || { warn "no systemd (systemctl): skipping the full screen helper"; return 0; }
+  [ -x "$wm" ] || { warn "tetron-wm not found: install it first; skipping the full screen helper"; return 0; }
+  have mpv || warn "mpv is not installed: the helper will refuse to play until it is"
+  user="$(logname 2>/dev/null || echo "${SUDO_USER:-$USER}")"
+  [ "$user" != root ] || { warn "run this as your own user, not root: skipping the full screen helper"; return 0; }
+  log "installing the full screen helper on tty$vt (runs as $user)"
+  $SUDO tee "$FS_UNIT" >/dev/null <<UNIT
+$OVR_MARK
+[Unit]
+Description=tetron-wm full screen video waiter on tty$vt
+After=systemd-user-sessions.service
+Conflicts=getty@tty$vt.service
+
+[Service]
+User=$user
+ExecStart=$wm fullscreen-waiter --vt $vt
+Restart=always
+RestartSec=1
+TTYPath=/dev/tty$vt
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+PAMName=login
+UtmpIdentifier=tty$vt
+UtmpMode=user
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable --now tetron-wm-fullscreen.service
+  state_set fullscreen_vt "$vt"
+  log "full screen helper is on tty$vt. Right-click a video in tetron-wm on kmscon: Play full screen."
+}
+
 # ── Uninstall ──────────────────────────────────────────────────────────────────
 do_uninstall() {
   printf '%stetron-wm suite uninstall%s\n\n' "$B" "$N"
@@ -510,6 +562,13 @@ do_uninstall() {
   if [ "$(state_get gpm_disabled)" = 1 ] && have gpm; then
     confirm "Re-enable gpm (the raw-console mouse daemon we disabled)?" y \
       && $SUDO systemctl enable --now gpm >/dev/null 2>&1 && log "gpm re-enabled"
+  fi
+
+  # 2b. full screen helper
+  if $SUDO grep -qF "$OVR_MARK" "$FS_UNIT" 2>/dev/null && confirm "Remove the full screen video helper (tty$(state_get fullscreen_vt))?" y; then
+    $SUDO systemctl disable --now tetron-wm-fullscreen.service 2>/dev/null || true
+    $SUDO rm -f "$FS_UNIT"; $SUDO systemctl daemon-reload
+    log "removed the full screen helper"
   fi
 
   # 3. apphost service
@@ -634,14 +693,19 @@ main() {
     fi
     resolve WANT_AUTOSTART "Start tetron-wm automatically when you log in on a kmscon console?" n
     [ "$WANT_AUTOSTART" = y ] && resolve_vt
+    if have systemctl && { [ "$WANT_KMSCON" = y ] || have kmscon; }; then
+      resolve WANT_FULLSCREEN "Install the full screen video helper on tty$FSVT (Play full screen from kmscon, no sudo; runs as you)?" n
+    else
+      WANT_FULLSCREEN=n
+    fi
   else
-    WANT_KMSCON=n; WANT_CONSOLE=n; WANT_AUTOLOGIN=n; WANT_AUTOSTART=n
+    WANT_KMSCON=n; WANT_CONSOLE=n; WANT_AUTOLOGIN=n; WANT_AUTOSTART=n; WANT_FULLSCREEN=n
   fi
   [ -n "$VT" ] || VT=1
 
   echo
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART"
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN${WANT_FULLSCREEN:+ (tty$FSVT)}"
     return 0
   fi
   [ "$WANT_WM" = y ]        && install_wm
@@ -654,6 +718,7 @@ main() {
   [ "$WANT_KMSCON" = y ]    && install_kmscon
   [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"
   [ "$WANT_AUTOSTART" = y ] && setup_autostart "$VT"
+  [ "$WANT_FULLSCREEN" = y ] && setup_fullscreen "$FSVT"
 
   echo
   log "done."

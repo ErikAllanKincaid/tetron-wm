@@ -48,6 +48,7 @@ pub mod iconset;
 pub mod kitty;
 pub mod kittygfx;
 pub mod contextmenu;
+pub mod fullscreen;
 pub mod imageview;
 pub mod openwith;
 pub mod fileops;

@@ -2150,11 +2150,18 @@ impl SessionCore {
     /// Right-click "Play full screen": mpv on the console (DRM), else cvlc on
     /// the framebuffer. mpv's own keys work (q quits); cvlc ends at the end.
     fn fullscreen_video(&mut self, path: &std::path::Path) {
-        if !crate::display::get().fb_console {
-            crate::dbg_log("fullscreen video: not on a plain console; ignored");
+        let f = path.to_string_lossy().into_owned();
+        let caps = crate::display::get();
+        if !caps.fb_console {
+            // kmscon: the waiter on a spare VT plays it (the client runs `@fullscreen-play`).
+            if caps.fullscreen_waiter && crate::catalog::is_installed("mpv") {
+                crate::dbg_log("fullscreen: handing the video to the waiter");
+                self.hand_over(vec!["@fullscreen-play".into(), f]);
+            } else {
+                crate::dbg_log("fullscreen video: not on a plain console and no waiter; ignored");
+            }
             return;
         }
-        let f = path.to_string_lossy().into_owned();
         let argv: Vec<String> = if crate::catalog::is_installed("mpv") {
             vec!["mpv".into(), "--vo=drm".into(), f]
         } else if crate::catalog::is_installed("cvlc") {

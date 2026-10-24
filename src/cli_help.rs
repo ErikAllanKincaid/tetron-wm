@@ -103,6 +103,8 @@ COMMANDS:\n\
 \x20                       that client and takes over (tmux attach -d)\n\
 \x20 ls                    list sessions and windows: attached | detached | recoverable | stale\n\
 \x20 reload                restart the frontend only; apps keep running\n\
+\x20 fullscreen-waiter [--vt N]   the helper that plays video full screen from kmscon (runs\n\
+\x20                       as you on a spare VT, default 9; set up by the suite installer)\n\
 \x20 kill                  stop the session's daemon and app host (closes all windows)\n\
 \x20 kill-app <id|all>     close app <id> (see ps); all reaps only exited apps\n\
 \x20 ps                    list running apps\n\
@@ -142,7 +144,9 @@ RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
 \x20 `cast_device`, runs in a window and closing it stops the cast), Copy path, Open\n\
 \x20 terminal here, Get Info, Send to... (scp to a saved system), Rename, Move to Trash. On a plain Linux console (not kmscon, ssh or a\n\
 \x20 GUI terminal) View full screen shows images with fbi and Play full screen plays\n\
-\x20 video with mpv; q returns, apps keep running. A window's title bar has Minimize,\n\
+\x20 video with mpv; q returns, apps keep running. Under kmscon Play full screen works once\n\
+\x20 the full screen helper is installed (install-tetron-wm-suite.sh --fullscreen): it\n\
+\x20 switches to the spare VT, plays with mpv and switches back, no sudo. A window's title bar has Minimize,\n\
 \x20 Maximize, Move, Rename and Close.\n\n\
 IMAGE VIEWER (images and PDFs; image_viewer = auto | graphics | cells):\n\
 \x20 Kitty graphics where the terminal has them, else chafa cells (any terminal).\n\

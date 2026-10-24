@@ -57,7 +57,7 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), colors_forced: colors_forced() }
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), fullscreen_waiter: crate::fullscreen::waiter_available(), colors_forced: colors_forced() }
     }
 }
 

@@ -84,6 +84,10 @@ pub struct ClientCaps {
     /// screen"). False under kmscon, GUI terminals, ssh and tmux.
     #[serde(default)]
     pub fb_console: bool,
+    /// A full screen waiter answers on this machine (`fullscreen` module), so
+    /// "Play full screen" works from kmscon by handing the video to a spare VT.
+    #[serde(default)]
+    pub fullscreen_waiter: bool,
     /// `TETRON_WM_COLORS` set the depth for this client, so the `colors`
     /// setting does not override it.
     #[serde(default)]

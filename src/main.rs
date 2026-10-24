@@ -56,6 +56,10 @@ fn main() -> std::io::Result<()> {
         }
         Some("--daemon") => tetron_wm::daemon::run(),
         Some("--apphost") => tetron_wm::apphost::server::run(),
+        Some("fullscreen-waiter") => {
+            let vt = rest.iter().position(|a| a == "--vt").and_then(|i| rest.get(i + 1)).and_then(|v| v.parse().ok());
+            tetron_wm::fullscreen::serve(vt.unwrap_or(tetron_wm::fullscreen::DEFAULT_VT))
+        }
         Some("clip") => std::process::exit(tetron_wm::clipcli::run_clip(&rest)),
         Some("kill") => kill(),
         Some("kill-app") => kill_app(&rest),
@@ -266,6 +270,13 @@ fn attach(spawn_if_missing: bool, takeover: bool) -> std::io::Result<()> {
 /// only informative.
 fn run_fullscreen(argv: &[String]) {
     let Some((program, args)) = argv.split_first() else { return };
+    // kmscon: ask the waiter on the spare VT (it switches there and back).
+    if program == "@fullscreen-play" {
+        if let Some(file) = args.first() {
+            tetron_wm::fullscreen::play(file);
+        }
+        return;
+    }
     tetron_wm::dbg_log(&format!("fullscreen: running {argv:?}"));
     match std::process::Command::new(program).args(args).status() {
         Ok(status) => tetron_wm::dbg_log(&format!("fullscreen: {program} ended with {status}")),

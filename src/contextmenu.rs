@@ -120,11 +120,12 @@ pub struct Abilities {
 impl Abilities {
     /// For the attached client and this machine.
     pub fn current() -> Self {
-        let console = crate::display::get().fb_console;
+        let caps = crate::display::get();
+        let console = caps.fb_console;
         let have = crate::catalog::is_installed;
         Abilities {
             fullscreen_image: console && (have("fbi") || have("fim")),
-            fullscreen_video: console && (have("mpv") || have("cvlc")),
+            fullscreen_video: (console && (have("mpv") || have("cvlc"))) || (caps.fullscreen_waiter && have("mpv")),
             fullscreen_pdf: console && have("fbgs") && have("gs"),
             send: !crate::systems::load().is_empty() && have("scp"),
             cast: have("catt"),
