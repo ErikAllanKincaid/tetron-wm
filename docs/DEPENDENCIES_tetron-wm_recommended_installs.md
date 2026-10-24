@@ -13,17 +13,18 @@ sudo apt install chafa mpv poppler-utils sshpass wireplumber network-manager blu
 macOS with [Homebrew](https://brew.sh):
 
 ```sh
-brew install chafa mpv poppler fresh-editor blueutil htop btop
+brew install chafa mpv poppler fresh-editor blueutil htop btop uv
 ```
 
-Chromecast casting, any OS with [uv](https://docs.astral.sh/uv/):
+Chromecast casting, any OS, with [uv](https://docs.astral.sh/uv/) (Fedora, Arch and Homebrew package it as `uv`; elsewhere its official installer):
 
 ```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is missing
 uv tool install catt
 uv tool install git+https://github.com/ErikAllanKincaid/casttui
 ```
 
-The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, catt and casttui with `uv tool install` (installing uv first if missing), and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
+The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, uv (its official installer on Debian and Ubuntu), catt and casttui with `uv tool install`, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font.
 
 ## By feature
 
@@ -36,6 +37,7 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | PDFs in the built-in viewer | `pdftoppm`, `pdfinfo`, `pdftotext` (package `poppler-utils`; `poppler` on Arch and Homebrew) | PDFs offer only the apps you have installed | Renders one page at a time into the image viewer (characters on any terminal, the real page with Kitty graphics); the text view uses `pdftotext`. Optional: `tdf` and `timg` (Store) appear in Open with…, and `fbgs` (with fbi and ghostscript) gives full screen on a plain console. |
 | Cast to Chromecast (right-click on video, audio and images) | `catt` | No Cast to Chromecast item | Serves the file from this machine until playback ends; pick the device with `cast_device`. Not in distro repositories: `uv tool install catt`. [catt](https://github.com/skorokithakis/catt) |
 | Cast remote control (Open with… on video and audio) | `casttui` | Not listed in Open with… | Play/pause, seek, volume and stop for the cast, and converts codecs a Chromecast can not play. `uv tool install git+https://github.com/ErikAllanKincaid/casttui`. [casttui](https://github.com/ErikAllanKincaid/casttui) |
+| Installing catt and casttui | `uv` | Install them another way (pipx) | Python tool installer; `uv tool install` puts each tool in its own environment under `~/.local/bin`. Fedora, Arch, Homebrew: package `uv`; Debian and Ubuntu: `curl -LsSf https://astral.sh/uv/install.sh \| sh`. [uv](https://docs.astral.sh/uv/) |
 | Mouse on a bare Linux console | `gpm` | No mouse on a raw VT | Not needed under kmscon or in a GUI terminal. `sudo apt install gpm && sudo systemctl enable --now gpm` |
 | Colors and mouse on a bare console | `kmscon` (maintained Aetf fork) | 16 colors, gpm mouse only | `install-kmscon.sh`. Details: [SETUP_tetron-wm_bare_console_kmscon.md](SETUP_tetron-wm_bare_console_kmscon.md) |
 | Volume (menubar, leader `=`, Settings → Sound) | `wpctl` (PipeWire, package `wireplumber`) | Volume shows no level and can not change; Settings says so | Also lists and switches outputs (HDMI, headphones, speakers). macOS uses its built-in `osascript`. |

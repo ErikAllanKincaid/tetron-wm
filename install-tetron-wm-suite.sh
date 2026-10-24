@@ -20,8 +20,8 @@
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
 #      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
-#                       btop, upower, alsa-utils, the DejaVu Sans Mono font, catt and
-#                       casttui (Chromecast, via uv), and xclip / wl-clipboard on a desktop
+#                       btop, upower, alsa-utils, the DejaVu Sans Mono font, uv, catt
+#                       and casttui (Chromecast), and xclip / wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
 #                       machine manages sound, network and Bluetooth
@@ -200,8 +200,10 @@ ensure_truecolor() {
 # present); DejaVu Sans Mono backs the default icon tier and kmscon. mpv has
 # no Fedora entry: it lives in RPM Fusion there, and one unknown package makes
 # dnf refuse the whole batch. fresh (the editor) is in Homebrew only; on Linux
-# its own installer adds it (see fresh_via_script).
+# its own installer adds it (see fresh_via_script). uv (installs catt and
+# casttui) has no Debian package; its own installer adds it there (uv_via_script).
 EXTRAS="chafa:chafa:chafa:chafa:chafa
+uv::uv:uv:uv
 mpv:mpv::mpv:mpv
 pdftoppm:poppler-utils:poppler-utils:poppler:poppler
 fresh::::fresh-editor
@@ -286,11 +288,28 @@ install_fresh() {
   rm -f "$tmp"
 }
 
+# uv: the package manager column has it except on apt (and with no package
+# manager); there its official installer puts it in ~/.local/bin.
+UV_INSTALLER="https://astral.sh/uv/install.sh"
+uv_bin() {
+  if have uv; then echo uv; elif [ -x "$HOME/.local/bin/uv" ]; then echo "$HOME/.local/bin/uv"; fi
+}
+uv_via_script() { [ -z "$(uv_bin)" ] && { [ "$(pm_col)" = 2 ] || [ "$(pm_col)" = 0 ]; }; }
+
+install_uv() {
+  log "installing uv with its official installer ($UV_INSTALLER)"
+  local tmp; tmp="$(mktemp)"
+  if fetch "$UV_INSTALLER" > "$tmp"; then
+    sh "$tmp" || warn "the uv installer failed; see https://docs.astral.sh/uv/"
+  else
+    warn "could not download the uv installer; see https://docs.astral.sh/uv/"
+  fi
+  rm -f "$tmp"
+}
+
 # Chromecast casting: catt (right-click Cast to Chromecast) and casttui (Open
 # with… casttui). Python tools in no distro repository, installed with
-# `uv tool install` into ~/.local/bin; uv itself comes from its official
-# installer when missing. Offered with the extras when either is missing.
-UV_INSTALLER="https://astral.sh/uv/install.sh"
+# `uv tool install` into ~/.local/bin. Offered with the extras when missing.
 CASTTUI_SRC="git+https://github.com/ErikAllanKincaid/casttui"
 cast_tools_missing() {
   local out=""
@@ -300,22 +319,8 @@ cast_tools_missing() {
 }
 
 install_cast_tools() {
-  local uv=uv
-  if ! have uv; then
-    [ -x "$HOME/.local/bin/uv" ] && uv="$HOME/.local/bin/uv"
-  fi
-  if ! have "$uv"; then
-    log "installing uv with its official installer ($UV_INSTALLER)"
-    local tmp; tmp="$(mktemp)"
-    if fetch "$UV_INSTALLER" > "$tmp"; then
-      sh "$tmp" || warn "the uv installer failed; see https://docs.astral.sh/uv/"
-    else
-      warn "could not download the uv installer; see https://docs.astral.sh/uv/"
-    fi
-    rm -f "$tmp"
-    uv="$HOME/.local/bin/uv"
-    [ -x "$uv" ] || { warn "uv is missing; catt and casttui not installed"; return 0; }
-  fi
+  local uv; uv="$(uv_bin)"
+  [ -n "$uv" ] || { warn "uv is missing; catt and casttui not installed"; return 0; }
   if ! have catt; then
     log "installing catt: $uv tool install catt"
     "$uv" tool install catt || warn "catt did not install; see https://github.com/skorokithakis/catt"
@@ -595,6 +600,7 @@ main() {
   extras="$(extras_list)"
   local shown="$extras"
   fresh_via_script && shown="${shown:+$shown }fresh"
+  uv_via_script && shown="${shown:+$shown }uv"
   local cast; cast="$(cast_tools_missing)"
   [ -n "$cast" ] && shown="${shown:+$shown }$cast"
   [ "$IS_LINUX" = 1 ] && services="$(missing_pkgs "$SERVICES")"
@@ -635,6 +641,7 @@ main() {
   [ "$WANT_CONFIG" = y ]    && seed_config
   [ "$WANT_EXTRAS" = y ]    && pm_install "$extras"
   [ "$WANT_EXTRAS" = y ]    && fresh_via_script && install_fresh
+  [ "$WANT_EXTRAS" = y ]    && uv_via_script && install_uv
   [ "$WANT_EXTRAS" = y ]    && [ -n "$cast" ] && install_cast_tools
   [ "$WANT_SERVICES" = y ]  && pm_install "$services"
   [ "$WANT_KMSCON" = y ]    && install_kmscon

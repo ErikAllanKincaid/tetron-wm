@@ -12,7 +12,7 @@ carry user-visible feature work and the occasional breaking config change.
 ### Added
 - Right-click Cast to Chromecast on video, audio and image files (desktop and Files), shown when catt is installed. It runs `catt cast` in a window: catt serves the file from this machine until playback ends, and closing the window stops the cast. New config key `cast_device` (a device name or IP for `catt -d`; empty uses catt's default device).
 - Right-click Open with… casttui for video and audio files when casttui is installed: a window with play/pause, seek, volume and stop for the cast (casttui also converts codecs a Chromecast cannot play, which Cast to Chromecast does not). casttui now takes the file as an argument and casts it as soon as a device is connected.
-- The suite installer offers catt and casttui with the recommended tools, installed with `uv tool install` (uv itself from its official installer when missing).
+- The suite installer offers uv, catt and casttui with the recommended tools: uv from the package manager (its official installer on Debian and Ubuntu), then `uv tool install` for catt and casttui.
 - New `[open_with]` config table: extra programs for the right-click Open with… menu per file role (`video = ["casttui"]`), always listed after the detected ones and also offered in Settings → Default Apps.
 - The Info menu opens from the keyboard with leader `i` (new `[keys]` action `info`): arrows or Tab move through its rows, Enter opens one (CPU, Memory, Bluetooth, Sessions, Screensaver, Logs, Shortcuts, Settings), Esc closes. Settings → About now shows the version and git commit, the session, the app server protocol, and where the config, log and clipboard history live.
 
