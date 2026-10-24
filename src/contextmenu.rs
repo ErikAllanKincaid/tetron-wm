@@ -105,11 +105,11 @@ impl MenuAction {
 /// What the client and machine can do, for the actions that depend on it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Abilities {
-    /// A plain console (or kmscon with the full screen waiter) with fbi or fim: "View full screen" for images.
+    /// A route to show images full screen exists (see `fullscreen::plan`): "View full screen".
     pub fullscreen_image: bool,
-    /// A plain console with mpv or cvlc: "Play full screen" for video.
+    /// A route to play video full screen exists: "Play full screen".
     pub fullscreen_video: bool,
-    /// A plain console (or kmscon with the waiter) with fbgs and ghostscript: "View full screen" for PDFs.
+    /// A route to show a PDF full screen exists: "View full screen".
     pub fullscreen_pdf: bool,
     /// Saved Systems exist: "Send to…".
     pub send: bool,
@@ -120,13 +120,13 @@ pub struct Abilities {
 impl Abilities {
     /// For the attached client and this machine.
     pub fn current() -> Self {
+        use crate::fullscreen::{offered, Kind};
         let caps = crate::display::get();
-        let console = caps.fb_console;
         let have = crate::catalog::is_installed;
         Abilities {
-            fullscreen_image: (console || caps.fullscreen_waiter) && (have("fbi") || have("fim")),
-            fullscreen_video: (console && (have("mpv") || have("cvlc"))) || (caps.fullscreen_waiter && have("mpv")),
-            fullscreen_pdf: (console || caps.fullscreen_waiter) && have("fbgs") && have("gs"),
+            fullscreen_image: offered(Kind::Images, &caps, &have),
+            fullscreen_video: offered(Kind::Video, &caps, &have),
+            fullscreen_pdf: offered(Kind::Pdf, &caps, &have),
             send: !crate::systems::load().is_empty() && have("scp"),
             cast: have("catt"),
         }

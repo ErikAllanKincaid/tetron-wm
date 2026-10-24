@@ -57,7 +57,8 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), fullscreen_waiter: crate::fullscreen::waiter_available(), colors_forced: colors_forced() }
+        let hw = crate::fullscreen::Hw::detect();
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), vt_console: on_vt(), fb_device: hw.fb, drm_device: hw.drm, fullscreen_waiter: crate::fullscreen::waiter_available(), colors_forced: colors_forced() }
     }
 }
 
@@ -74,13 +75,25 @@ fn colors_forced() -> bool {
 pub fn fb_console() -> bool {
     #[cfg(target_os = "linux")]
     {
+        // SAFETY: a NUL-terminated path literal.
+        let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
+        on_vt() && fb
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// Whether stdin is a kernel VT: the VT ioctl answers (it fails on the pty of
+/// kmscon, a GUI terminal, ssh or tmux).
+pub fn on_vt() -> bool {
+    #[cfg(target_os = "linux")]
+    {
         const VT_GETSTATE: u64 = 0x5603;
         let mut state = [0u16; 3]; // struct vt_stat
         // SAFETY: VT_GETSTATE writes a 3 x u16 vt_stat into `state`; any fd is safe to probe.
-        let vt = unsafe { libc::ioctl(0, VT_GETSTATE as _, state.as_mut_ptr()) } == 0;
-        // SAFETY: a NUL-terminated path literal.
-        let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
-        vt && fb
+        unsafe { libc::ioctl(0, VT_GETSTATE as _, state.as_mut_ptr()) == 0 }
     }
     #[cfg(not(target_os = "linux"))]
     {

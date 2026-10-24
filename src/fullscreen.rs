@@ -41,7 +41,7 @@ impl Kind {
             _ => None,
         }
     }
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Kind::Video => "video",
             Kind::Images => "images",
@@ -138,30 +138,143 @@ fn mpv_image_args(files: &[PathBuf], keys: &Path) -> Vec<String> {
     v
 }
 
-/// The program and arguments for a request, from which programs `have` says
-/// exist and whether a framebuffer device `fb` is there. Files are already
-/// validated (absolute, regular).
-fn command_for(kind: Kind, files: &[PathBuf], have: &dyn Fn(&str) -> bool, fb: bool, keys: &Path) -> Result<(String, Vec<String>), String> {
+/// What the machine can drive, probed where the program will run. Fallbacks
+/// follow from this and from which programs are installed, never from a fixed
+/// guess: a GPU driver with no framebuffer (NVIDIA) still has DRM for mpv.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Hw {
+    /// A writable framebuffer device (`/dev/fb0`): fbi, fim, fbgs, `cvlc --vout fb`.
+    pub fb: bool,
+    /// A DRM card this user can open: `mpv --vo=drm`.
+    pub drm: bool,
+}
+
+impl Hw {
+    pub fn detect() -> Hw {
+        use std::os::unix::ffi::OsStrExt;
+        // SAFETY: a NUL-terminated path literal.
+        let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
+        let drm = std::fs::read_dir("/dev/dri")
+            .map(|d| {
+                d.flatten().any(|e| {
+                    e.file_name().to_string_lossy().starts_with("card")
+                        && std::ffi::CString::new(e.path().as_os_str().as_bytes())
+                            // SAFETY: `c` is a valid NUL-terminated path.
+                            .is_ok_and(|c| unsafe { libc::access(c.as_ptr(), libc::R_OK | libc::W_OK) } == 0)
+                })
+            })
+            .unwrap_or(false);
+        Hw { fb, drm }
+    }
+}
+
+/// How to show a request on this machine.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Plan {
+    /// Run one program.
+    Run { program: String, args: Vec<String> },
+    /// Render a PDF's pages to images with pdftoppm, then page through them with mpv.
+    PdfPages { pdf: PathBuf },
+}
+
+/// Pick the route for a request, best first, from the programs `have` says are
+/// installed and what `hw` can drive. Files are already validated (absolute,
+/// regular). `keys` is the mpv key file for image browsing.
+///
+/// - video: mpv over DRM, else cvlc on the framebuffer;
+/// - images: fbi, else fim (framebuffer), else mpv over DRM;
+/// - PDF: fbgs with gs (framebuffer), else pdftoppm pages through mpv over DRM.
+pub fn plan(kind: Kind, files: &[PathBuf], have: &dyn Fn(&str) -> bool, hw: Hw, keys: &Path) -> Result<Plan, String> {
+    let run = |program: &str, args: Vec<String>| Ok(Plan::Run { program: program.into(), args });
+    let first = files.first().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     match kind {
-        Kind::Video if files.len() == 1 && have("mpv") => Ok(("mpv".into(), mpv_args(&files[0]))),
-        Kind::Video if files.len() == 1 => Err("mpv is not installed".into()),
-        Kind::Images if !files.is_empty() => {
-            let program = if !fb && have("mpv") {
-                return Ok(("mpv".into(), mpv_image_args(files, keys)));
-            } else if have("fbi") {
-                "fbi"
-            } else if have("fim") {
-                "fim"
+        Kind::Video if files.len() == 1 => {
+            if hw.drm && have("mpv") {
+                run("mpv", mpv_args(&files[0]))
+            } else if hw.fb && have("cvlc") {
+                run("cvlc", vec!["--play-and-exit".into(), "--vout".into(), "fb".into(), first])
             } else {
-                return Err("images need mpv, or fbi or fim with a framebuffer (/dev/fb0)".into());
-            };
-            Ok((program.into(), fbi_args(program, files)))
+                Err("video needs mpv with a DRM display, or cvlc with a framebuffer (/dev/fb0)".into())
+            }
+        }
+        Kind::Images if !files.is_empty() => {
+            if hw.fb && have("fbi") {
+                run("fbi", fbi_args("fbi", files))
+            } else if hw.fb && have("fim") {
+                run("fim", fbi_args("fim", files))
+            } else if hw.drm && have("mpv") {
+                run("mpv", mpv_image_args(files, keys))
+            } else {
+                Err("images need fbi or fim with a framebuffer (/dev/fb0), or mpv with a DRM display".into())
+            }
         }
         // The path is absolute, so it can not be read as an option.
-        Kind::Pdf if files.len() == 1 && !fb => Err("PDFs need a framebuffer (/dev/fb0), which this machine does not have".into()),
-        Kind::Pdf if files.len() == 1 && have("fbgs") && have("gs") => Ok(("fbgs".into(), vec![files[0].to_string_lossy().into_owned()])),
-        Kind::Pdf if files.len() == 1 => Err("fbgs and ghostscript (gs) are needed for a PDF".into()),
+        Kind::Pdf if files.len() == 1 => {
+            if hw.fb && have("fbgs") && have("gs") {
+                run("fbgs", vec![first])
+            } else if hw.drm && have("mpv") && have("pdftoppm") {
+                Ok(Plan::PdfPages { pdf: files[0].clone() })
+            } else {
+                Err("PDFs need fbgs and gs with a framebuffer (/dev/fb0), or pdftoppm and mpv with a DRM display".into())
+            }
+        }
         _ => Err(format!("a {} request needs a different number of files", kind.name())),
+    }
+}
+
+/// Whether any route exists for `kind` (what the menu checks).
+pub fn possible(kind: Kind, have: &dyn Fn(&str) -> bool, hw: Hw) -> bool {
+    plan(kind, &[PathBuf::from("/x")], have, hw, Path::new("/x")).is_ok()
+}
+
+/// Whether the attached client can show `kind` full screen: it is on a plain
+/// console (direct) or a waiter answers (kmscon and others), and a route exists.
+pub fn offered(kind: Kind, caps: &crate::display::ClientCaps, have: &dyn Fn(&str) -> bool) -> bool {
+    (caps.vt_console || caps.fullscreen_waiter) && possible(kind, have, Hw { fb: caps.fb_device, drm: caps.drm_device })
+}
+
+/// Where the mpv key file for image browsing lives.
+fn keys_path() -> PathBuf {
+    socket_path().with_file_name("tetron-wm-fullscreen-keys.conf")
+}
+
+fn run_program(program: &str, args: &[String]) -> Result<(), String> {
+    match std::process::Command::new(program).args(args).status() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("{program} ended with {s}")),
+        Err(e) => Err(format!("could not run {program}: {e}")),
+    }
+}
+
+/// Run a plan with inherited stdio (the program owns the screen and keys).
+fn run_plan(plan: &Plan, keys: &Path) -> Result<(), String> {
+    let write_keys = || std::fs::write(keys, IMAGE_KEYS).map_err(|e| format!("cannot write the key bindings: {e}"));
+    match plan {
+        Plan::Run { program, args } => {
+            if args.iter().any(|a| a.starts_with("--input-conf=")) {
+                write_keys()?;
+            }
+            run_program(program, args)
+        }
+        Plan::PdfPages { pdf } => {
+            write_keys()?;
+            let dir = keys.with_file_name(format!("tetron-wm-pdf-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).map_err(|e| format!("cannot make a page folder: {e}"))?;
+            let result = (|| {
+                // 110 dpi, the first 200 pages: enough to read, quick to render.
+                let root = dir.join("page");
+                run_program("pdftoppm", &["-r".into(), "110".into(), "-l".into(), "200".into(), "-png".into(), pdf.to_string_lossy().into_owned(), root.to_string_lossy().into_owned()])?;
+                let mut pages: Vec<PathBuf> = std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).collect();
+                pages.sort();
+                if pages.is_empty() {
+                    return Err("pdftoppm made no pages".to_string());
+                }
+                run_program("mpv", &mpv_image_args(&pages, keys))
+            })();
+            let _ = std::fs::remove_dir_all(&dir);
+            result
+        }
     }
 }
 
@@ -257,40 +370,78 @@ fn serve_on(sock: &Path, vt: u32) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Show one request: validate, switch here, run the program, switch back.
+/// Show one request: validate, plan from what this machine has, switch here,
+/// run it, switch back.
 fn handle(vt: u32, req: &Request) -> Result<(), String> {
     if req.files.is_empty() || req.files.len() > MAX_FILES {
         return Err(format!("a request needs 1 to {MAX_FILES} files"));
     }
     let files = req.files.iter().map(|f| validate(f)).collect::<Result<Vec<_>, _>>()?;
-    // SAFETY: a NUL-terminated path literal.
-    let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
-    let keys = socket_path().with_file_name("tetron-wm-fullscreen-keys.conf");
-    if req.kind == Kind::Images {
-        std::fs::write(&keys, IMAGE_KEYS).map_err(|e| format!("cannot write the key bindings: {e}"))?;
-    }
-    let (program, args) = command_for(req.kind, &files, &crate::catalog::is_installed, fb, &keys)?;
-    crate::dbg_log(&format!("fullscreen waiter: {} {} file(s) with {program}, first {} (back to tty{})", req.kind.name(), files.len(), files[0].display(), req.return_vt));
+    let keys = keys_path();
+    let hw = Hw::detect();
+    let plan = plan(req.kind, &files, &crate::catalog::is_installed, hw, &keys)?;
+    crate::dbg_log(&format!("fullscreen waiter: {} {} file(s), first {}, hw {hw:?}, plan {} (back to tty{})", req.kind.name(), files.len(), files[0].display(), plan_name(&plan), req.return_vt));
     switch_vt(vt)?;
     if !wait_active(vt, 3) {
         let _ = switch_vt(req.return_vt);
         return Err(format!("tty{vt} did not become active"));
     }
-    // Let kmscon release the display before mpv asks for it.
+    // Let kmscon release the display before the program asks for it.
     std::thread::sleep(std::time::Duration::from_millis(250));
-    // Clear the VT and hide its cursor so neither shows around the video.
+    // Clear the VT and hide its cursor so neither shows around the picture.
     print!("\x1b[2J\x1b[H\x1b[?25l");
     let _ = std::io::stdout().flush();
-    let status = std::process::Command::new(&program).args(&args).status();
+    let result = run_plan(&plan, &keys);
     print!("\x1b[?25h");
     let _ = std::io::stdout().flush();
-    crate::dbg_log(&format!("fullscreen waiter: {program} ended with {status:?}"));
+    crate::dbg_log(&format!("fullscreen waiter: {} ended with {result:?}", plan_name(&plan)));
     switch_vt(req.return_vt)?;
     wait_active(req.return_vt, 3);
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("{program} ended with {s}")),
-        Err(e) => Err(format!("could not run {program}: {e}")),
+    result
+}
+
+fn plan_name(plan: &Plan) -> &str {
+    match plan {
+        Plan::Run { program, .. } => program,
+        Plan::PdfPages { .. } => "pdftoppm+mpv",
+    }
+}
+
+/// Show `files` full screen from the client: straight on a plain console (the
+/// program takes the screen), through the waiter anywhere else (kmscon).
+/// Returns the process exit code for `run_fullscreen`.
+pub fn show(kind: Kind, files: &[String]) -> i32 {
+    if crate::terminal::on_vt() {
+        direct(kind, files)
+    } else {
+        play(kind, files)
+    }
+}
+
+fn direct(kind: Kind, files: &[String]) -> i32 {
+    let fail = |msg: &str| {
+        crate::dbg_log(&format!("fullscreen: {msg}"));
+        eprintln!("tetron-wm: {msg}");
+        1
+    };
+    let mut abs = Vec::with_capacity(files.len());
+    for f in files {
+        match std::path::absolute(f).map_err(|e| e.to_string()).and_then(|p| validate(&p.to_string_lossy())) {
+            Ok(p) => abs.push(p),
+            Err(e) => return fail(&format!("{f}: {e}")),
+        }
+    }
+    let keys = keys_path();
+    let hw = Hw::detect();
+    match plan(kind, &abs, &crate::catalog::is_installed, hw, &keys) {
+        Err(e) => fail(&e),
+        Ok(plan) => {
+            crate::dbg_log(&format!("fullscreen: {} {} file(s), hw {hw:?}, plan {}", kind.name(), abs.len(), plan_name(&plan)));
+            match run_plan(&plan, &keys) {
+                Ok(()) => 0,
+                Err(e) => fail(&e),
+            }
+        }
     }
 }
 
@@ -404,33 +555,71 @@ mod tests {
         assert!(ask("{\"kind\":\"images\",\"files\":[\"/dev/null\"],\"return_vt\":1}\n").starts_with("error: not a regular file"));
     }
 
+    fn f(names: &[&str]) -> Vec<PathBuf> {
+        names.iter().map(PathBuf::from).collect()
+    }
+    fn prog(plan: Result<Plan, String>) -> String {
+        match plan {
+            Ok(Plan::Run { program, .. }) => program,
+            Ok(Plan::PdfPages { .. }) => "pdfpages".into(),
+            Err(e) => format!("err: {e}"),
+        }
+    }
+
     #[test]
-    fn command_picks_the_program_per_kind_and_never_takes_one_from_the_request() {
-        let f = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
-        let all = |_: &str| true;
-        let none = |_: &str| false;
+    fn plan_follows_the_hardware_and_the_installed_programs() {
         let keys = Path::new("/run/k.conf");
-        let only = |n: &'static str| move |b: &str| b == n;
-        let (p, a) = command_for(Kind::Video, &f(&["/v/a.mp4"]), &all, true, keys).unwrap();
-        assert_eq!((p.as_str(), a.last().unwrap().as_str()), ("mpv", "/v/a.mp4"));
-        assert!(command_for(Kind::Video, &f(&["/a", "/b"]), &all, true, keys).is_err(), "one video only");
-        assert!(command_for(Kind::Video, &f(&["/a"]), &none, true, keys).is_err());
-        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all, true, keys).unwrap();
-        assert_eq!(p, "fbi");
-        assert_eq!(a, ["-a", "--noverbose", "--", "/i/1.png", "/i/2.png"]);
-        assert_eq!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fim"), true, keys).unwrap().0, "fim");
-        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &none, true, keys).is_err());
-        assert_eq!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all, true, keys).unwrap(), ("fbgs".to_string(), vec!["/d/x.pdf".to_string()]));
-        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &only("fbgs"), true, keys).is_err(), "needs gs too");
-        assert!(command_for(Kind::Images, &[], &all, true, keys).is_err());
-        // No framebuffer: images use mpv over DRM, PDFs are refused.
-        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all, false, keys).unwrap();
-        assert_eq!(p, "mpv");
-        assert!(a.contains(&"--vo=drm".to_string()) && a.contains(&"--image-display-duration=inf".to_string()));
-        assert!(a.contains(&"--input-conf=/run/k.conf".to_string()));
-        assert_eq!(&a[a.len() - 3..], ["--", "/i/1.png", "/i/2.png"]);
-        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fbi"), false, keys).unwrap().0 == "fbi", "no mpv: fbi anyway");
-        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all, false, keys).is_err());
+        let all = |_: &str| true;
+        let only = |names: &'static [&'static str]| move |b: &str| names.contains(&b);
+        let both = Hw { fb: true, drm: true };
+        let fb_only = Hw { fb: true, drm: false };
+        let drm_only = Hw { fb: false, drm: true };
+        let nothing = Hw::default();
+        // Video: mpv over DRM, else cvlc on the framebuffer.
+        assert_eq!(prog(plan(Kind::Video, &f(&["/v/a.mp4"]), &all, both, keys)), "mpv");
+        assert_eq!(prog(plan(Kind::Video, &f(&["/v/a.mp4"]), &all, fb_only, keys)), "cvlc");
+        assert!(prog(plan(Kind::Video, &f(&["/v/a.mp4"]), &only(&["mpv"]), fb_only, keys)).starts_with("err"), "mpv needs DRM");
+        assert!(prog(plan(Kind::Video, &f(&["/a", "/b"]), &all, both, keys)).starts_with("err"), "one video only");
+        assert!(prog(plan(Kind::Video, &f(&["/a"]), &all, nothing, keys)).starts_with("err"));
+        // Images: fbi, fim, then mpv over DRM.
+        let imgs = f(&["/i/1.png", "/i/2.png"]);
+        assert_eq!(prog(plan(Kind::Images, &imgs, &all, both, keys)), "fbi");
+        assert_eq!(prog(plan(Kind::Images, &imgs, &only(&["fim", "mpv"]), both, keys)), "fim");
+        assert_eq!(prog(plan(Kind::Images, &imgs, &all, drm_only, keys)), "mpv");
+        assert!(prog(plan(Kind::Images, &imgs, &only(&["fbi"]), drm_only, keys)).starts_with("err"), "fbi needs a framebuffer");
+        assert!(prog(plan(Kind::Images, &imgs, &all, nothing, keys)).starts_with("err"));
+        match plan(Kind::Images, &imgs, &all, both, keys).unwrap() {
+            Plan::Run { args, .. } => assert_eq!(args, ["-a", "--noverbose", "--", "/i/1.png", "/i/2.png"]),
+            other => panic!("{other:?}"),
+        }
+        match plan(Kind::Images, &imgs, &all, drm_only, keys).unwrap() {
+            Plan::Run { args, .. } => {
+                assert!(args.contains(&"--vo=drm".to_string()) && args.contains(&"--input-conf=/run/k.conf".to_string()));
+                assert_eq!(&args[args.len() - 3..], ["--", "/i/1.png", "/i/2.png"]);
+            }
+            other => panic!("{other:?}"),
+        }
+        // PDFs: fbgs with gs, else pdftoppm pages through mpv over DRM.
+        let pdf = f(&["/d/x.pdf"]);
+        assert_eq!(prog(plan(Kind::Pdf, &pdf, &all, both, keys)), "fbgs");
+        assert_eq!(prog(plan(Kind::Pdf, &pdf, &all, drm_only, keys)), "pdfpages");
+        assert!(prog(plan(Kind::Pdf, &pdf, &only(&["fbgs"]), both, keys)).starts_with("err"), "fbgs needs gs");
+        assert!(prog(plan(Kind::Pdf, &pdf, &only(&["mpv"]), drm_only, keys)).starts_with("err"), "needs pdftoppm");
+        assert!(prog(plan(Kind::Pdf, &pdf, &all, nothing, keys)).starts_with("err"));
+        assert!(prog(plan(Kind::Images, &[], &all, both, keys)).starts_with("err"));
+    }
+
+    #[test]
+    fn offered_needs_a_way_to_the_screen_and_a_route() {
+        use crate::display::ClientCaps;
+        let all = |_: &str| true;
+        let drm = ClientCaps { drm_device: true, ..Default::default() };
+        assert!(!offered(Kind::Video, &drm, &all), "no console and no waiter");
+        assert!(offered(Kind::Video, &ClientCaps { vt_console: true, ..drm }, &all), "plain console");
+        assert!(offered(Kind::Video, &ClientCaps { fullscreen_waiter: true, ..drm }, &all), "kmscon with the waiter");
+        assert!(!offered(Kind::Video, &ClientCaps { vt_console: true, ..Default::default() }, &all), "no display device");
+        let only_mpv = |b: &str| b == "mpv";
+        assert!(!offered(Kind::Pdf, &ClientCaps { vt_console: true, fb_device: true, ..Default::default() }, &only_mpv), "fbgs missing");
     }
 
     #[test]

@@ -84,6 +84,16 @@ pub struct ClientCaps {
     /// screen"). False under kmscon, GUI terminals, ssh and tmux.
     #[serde(default)]
     pub fb_console: bool,
+    /// The client's stdin is a kernel VT, so a full screen program can take the
+    /// screen directly (also true on a console with no framebuffer device).
+    #[serde(default)]
+    pub vt_console: bool,
+    /// A writable `/dev/fb0` exists (fbi, fim, fbgs, cvlc).
+    #[serde(default)]
+    pub fb_device: bool,
+    /// A DRM card this user can open exists (mpv --vo=drm).
+    #[serde(default)]
+    pub drm_device: bool,
     /// A full screen waiter answers on this machine (`fullscreen` module), so
     /// "Play full screen" works from kmscon by handing the video to a spare VT.
     #[serde(default)]

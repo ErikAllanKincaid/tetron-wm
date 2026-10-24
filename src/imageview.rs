@@ -531,7 +531,7 @@ impl ImageView {
             None => format!("{}x{}", self.dims.0, self.dims.1),
         };
         let left = format!(" {what}  {:.0}%  {} ({})", self.zoom * 100.0, via, self.method.label());
-        let keys = if self.cur.is_some_and(|k| k.caps.fb_console || k.caps.fullscreen_waiter) {
+        let keys = if self.cur.is_some_and(|k| k.caps.vt_console || k.caps.fullscreen_waiter) {
             "+/- zoom 0 fit n/p next m mode f full screen "
         } else {
             "+/- zoom 0 fit arrows pan n/p next m mode i info "

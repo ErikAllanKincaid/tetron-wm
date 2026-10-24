@@ -157,7 +157,7 @@ enum WinContent {
     /// is at most one settings window).
     Settings(Box<Settings>),
     /// The built-in image viewer (Kitty graphics, chafa cells or half blocks).
-    ImageView(crate::imageview::ImageView),
+    ImageView(Box<crate::imageview::ImageView>),
     /// The native file manager (local disk or a remote system over ssh).
     FileManager(crate::filemanager::DynFileManager),
     /// The native log viewer (tail of ~/tetron-wm-debug.log + clipboard copy).
@@ -1628,7 +1628,7 @@ impl SessionCore {
         let label = view.title();
         let id_win = self.wm.add_window(label.clone(), rect);
         self.app_keys.insert(id_win, label.clone());
-        self.contents.insert(id_win, WinContent::ImageView(view));
+        self.contents.insert(id_win, WinContent::ImageView(Box::new(view)));
         self.titles.push((id_win, label));
     }
 
@@ -2110,46 +2110,29 @@ impl SessionCore {
         self.fullscreen.clone()
     }
 
-    /// Hand the screen to fbi (or fim) showing `files`, first one first: the
-    /// client detaches, runs it on the real console and re-attaches when it
-    /// quits. Only when the client said it is on a plain console.
+    /// Show `files` full screen, first one first: images (or one PDF). The
+    /// client detaches, `fullscreen::show` runs the route this machine has
+    /// (fbi, fim, fbgs or mpv, straight on a plain console, through the waiter
+    /// under kmscon) and the client re-attaches when it ends.
     fn start_fullscreen(&mut self, files: Vec<std::path::PathBuf>) {
-        if files.is_empty() {
-            return;
-        }
-        if !crate::display::get().fb_console {
-            // kmscon: the waiter on a spare VT shows them (the client runs `@fullscreen-play`).
-            if crate::display::get().fullscreen_waiter {
-                let pdf = crate::imageview::is_pdf(&files[0]);
-                let mut argv = vec!["@fullscreen-play".to_string(), if pdf { "pdf" } else { "images" }.to_string()];
-                argv.extend(files.iter().take(if pdf { 1 } else { usize::MAX }).map(|p| p.to_string_lossy().into_owned()));
-                crate::dbg_log(&format!("fullscreen: handing {} file(s) to the waiter", argv.len() - 2));
-                self.hand_over(argv);
-            } else {
-                crate::dbg_log("fullscreen: not on a plain console and no waiter; ignored");
-            }
-            return;
-        }
-        // A PDF goes to fbgs (ghostscript + fbi), one document at a time.
-        if crate::imageview::is_pdf(&files[0]) {
-            if !(crate::catalog::is_installed("fbgs") && crate::catalog::is_installed("gs")) {
-                crate::dbg_log("fullscreen: fbgs or gs missing for a PDF");
-                return;
-            }
-            crate::dbg_log("fullscreen: handing the console to fbgs");
-            self.hand_over(vec!["fbgs".into(), files[0].to_string_lossy().into_owned()]);
-            return;
-        }
-        let mut argv: Vec<String> = if crate::catalog::is_installed("fbi") {
-            vec!["fbi".into(), "-a".into(), "--noverbose".into()]
-        } else if crate::catalog::is_installed("fim") {
-            vec!["fim".into(), "-a".into()]
+        let Some(first) = files.first() else { return };
+        if crate::imageview::is_pdf(first) {
+            self.fullscreen_show(crate::fullscreen::Kind::Pdf, vec![first.clone()]);
         } else {
-            crate::dbg_log("fullscreen: neither fbi nor fim installed");
+            self.fullscreen_show(crate::fullscreen::Kind::Images, files);
+        }
+    }
+
+    /// Hand `files` to the client to show full screen, when a route exists.
+    fn fullscreen_show(&mut self, kind: crate::fullscreen::Kind, files: Vec<std::path::PathBuf>) {
+        let caps = crate::display::get();
+        if !crate::fullscreen::offered(kind, &caps, &crate::catalog::is_installed) {
+            crate::dbg_log(&format!("fullscreen: no route for {} (client {caps:?})", kind.name()));
             return;
-        };
+        }
+        let mut argv = vec!["@fullscreen".to_string(), kind.name().to_string()];
         argv.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
-        crate::dbg_log(&format!("fullscreen: handing the console to {} ({} image(s))", argv[0], files.len()));
+        crate::dbg_log(&format!("fullscreen: handing {} file(s) ({}) to the client", files.len(), kind.name()));
         self.hand_over(argv);
     }
 
@@ -2159,31 +2142,10 @@ impl SessionCore {
         self.quit = true;
     }
 
-    /// Right-click "Play full screen": mpv on the console (DRM), else cvlc on
-    /// the framebuffer. mpv's own keys work (q quits); cvlc ends at the end.
+    /// Right-click "Play full screen": the route this machine has (mpv over
+    /// DRM, else cvlc on the framebuffer). mpv's own keys work (q quits).
     fn fullscreen_video(&mut self, path: &std::path::Path) {
-        let f = path.to_string_lossy().into_owned();
-        let caps = crate::display::get();
-        if !caps.fb_console {
-            // kmscon: the waiter on a spare VT plays it (the client runs `@fullscreen-play`).
-            if caps.fullscreen_waiter && crate::catalog::is_installed("mpv") {
-                crate::dbg_log("fullscreen: handing the video to the waiter");
-                self.hand_over(vec!["@fullscreen-play".into(), "video".into(), f]);
-            } else {
-                crate::dbg_log("fullscreen video: not on a plain console and no waiter; ignored");
-            }
-            return;
-        }
-        let argv: Vec<String> = if crate::catalog::is_installed("mpv") {
-            vec!["mpv".into(), "--vo=drm".into(), f]
-        } else if crate::catalog::is_installed("cvlc") {
-            vec!["cvlc".into(), "--play-and-exit".into(), "--vout".into(), "fb".into(), f]
-        } else {
-            crate::dbg_log("fullscreen video: neither mpv nor cvlc installed");
-            return;
-        };
-        crate::dbg_log(&format!("fullscreen: handing the console to {}", argv[0]));
-        self.hand_over(argv);
+        self.fullscreen_show(crate::fullscreen::Kind::Video, vec![path.to_path_buf()]);
     }
 
     /// Run `script` in a new window in `dir`, keeping the window open with the
