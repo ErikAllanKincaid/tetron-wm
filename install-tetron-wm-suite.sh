@@ -7,13 +7,16 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 #
-# Three common setups (pick one from the menu, or pass --profile):
+# Common setups (pick one from the menu, or pass --profile):
 #   gui        a machine with a desktop: tetron-wm in a terminal window.
 #              Installs the binary + config only.
 #   console    a VC tty with kmscon (truecolor + mouse) and a normal login
 #              prompt. You log in and run `tetron-wm` yourself.
-#   appliance  a VC tty with kmscon that logs in and starts tetron-wm for you
-#              at boot (autologin + autostart).
+#   login      the same, and tetron-wm starts after you log in (you still
+#              type your password; this is the default on a console-only box).
+#   appliance  a VC tty with kmscon that logs in for you with no password and
+#              starts tetron-wm at boot (autologin + autostart). Never a default:
+#              anyone at the keyboard gets your account.
 #   custom     answer each question yourself.
 #
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
@@ -39,7 +42,7 @@
 #                    Defaults: wm=yes, config=yes, kmscon=yes on a console box
 #                    (no on a GUI box), console/autologin/autostart=NO unless
 #                    selected by a flag or --profile.
-#   --profile P      gui | console | appliance (see above)
+#   --profile P      gui | console | login | appliance (see above)
 #   --all            wm + config + kmscon + console + autologin + autostart (=appliance)
 #   --wm / --no-wm             force the tetron-wm step on/off
 #   --config / --no-config     force the config-dir step on/off
@@ -110,7 +113,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$PROFILE" in ""|gui|console|appliance) ;; *) die "--profile must be gui, console or appliance" ;; esac
+case "$PROFILE" in ""|gui|console|login|appliance) ;; *) die "--profile must be gui, console, login or appliance" ;; esac
 case "$VT" in ""|[1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--vt must be a VT number 1-63" ;; esac
 
 OS="$(uname -s)"
@@ -402,6 +405,7 @@ setup_console() {
 
   local ovrd="/etc/systemd/system/kmsconvt@tty$vt.service.d"
   if [ "$autologin" = y ]; then
+    warn "autologin: nobody is asked for a password on tty$vt; anyone at this keyboard gets the account $user"
     log "2/2 autologin $user on tty$vt (drop-in override)"
     $SUDO mkdir -p "$ovrd"
     # %%I -> %I (systemd instance). The final arg is the login TERM: a literal
@@ -567,6 +571,7 @@ apply_profile() {  # set any WANT_ flag the user has not already set on the comm
   case "$1" in
     gui)       set_default WANT_KMSCON n; set_default WANT_CONSOLE n; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
     console)   set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART n ;;
+    login)     set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN n; set_default WANT_AUTOSTART y ;;
     appliance) set_default WANT_KMSCON y; set_default WANT_CONSOLE y; set_default WANT_AUTOLOGIN y; set_default WANT_AUTOSTART y ;;
   esac
 }
@@ -578,15 +583,16 @@ main() {
 
   local gui_default=2
   if [ "$IS_LINUX" = 1 ]; then
-    is_graphical && gui_default=1 || gui_default=3
+    is_graphical && gui_default=1 || gui_default=3   # 3 = login prompt, then tetron-wm; never autologin
     # Menu only when no profile and nothing console-related was given as a flag.
     if [ -z "$PROFILE" ] && [ "$HAVE_TTY" = 1 ] && [ -z "$WANT_KMSCON$WANT_CONSOLE$WANT_AUTOLOGIN$WANT_AUTOSTART" ]; then
       choose "What are you setting up?" "$gui_default" \
         "A desktop machine: tetron-wm in a terminal window  (gui)" \
         "A VC tty with kmscon, normal login prompt, start tetron-wm yourself  (console)" \
-        "A console appliance: kmscon + autologin + tetron-wm starts at boot  (appliance)" \
+        "A VC tty with kmscon, normal login prompt, tetron-wm starts after you log in  (login)" \
+        "A console appliance: autologin with NO password, tetron-wm starts at boot  (appliance)" \
         "Custom: ask me about each piece"
-      case "$CHOICE" in 1) PROFILE=gui ;; 2) PROFILE=console ;; 3) PROFILE=appliance ;; esac
+      case "$CHOICE" in 1) PROFILE=gui ;; 2) PROFILE=console ;; 3) PROFILE=login ;; 4) PROFILE=appliance ;; esac
     fi
     [ -n "$PROFILE" ] && apply_profile "$PROFILE"
   else

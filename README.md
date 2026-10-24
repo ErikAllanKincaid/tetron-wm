@@ -124,13 +124,13 @@ Common first changes:
 
 ## Bare console (no X11 or Wayland)
 
-tetron-wm draws everything as cells, so it also runs on a raw Linux console. For colors and mouse there, use the maintained [kmscon](https://github.com/Aetf/kmscon) fork. One script can set it all up, including autologin and starting tetron-wm at boot:
+tetron-wm draws everything as cells, so it also runs on a raw Linux console. For colors and mouse there, use the maintained [kmscon](https://github.com/Aetf/kmscon) fork. One script can set it all up, including starting tetron-wm after you log in, and optionally autologin (never the default):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
-It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` or `appliance`, and use `--dry-run` to preview the plan.
+It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` (a login prompt, you start tetron-wm), `login` (a login prompt, tetron-wm starts after you log in) or `appliance` (autologin with no password), and use `--dry-run` to preview the plan.
 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
 - Why each piece is needed, with diagrams: [docs/tetron-wm_bare_console_guide.html](docs/tetron-wm_bare_console_guide.html)

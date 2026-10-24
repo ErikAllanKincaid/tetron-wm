@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Changed
+- Suite installer: the default setup on a console-only machine is no longer the autologin appliance. The menu gains a `login` profile (kmscon, a normal login prompt, tetron-wm starts after you log in) and makes it the default; `appliance` (autologin with no password) stays available but is never preselected, and warns before it sets autologin. `--profile login` selects it. To remove an autologin that an earlier run set up, rerun with `--profile login`.
 - Settings → Appearance → Colors calls the no-color choice "Mono", matching the `mono` config value and `TETRON_WM_COLORS=mono` (it was "Black and white").
 
 ### Added
