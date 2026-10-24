@@ -118,17 +118,47 @@ fn fbi_args(program: &str, files: &[PathBuf]) -> Vec<String> {
     v
 }
 
+/// mpv keys for browsing images, matching the built-in viewer (n / p, arrows,
+/// + - 0 zoom, q or Esc to leave). Written next to the socket for `--input-conf`.
+const IMAGE_KEYS: &str = "RIGHT playlist-next\nLEFT playlist-prev\nn playlist-next\np playlist-prev\nSPACE playlist-next\nBS playlist-prev\n+ add video-zoom 0.1\n- add video-zoom -0.1\n0 set video-zoom 0\nq quit\nESC quit\n";
+
+/// Images with mpv over DRM, for a machine with no framebuffer device (fbi
+/// needs `/dev/fb0`, which some GPU drivers, NVIDIA among them, do not make).
+fn mpv_image_args(files: &[PathBuf], keys: &Path) -> Vec<String> {
+    let mut v: Vec<String> = [
+        "--no-config", "--load-scripts=no", "--ytdl=no", "--access-references=no", "--vo=drm", "--fs",
+        "--msg-level=all=error", "--image-display-duration=inf", "--loop-playlist=inf",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    v.push(format!("--input-conf={}", keys.display()));
+    v.push("--".into());
+    v.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
+    v
+}
+
 /// The program and arguments for a request, from which programs `have` says
-/// exist. Files are already validated (absolute, regular).
-fn command_for(kind: Kind, files: &[PathBuf], have: &dyn Fn(&str) -> bool) -> Result<(String, Vec<String>), String> {
+/// exist and whether a framebuffer device `fb` is there. Files are already
+/// validated (absolute, regular).
+fn command_for(kind: Kind, files: &[PathBuf], have: &dyn Fn(&str) -> bool, fb: bool, keys: &Path) -> Result<(String, Vec<String>), String> {
     match kind {
         Kind::Video if files.len() == 1 && have("mpv") => Ok(("mpv".into(), mpv_args(&files[0]))),
         Kind::Video if files.len() == 1 => Err("mpv is not installed".into()),
         Kind::Images if !files.is_empty() => {
-            let program = if have("fbi") { "fbi" } else if have("fim") { "fim" } else { return Err("neither fbi nor fim is installed".into()) };
+            let program = if !fb && have("mpv") {
+                return Ok(("mpv".into(), mpv_image_args(files, keys)));
+            } else if have("fbi") {
+                "fbi"
+            } else if have("fim") {
+                "fim"
+            } else {
+                return Err("images need mpv, or fbi or fim with a framebuffer (/dev/fb0)".into());
+            };
             Ok((program.into(), fbi_args(program, files)))
         }
         // The path is absolute, so it can not be read as an option.
+        Kind::Pdf if files.len() == 1 && !fb => Err("PDFs need a framebuffer (/dev/fb0), which this machine does not have".into()),
         Kind::Pdf if files.len() == 1 && have("fbgs") && have("gs") => Ok(("fbgs".into(), vec![files[0].to_string_lossy().into_owned()])),
         Kind::Pdf if files.len() == 1 => Err("fbgs and ghostscript (gs) are needed for a PDF".into()),
         _ => Err(format!("a {} request needs a different number of files", kind.name())),
@@ -233,7 +263,13 @@ fn handle(vt: u32, req: &Request) -> Result<(), String> {
         return Err(format!("a request needs 1 to {MAX_FILES} files"));
     }
     let files = req.files.iter().map(|f| validate(f)).collect::<Result<Vec<_>, _>>()?;
-    let (program, args) = command_for(req.kind, &files, &crate::catalog::is_installed)?;
+    // SAFETY: a NUL-terminated path literal.
+    let fb = unsafe { libc::access(c"/dev/fb0".as_ptr(), libc::W_OK) } == 0;
+    let keys = socket_path().with_file_name("tetron-wm-fullscreen-keys.conf");
+    if req.kind == Kind::Images {
+        std::fs::write(&keys, IMAGE_KEYS).map_err(|e| format!("cannot write the key bindings: {e}"))?;
+    }
+    let (program, args) = command_for(req.kind, &files, &crate::catalog::is_installed, fb, &keys)?;
     crate::dbg_log(&format!("fullscreen waiter: {} {} file(s) with {program}, first {} (back to tty{})", req.kind.name(), files.len(), files[0].display(), req.return_vt));
     switch_vt(vt)?;
     if !wait_active(vt, 3) {
@@ -373,19 +409,28 @@ mod tests {
         let f = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
         let all = |_: &str| true;
         let none = |_: &str| false;
+        let keys = Path::new("/run/k.conf");
         let only = |n: &'static str| move |b: &str| b == n;
-        let (p, a) = command_for(Kind::Video, &f(&["/v/a.mp4"]), &all).unwrap();
+        let (p, a) = command_for(Kind::Video, &f(&["/v/a.mp4"]), &all, true, keys).unwrap();
         assert_eq!((p.as_str(), a.last().unwrap().as_str()), ("mpv", "/v/a.mp4"));
-        assert!(command_for(Kind::Video, &f(&["/a", "/b"]), &all).is_err(), "one video only");
-        assert!(command_for(Kind::Video, &f(&["/a"]), &none).is_err());
-        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all).unwrap();
+        assert!(command_for(Kind::Video, &f(&["/a", "/b"]), &all, true, keys).is_err(), "one video only");
+        assert!(command_for(Kind::Video, &f(&["/a"]), &none, true, keys).is_err());
+        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all, true, keys).unwrap();
         assert_eq!(p, "fbi");
         assert_eq!(a, ["-a", "--noverbose", "--", "/i/1.png", "/i/2.png"]);
-        assert_eq!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fim")).unwrap().0, "fim");
-        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &none).is_err());
-        assert_eq!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all).unwrap(), ("fbgs".to_string(), vec!["/d/x.pdf".to_string()]));
-        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &only("fbgs")).is_err(), "needs gs too");
-        assert!(command_for(Kind::Images, &[], &all).is_err());
+        assert_eq!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fim"), true, keys).unwrap().0, "fim");
+        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &none, true, keys).is_err());
+        assert_eq!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all, true, keys).unwrap(), ("fbgs".to_string(), vec!["/d/x.pdf".to_string()]));
+        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &only("fbgs"), true, keys).is_err(), "needs gs too");
+        assert!(command_for(Kind::Images, &[], &all, true, keys).is_err());
+        // No framebuffer: images use mpv over DRM, PDFs are refused.
+        let (p, a) = command_for(Kind::Images, &f(&["/i/1.png", "/i/2.png"]), &all, false, keys).unwrap();
+        assert_eq!(p, "mpv");
+        assert!(a.contains(&"--vo=drm".to_string()) && a.contains(&"--image-display-duration=inf".to_string()));
+        assert!(a.contains(&"--input-conf=/run/k.conf".to_string()));
+        assert_eq!(&a[a.len() - 3..], ["--", "/i/1.png", "/i/2.png"]);
+        assert!(command_for(Kind::Images, &f(&["/i/1.png"]), &only("fbi"), false, keys).unwrap().0 == "fbi", "no mpv: fbi anyway");
+        assert!(command_for(Kind::Pdf, &f(&["/d/x.pdf"]), &all, false, keys).is_err());
     }
 
     #[test]
