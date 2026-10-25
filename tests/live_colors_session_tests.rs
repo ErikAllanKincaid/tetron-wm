@@ -87,7 +87,7 @@ fn colors_follow_start_theme_preview_revert_and_close() {
 
     // Start-up: a long-lived apphost may predate a config edit, so push once.
     assert_eq!(n(&calls), 1);
-    assert_eq!(last(&calls), follow("newmoon"));
+    assert_eq!(last(&calls), follow("midnight"));
 
     // A theme change reaches the apphost.
     core.apply(ClientMsg::SetTheme("nord".into()));

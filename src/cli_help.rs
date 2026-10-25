@@ -13,7 +13,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("tile_gap", "0", "cells of gutter between tiled windows"),
     ("auto_tile", "false", "auto-arrange all windows into the grid"),
     ("launch_maximized", "false", "open new app windows maximized"),
-    ("theme", "newmoon", "built-in preset or themes/<name>.toml stem"),
+    ("theme", "midnight", "built-in preset or themes/<name>.toml stem"),
     ("theme_dir", "<config>/themes", "directory of *.toml theme files"),
     ("terminal_bg", "theme", "terminal default background (#rrggbb or name)"),
     ("terminal_fg", "theme", "terminal default foreground (#rrggbb or name)"),
@@ -117,7 +117,7 @@ COMMANDS:\n\
 \x20 theme <name>          switch theme\n\
 \x20 theme --list          list built-in and file themes\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
-\x20                       to edit (e.g. theme --dump nord, then set theme = \"nord\")\n\
+\x20                       to edit (e.g. theme --dump gruvbox, then set theme = \"gruvbox\")\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
 \x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
 \x20 service [install|uninstall|status]  per-user apphost service (default session only)\n\

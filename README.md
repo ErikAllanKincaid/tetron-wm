@@ -112,7 +112,7 @@ Common first changes:
 
 | I want                                   | Set                                                                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| A different color theme                  | `theme = "nord"` (also `newmoon`, `midnight`, `gruvbox`, `dracula`, `pastoral`)                                            |
+| A different color theme                  | `theme = "gruvbox"` (also `midnight`, `pastoral`, `windows`; `nord`, `dracula`, `dawn`, `newmoon`, `contrast` from the installer)                                            |
 | Windows to snap to screen edges          | `snapping_enabled = true`                                                                                                  |
 | Windows arranged in a grid automatically | `auto_tile = true`, `grid_rows`, `grid_cols`                                                                               |
 | Full screen video, images, PDFs          | `fullscreen = false` to turn them off                                                                                      |

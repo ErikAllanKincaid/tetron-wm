@@ -38,11 +38,12 @@ grid_cols = 2
 tile_gap = 0
 
 ## ── Appearance ────────────────────────────────────────────────────────────
-## Color theme: a built-in (newmoon, midnight, nord, gruvbox, dracula, pastoral)
-## or the stem of a theme file in the themes dir. A file named like a built-in
+## Color theme: a built-in (midnight, gruvbox, pastoral, windows) or the stem of
+## a theme file in the themes dir (nord, dracula, dawn, newmoon and contrast come
+## with the suite installer's extra themes). A file named like a built-in
 ## overrides it. Create a starter with: tetron-wm theme --dump <name>
 ## (list all: tetron-wm theme --list)
-theme = "newmoon"
+theme = "midnight"
 ## Directory of *.toml theme files. Unset = <config dir>/themes/. A relative path
 ## resolves against the config dir.
 #theme_dir = "themes"

@@ -105,8 +105,8 @@ pub struct Config {
     /// Force 24-bit ("truecolor") SGR output on/off. Unset = auto-detect from the
     /// terminal (known truecolor terminals + `COLORTERM`). Set `true` when your
     /// terminal supports truecolor but does not advertise it (many set
-    /// `TERM=xterm-256color` without `COLORTERM`), else subtle themes (nord,
-    /// dracula) are quantized to the 256-color palette and look wrong. The
+    /// `TERM=xterm-256color` without `COLORTERM`), else subtle themes (such as
+    /// nord) are quantized to the 256-color palette and look wrong. The
     /// `TETRON_WM_TRUECOLOR` env var (1/0) overrides this key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub truecolor: Option<bool>,
@@ -323,7 +323,7 @@ impl Default for Config {
             auto_tile: false,
             launch_maximized: false,
             fullscreen: true,
-            theme: "newmoon".into(),
+            theme: "midnight".into(),
             theme_dir: None,
             terminal_bg: None,
             terminal_fg: None,
@@ -402,7 +402,7 @@ fn default_dock_badges() -> std::collections::BTreeMap<String, String> {
         .iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
-fn default_theme() -> String { "newmoon".into() }
+fn default_theme() -> String { "midnight".into() }
 fn default_assistant_mode() -> String { "panel".into() }
 fn default_update_branch() -> String { "main".into() }
 

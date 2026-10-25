@@ -54,28 +54,6 @@ impl Theme {
         }
     }
 
-    /// Nord — cool, muted blues.
-    pub const fn nord() -> Self {
-        Theme {
-            desktop_bg: rgb(46, 52, 64),
-            window_bg: rgb(36, 41, 51),
-            title_focus: rgb(59, 66, 82),
-            title_blur: rgb(43, 49, 60),
-            title_fg: rgb(136, 192, 208),
-            border: rgb(76, 86, 106),
-            shadow: Rgba { r: 0, g: 0, b: 0, a: 110 },
-            ctrl_fg: rgb(180, 190, 205),
-            close_fg: rgb(191, 97, 106),
-            menubar_bg: rgb(59, 66, 82),
-            dock_bg: rgb(59, 66, 82),
-            text: rgb(216, 222, 233),
-            dim: rgb(120, 130, 150),
-            accent: rgb(136, 192, 208),
-            active_bg: rgb(76, 86, 106),
-            vt16: Vt16::NONE,
-        }
-    }
-
     /// Gruvbox — warm, retro.
     pub const fn gruvbox() -> Self {
         Theme {
@@ -96,28 +74,6 @@ impl Theme {
             active_bg: rgb(80, 73, 69),
             // USER choice 2026-10-21: warm brown desktop.
             vt16: Vt16 { desktop_bg: Some(3), ..Vt16::NONE },
-        }
-    }
-
-    /// Dracula — purple/pink on dark.
-    pub const fn dracula() -> Self {
-        Theme {
-            desktop_bg: rgb(54, 57, 76),
-            window_bg: rgb(40, 42, 54),
-            title_focus: rgb(68, 71, 90),
-            title_blur: rgb(50, 52, 66),
-            title_fg: rgb(189, 147, 249),
-            border: rgb(98, 114, 164),
-            shadow: Rgba { r: 0, g: 0, b: 0, a: 120 },
-            ctrl_fg: rgb(200, 200, 220),
-            close_fg: rgb(255, 85, 85),
-            menubar_bg: rgb(68, 71, 90),
-            dock_bg: rgb(68, 71, 90),
-            text: rgb(248, 248, 242),
-            dim: rgb(139, 145, 175),
-            accent: rgb(189, 147, 249),
-            active_bg: rgb(98, 114, 164),
-            vt16: Vt16::NONE,
         }
     }
 
@@ -176,29 +132,6 @@ impl Theme {
         }
     }
 
-    /// New Moon: near-black desktop with cool blue-grey chrome and a sky-blue
-    /// accent. The default theme.
-    pub const fn newmoon() -> Self {
-        Theme {
-            desktop_bg: rgb(0, 0, 0),
-            window_bg: rgb(17, 20, 29),
-            title_focus: rgb(29, 36, 51),
-            title_blur: rgb(20, 24, 34),
-            title_fg: rgb(143, 183, 255),
-            border: rgb(58, 68, 88),
-            shadow: Rgba { r: 0, g: 0, b: 0, a: 110 },
-            ctrl_fg: rgb(150, 165, 190),
-            close_fg: rgb(255, 107, 107),
-            menubar_bg: rgb(22, 27, 39),
-            dock_bg: rgb(22, 27, 39),
-            text: rgb(200, 208, 220),
-            dim: rgb(120, 130, 150),
-            accent: rgb(108, 182, 255),
-            active_bg: rgb(45, 58, 85),
-            vt16: Vt16::NONE,
-        }
-    }
-
     /// Resolve a theme by name. A user theme file of the same name (loaded into the
     /// registry) wins over a built-in; otherwise a built-in preset; else `midnight`.
     pub fn named(name: &str) -> Self {
@@ -213,10 +146,7 @@ impl Theme {
     /// This is the base a partial theme file inherits from.
     fn builtin(lname: &str) -> Self {
         match lname {
-            "newmoon" => Self::newmoon(),
-            "nord" => Self::nord(),
             "gruvbox" => Self::gruvbox(),
-            "dracula" => Self::dracula(),
             "pastoral" => Self::pastoral(),
             "windows" => Self::windows(),
             // Deprecated alias: the preset was renamed light → pastoral. Kept so
@@ -229,7 +159,10 @@ impl Theme {
 
 /// The names of the built-in presets (for the Settings cycler). File themes are
 /// appended at runtime by [`preset_names`].
-pub const PRESETS: &[&str] = &["newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral", "windows"];
+///
+/// Four are built in (each with its own picture). The rest (nord, dracula, dawn,
+/// newmoon, contrast) are theme files the suite installer downloads into `themes/`.
+pub const PRESETS: &[&str] = &["midnight", "gruvbox", "pastoral", "windows"];
 
 /// All theme names offered in the UI: the built-in presets, then any file themes
 /// whose name does not shadow a built-in (a same-named file overrides the built-in
@@ -445,7 +378,7 @@ fn mono(t: Theme) -> Theme {
 /// Replace the current desktop theme (applied on the next rendered frame).
 pub fn set(name: &str) {
     if !known(name) {
-        crate::dbg_log(&format!("theme: '{name}' not found, using midnight"));
+        crate::dbg_log(&format!("theme: '{name}' not found, using midnight (extra themes: install-tetron-wm-suite.sh --themes)"));
     }
     *slot().write().unwrap() = Theme::named(name);
 }
@@ -783,8 +716,16 @@ pub fn known(name: &str) -> bool {
 /// returning the path. Backs `tetron-wm theme --dump <name>`.
 pub fn dump_builtin(name: &str) -> std::io::Result<PathBuf> {
     let dir = themes_dir().ok_or_else(|| std::io::Error::other("no themes directory"))?;
+    let lname = name.to_lowercase();
+    if lname != "light" && !PRESETS.contains(&lname.as_str()) {
+        return Err(std::io::Error::other(format!(
+            "'{name}' is not a built-in theme (built in: {}); the extra themes are files in {}",
+            PRESETS.join(", "),
+            dir.display()
+        )));
+    }
     std::fs::create_dir_all(&dir)?;
-    let theme = Theme::builtin(&name.to_lowercase());
+    let theme = Theme::builtin(&lname);
     let path = dir.join(format!("{name}.toml"));
     std::fs::write(&path, to_file_toml(&theme, name))?;
     Ok(path)
@@ -835,8 +776,8 @@ mod tests {
 
     #[test]
     fn dump_roundtrips_including_alpha() {
-        let src = Theme::dracula();
-        let (_n, back) = parse_theme_toml(&to_file_toml(&src, "dracula")).unwrap();
+        let src = Theme::gruvbox();
+        let (_n, back) = parse_theme_toml(&to_file_toml(&src, "gruvbox")).unwrap();
         assert_eq!(back.desktop_bg, src.desktop_bg);
         assert_eq!(back.accent, src.accent);
         assert_eq!(back.shadow, src.shadow); // alpha survives
@@ -887,6 +828,16 @@ mod tests {
         assert_eq!(got.get("quiet").map(String::as_str), Some("none"));
         assert_eq!(got.get("bare"), None);
         assert_eq!(got.get("abs").map(String::as_str), Some("/usr/share/x.png"));
+    }
+
+    #[test]
+    fn removed_names_are_midnight_until_their_file_is_installed() {
+        // builtin() ignores the registry, so this is hermetic.
+        for n in ["newmoon", "nord", "dracula", "nonsense"] {
+            assert_eq!(Theme::builtin(n).desktop_bg, Theme::midnight().desktop_bg, "{n}");
+            assert!(!PRESETS.contains(&n), "{n}");
+        }
+        assert_eq!(PRESETS, ["midnight", "gruvbox", "pastoral", "windows"]);
     }
 
     #[test]
@@ -1048,7 +999,7 @@ mod depth_tests {
         // Light theme: grey windows, and the grey selection falls back to blue.
         assert_eq!((idx(a.window_bg), idx(a.active_bg)), (7, 4));
         // Dark themes keep black windows whatever their tint.
-        assert_eq!(idx(adapt(Theme::nord(), ColorDepth::Ansi16).window_bg), 0);
+        assert_eq!(idx(adapt(Theme::midnight(), ColorDepth::Ansi16).window_bg), 0);
         // Built-in overrides (USER choices).
         let p = adapt(Theme::pastoral(), ColorDepth::Ansi16);
         assert_eq!((idx(p.desktop_bg), idx(p.title_focus), idx(p.active_bg)), (7, 2, 2));

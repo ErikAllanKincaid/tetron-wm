@@ -1120,13 +1120,13 @@ mod tests {
             m.form_char(c);
         }
         m.form_next(); // -> Theme
-        m.form_right(); // default -> newmoon
+        m.form_right(); // default -> midnight
         match m.form_commit() {
             PowerClick::Act(PowerOutcome::AddAndConnect { system, password }) => {
                 assert_eq!(system.host, "pi@10.0.0.2");
                 assert_eq!(system.port, Some(2222));
                 assert_eq!(system.name, "10.0.0.2", "name defaults to the host");
-                assert_eq!(system.theme.as_deref(), Some("newmoon"));
+                assert_eq!(system.theme.as_deref(), Some("midnight"));
                 assert_eq!(password.as_deref(), Some("secret"));
             }
             other => panic!("expected AddAndConnect, got {other:?}"),
