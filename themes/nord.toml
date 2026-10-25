@@ -1,0 +1,27 @@
+name = "nord"
+# base = "midnight"   # unset fields inherit from this built-in
+# appearance = "dark"
+
+desktop_bg  = "#2e3440"
+window_bg   = "#242933"
+title_focus = "#3b4252"
+title_blur  = "#2b313c"
+title_fg    = "#88c0d0"
+border      = "#4c566a"
+shadow      = "#0000006e"
+ctrl_fg     = "#b4becd"
+close_fg    = "#bf616a"
+menubar_bg  = "#3b4252"
+dock_bg     = "#3b4252"
+text        = "#d8dee9"
+dim         = "#788296"
+accent      = "#88c0d0"
+active_bg   = "#4c566a"
+
+# 16-colour console (bare Linux VT): derived automatically from the
+# colours above. Uncomment to pin a role to a palette index 0-15
+# (0 black, 1 red, 2 green, 3 brown, 4 blue, 5 magenta, 6 cyan, 7 grey,
+# 8-15 their bright forms; backgrounds can only use 0-7).
+# [vt16]
+# desktop_bg = 6
+# title_focus = 4

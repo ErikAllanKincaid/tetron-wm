@@ -1,0 +1,26 @@
+name = "pastoral"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "light"
+
+desktop_bg  = "#ece6d8"
+window_bg   = "#ffffff"
+title_focus = "#c4e3b4"
+title_blur  = "#d4cfc1"
+title_fg    = "#2b2b2b"
+border      = "#4caf50"
+shadow      = "#322d1e33"
+ctrl_fg     = "#6a6a6a"
+close_fg    = "#d1524c"
+menubar_bg  = "#e7e2d6"
+dock_bg     = "#e7e2d6"
+text        = "#1a1a1a"
+dim         = "#6e6a5e"
+accent      = "#2e7d32"
+active_bg   = "#d7e9cd"
+
+# 16-colour console (bare Linux VT): grey desktop (a whole green screen is
+# too intense), green focused title bar and selection.
+[vt16]
+desktop_bg = 7
+title_focus = 2
+active_bg = 2

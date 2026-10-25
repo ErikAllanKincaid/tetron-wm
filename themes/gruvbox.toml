@@ -1,0 +1,23 @@
+name = "gruvbox"
+# base = "midnight"   # unset fields inherit from this built-in
+# appearance = "dark"
+
+desktop_bg  = "#3c3836"
+window_bg   = "#282828"
+title_focus = "#3c3836"
+title_blur  = "#32302f"
+title_fg    = "#fabd2f"
+border      = "#665c54"
+shadow      = "#00000078"
+ctrl_fg     = "#d5c4a1"
+close_fg    = "#fb4934"
+menubar_bg  = "#32302f"
+dock_bg     = "#32302f"
+text        = "#ebdbb2"
+dim         = "#928374"
+accent      = "#fabd2f"
+active_bg   = "#504945"
+
+# 16-colour console (bare Linux VT): brown desktop.
+[vt16]
+desktop_bg = 3
