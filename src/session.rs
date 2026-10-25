@@ -3833,8 +3833,11 @@ or a remote-side error — its authorized_keys was left untouched)",
                 || cfg.clipboard_history_size != self.cfg.clipboard_history_size
                 || cfg.clipboard_item_max_kb != self.cfg.clipboard_item_max_kb;
             let colors_changed_depth = cfg.colors != self.cfg.colors;
+            // `default` shows the theme's own picture, so a theme change redraws it.
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
-                || cfg.wallpaper != self.cfg.wallpaper;
+                || cfg.wallpaper != self.cfg.wallpaper
+                || (crate::wallpaper::is_default(cfg.wallpaper.as_deref())
+                    && crate::wallpaper::theme_image(&cfg.theme) != crate::wallpaper::theme_image(&self.cfg.theme));
             let colors_changed = cfg.theme != self.cfg.theme
                 || cfg.terminal_bg != self.cfg.terminal_bg
                 || cfg.terminal_fg != self.cfg.terminal_fg;
@@ -5784,7 +5787,7 @@ or a remote-side error — its authorized_keys was left untouched)",
         // `default`, empty or unset draw the built-in image, and so does a
         // configured file that is missing: the desktop only goes plain when
         // the wallpaper is switched off (or chafa is missing).
-        let choice = crate::wallpaper::choose(spec);
+        let choice = crate::wallpaper::choose(spec, &cfg.theme);
         if let Some(m) = &choice.missing {
             crate::dbg_log(&format!("wallpaper: file not found: {}, using the built-in image", m.display()));
         }

@@ -7,11 +7,31 @@ use crate::buffer::CellBuffer;
 use crate::cell::{Cell, Rgba};
 use std::path::PathBuf;
 
-/// The built-in default wallpaper (426x240 JPEG, 70 KB). It is drawn when the
-/// config says `default` (or nothing), and stands in for a configured file
-/// that is missing, so the desktop never goes blank by accident. To ship a new
-/// default, replace `assets/wallpaper.jpg` (keep it under 100 KB, a test checks).
-const DEFAULT_JPG: &[u8] = include_bytes!("../assets/wallpaper.jpg");
+/// The wallpapers bundled in the binary, one per built-in theme (426x240 JPEGs
+/// from `themes/`, each under 100 KB; a test checks). `default` draws the
+/// active theme's picture, and a configured file that is missing falls back to
+/// it, so the desktop never goes blank by accident.
+const EMBEDDED: &[(&str, &[u8])] = &[
+    ("midnight", include_bytes!("../themes/midnight.jpg")),
+    ("gruvbox", include_bytes!("../themes/gruvbox.jpg")),
+    ("pastoral", include_bytes!("../themes/pastoral.jpg")),
+    ("windows", include_bytes!("../themes/windows.jpg")),
+];
+
+/// The picture for a theme with none of its own, and the plain default.
+const FALLBACK_IMAGE: &str = "midnight";
+
+/// Which bundled picture `default` shows for `theme` (a theme name, any case):
+/// its own when it has one, else midnight's.
+pub fn theme_image(theme: &str) -> &'static str {
+    let t = theme.trim().to_lowercase();
+    let t = if t == "light" { "pastoral" } else { t.as_str() };
+    EMBEDDED.iter().map(|(n, _)| *n).find(|n| *n == t).unwrap_or(FALLBACK_IMAGE)
+}
+
+fn embedded(name: &str) -> &'static [u8] {
+    EMBEDDED.iter().find(|(n, _)| *n == name).map_or(EMBEDDED[0].1, |(_, b)| b)
+}
 
 /// Config value that means "the built-in wallpaper". An empty value means the
 /// same; Settings writes `default` back so the name is always visible.
@@ -134,9 +154,9 @@ pub struct Choice {
 }
 
 /// Pick the file to draw for config value `spec` (see [`Choice`]).
-pub fn choose(spec: Option<&str>) -> Choice {
+pub fn choose(spec: Option<&str>, theme: &str) -> Choice {
     if is_default(spec) {
-        return Choice { path: ensure_default(), missing: None };
+        return Choice { path: ensure_default(theme), missing: None };
     }
     let spec = spec.unwrap_or_default();
     let p = resolve_path(spec);
@@ -144,7 +164,7 @@ pub fn choose(spec: Option<&str>) -> Choice {
         return Choice { path: Some(p), missing: None };
     }
     let legacy = clean_spec(spec) == LEGACY_NAME;
-    Choice { path: ensure_default(), missing: (!legacy).then_some(p) }
+    Choice { path: ensure_default(theme), missing: (!legacy).then_some(p) }
 }
 
 /// A one-line problem with config value `spec` for Settings to show under the
@@ -175,23 +195,28 @@ fn chafa_installed() -> bool {
         .unwrap_or(false)
 }
 
-/// Write the embedded default wallpaper to `<data>/tetron-wm/wallpaper.jpg`
+/// Write the bundled picture for `theme` to `<data>/tetron-wm/wallpaper-<name>.jpg`
 /// (`$XDG_DATA_HOME` aware) unless the file there already holds exactly these
 /// bytes, and return its path. `chafa` needs a real file, hence the stamp.
-/// Comparing contents (not size) means a new default always replaces the old
-/// copy. The copy older versions wrote (`default-wallpaper.jpg`) is removed.
-pub fn ensure_default() -> Option<PathBuf> {
+/// Comparing contents (not size) means a new picture always replaces the old
+/// copy. The copies older versions wrote (`wallpaper.jpg`,
+/// `default-wallpaper.jpg`) are removed.
+pub fn ensure_default(theme: &str) -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))?;
     let dir = base.join("tetron-wm");
-    let path = dir.join("wallpaper.jpg");
-    let current = std::fs::read(&path).map(|b| b == DEFAULT_JPG).unwrap_or(false);
+    let name = theme_image(theme);
+    let bytes = embedded(name);
+    let path = dir.join(format!("wallpaper-{name}.jpg"));
+    let current = std::fs::read(&path).map(|b| b == bytes).unwrap_or(false);
     if !current {
         std::fs::create_dir_all(&dir).ok()?;
-        std::fs::write(&path, DEFAULT_JPG).ok()?;
-        let _ = std::fs::remove_file(dir.join("default-wallpaper.jpg"));
-        crate::dbg_log(&format!("wallpaper: stamped built-in default to {}", path.display()));
+        std::fs::write(&path, bytes).ok()?;
+        for old in ["wallpaper.jpg", "default-wallpaper.jpg"] {
+            let _ = std::fs::remove_file(dir.join(old));
+        }
+        crate::dbg_log(&format!("wallpaper: stamped the {name} picture to {}", path.display()));
     }
     Some(path)
 }
@@ -561,9 +586,24 @@ mod tests {
     }
 
     #[test]
-    fn embedded_default_is_a_small_jpeg() {
-        assert_eq!(&DEFAULT_JPG[..2], &[0xFF, 0xD8], "JPEG magic");
-        assert!(DEFAULT_JPG.len() < 100 * 1024, "keep the embedded wallpaper small");
+    fn embedded_pictures_are_small_jpegs() {
+        for (name, b) in EMBEDDED {
+            assert_eq!(&b[..2], &[0xFF, 0xD8], "{name}: JPEG magic");
+            assert!(b.len() < 100 * 1024, "{name}: keep the embedded wallpaper small");
+        }
+        assert!(EMBEDDED.iter().any(|(n, _)| *n == FALLBACK_IMAGE));
+    }
+
+    #[test]
+    fn default_follows_the_theme_and_falls_back_to_midnight() {
+        assert_eq!(theme_image("gruvbox"), "gruvbox");
+        assert_eq!(theme_image(" Windows "), "windows");
+        assert_eq!(theme_image("pastoral"), "pastoral");
+        assert_eq!(theme_image("light"), "pastoral", "the old name");
+        assert_eq!(theme_image("midnight"), "midnight");
+        for t in ["newmoon", "nord", "dracula", "some-file-theme", ""] {
+            assert_eq!(theme_image(t), "midnight", "{t}");
+        }
     }
 
     #[test]
@@ -589,10 +629,10 @@ mod tests {
 
     #[test]
     fn missing_file_reports_missing_but_legacy_name_does_not() {
-        let c = choose(Some("/no/such/dir/pic.png"));
+        let c = choose(Some("/no/such/dir/pic.png"), "midnight");
         assert_eq!(c.missing, Some(PathBuf::from("/no/such/dir/pic.png")));
         // Old configs naming the former default never report it missing.
-        assert!(choose(Some("wallpaper.jpg")).missing.is_none());
+        assert!(choose(Some("wallpaper.jpg"), "midnight").missing.is_none());
     }
 
     #[test]

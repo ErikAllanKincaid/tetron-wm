@@ -153,6 +153,29 @@ impl Theme {
         }
     }
 
+    /// Windows 3.1 / early-95: teal desktop, navy title bars, silver chrome,
+    /// white windows. Its own picture is embedded (`themes/windows.jpg`).
+    pub const fn windows() -> Self {
+        Theme {
+            desktop_bg: rgb(0, 128, 128),
+            window_bg: rgb(255, 255, 255),
+            title_focus: rgb(0, 0, 128),
+            title_blur: rgb(128, 128, 128),
+            title_fg: rgb(255, 255, 255),
+            border: rgb(128, 128, 128),
+            shadow: Rgba { r: 0, g: 0, b: 0, a: 38 },
+            ctrl_fg: rgb(255, 255, 255),
+            close_fg: rgb(204, 0, 0),
+            menubar_bg: rgb(192, 192, 192),
+            dock_bg: rgb(192, 192, 192),
+            text: rgb(0, 0, 0),
+            dim: rgb(128, 128, 128),
+            accent: rgb(0, 0, 128),
+            active_bg: rgb(192, 192, 192),
+            vt16: Vt16::NONE,
+        }
+    }
+
     /// New Moon: near-black desktop with cool blue-grey chrome and a sky-blue
     /// accent. The default theme.
     pub const fn newmoon() -> Self {
@@ -195,6 +218,7 @@ impl Theme {
             "gruvbox" => Self::gruvbox(),
             "dracula" => Self::dracula(),
             "pastoral" => Self::pastoral(),
+            "windows" => Self::windows(),
             // Deprecated alias: the preset was renamed light → pastoral. Kept so
             // existing `theme = "light"` configs still resolve (not in PRESETS).
             "light" => Self::pastoral(),
@@ -205,7 +229,7 @@ impl Theme {
 
 /// The names of the built-in presets (for the Settings cycler). File themes are
 /// appended at runtime by [`preset_names`].
-pub const PRESETS: &[&str] = &["newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral"];
+pub const PRESETS: &[&str] = &["newmoon", "midnight", "nord", "gruvbox", "dracula", "pastoral", "windows"];
 
 /// All theme names offered in the UI: the built-in presets, then any file themes
 /// whose name does not shadow a built-in (a same-named file overrides the built-in
@@ -709,6 +733,15 @@ pub fn dump_builtin(name: &str) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_builtin_matches_its_theme_file() {
+        let (name, from_file) = parse_theme_toml(include_str!("../themes/windows.toml")).unwrap();
+        assert_eq!(name.as_deref(), Some("windows"));
+        assert_eq!(to_file_toml(&Theme::windows(), "windows"), to_file_toml(&from_file, "windows"));
+        assert!(PRESETS.contains(&"windows"));
+        assert!(validate(&Theme::named("windows")).is_empty());
+    }
 
     #[test]
     fn alpha_hex_parses() {
