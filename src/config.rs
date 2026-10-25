@@ -121,6 +121,10 @@ pub struct Config {
     /// Defaults to `default`, the built-in image (empty means the same). A
     /// missing file also falls back to the built-in image, so the desktop is
     /// only solid with `wallpaper_enabled = false`.
+    /// Three more values need no file and no `chafa`: `black`, a `#rrggbb`
+    /// colour (a flat desktop of that colour) and `none` (the theme's own
+    /// `desktop_bg`). Below 256 colours `default` is the theme's `desktop_bg`
+    /// too, since the image turns to noise there; a file you chose is still drawn.
     #[serde(default = "default_wallpaper", skip_serializing_if = "Option::is_none")]
     pub wallpaper: Option<String>,
     /// Master on/off for the wallpaper. When false, the desktop is solid even if

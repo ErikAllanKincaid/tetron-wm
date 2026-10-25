@@ -27,6 +27,55 @@ pub fn is_default(spec: Option<&str>) -> bool {
     spec.map(clean_spec).is_none_or(|s| s.is_empty() || s == DEFAULT_NAME)
 }
 
+/// What a wallpaper value asks for, before any file is looked at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// An image: the built-in, a bundled one, or a file.
+    Image,
+    /// `none`: no wallpaper, the plain theme `desktop_bg`.
+    Plain,
+    /// `black` or `#rrggbb`: a flat colour, drawn without chafa.
+    Solid(Rgba),
+}
+
+/// Classify wallpaper value `spec` (see [`Source`]). Only `none`, `black` and
+/// a `#rrggbb` colour are special; anything else, including an unset value, is
+/// an image (and a malformed `#…` stays one, so the "not found" note shows).
+pub fn source(spec: Option<&str>) -> Source {
+    let Some(spec) = spec else { return Source::Image };
+    let s = clean_spec(spec);
+    if s.eq_ignore_ascii_case("none") {
+        return Source::Plain;
+    }
+    if s.eq_ignore_ascii_case("black") {
+        return Source::Solid(Rgba::rgb(0, 0, 0));
+    }
+    match s.strip_prefix('#') {
+        Some(hex) if hex.len() == 6 => crate::badge::parse_color(&s).map_or(Source::Image, |c| Source::Solid(Rgba { a: 255, ..c })),
+        _ => Source::Image,
+    }
+}
+
+/// What to put behind the icons for `spec` at colour `depth`, before any file
+/// is read. Below 256 colours the built-in image turns to noise, so `default`
+/// is the theme's own desktop colour there; a file the user chose is drawn at
+/// any depth.
+pub fn draw_for(spec: Option<&str>, depth: crate::display::ColorDepth) -> Option<Source> {
+    match source(spec) {
+        Source::Plain => None,
+        s @ Source::Solid(_) => Some(s),
+        Source::Image if is_default(spec) && depth < crate::display::ColorDepth::Ansi256 => None,
+        Source::Image => Some(Source::Image),
+    }
+}
+
+/// A `w`×`h` buffer of one background colour.
+pub fn solid(color: Rgba, w: i32, h: i32) -> CellBuffer {
+    let mut buf = CellBuffer::new(w.max(0), h.max(0));
+    buf.fill(Cell { ch: ' ', fg: color, bg: color, attrs: Default::default() });
+    buf
+}
+
 /// Normalise a wallpaper value the way people paste it: surrounding quotes
 /// (`"/a b.jpg"`, `'/a b.jpg'`, from a shell or a file manager's "copy
 /// path"), a `file://` URL (percent-decoded, so `%20` becomes a space), and a
@@ -102,6 +151,9 @@ pub fn choose(spec: Option<&str>) -> Choice {
 /// wallpaper rows, or `None` when it will draw as asked. Only looks at the
 /// disk and `$PATH`; never writes.
 pub fn note(spec: Option<&str>) -> Option<String> {
+    if source(spec) != Source::Image {
+        return None; // a flat colour or no wallpaper needs neither chafa nor a file
+    }
     if !chafa_installed() {
         return Some("chafa is not installed, so the desktop is plain.".into());
     }
@@ -444,6 +496,47 @@ fn xterm256(n: u8) -> Rgba {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_recognises_none_black_and_hex() {
+        assert_eq!(source(None), Source::Image);
+        assert_eq!(source(Some("default")), Source::Image);
+        assert_eq!(source(Some("forest.jpg")), Source::Image);
+        assert_eq!(source(Some("none")), Source::Plain);
+        assert_eq!(source(Some(" NONE ")), Source::Plain);
+        assert_eq!(source(Some("black")), Source::Solid(Rgba::rgb(0, 0, 0)));
+        assert_eq!(source(Some("\"#004040\"")), Source::Solid(Rgba::rgb(0, 0x40, 0x40)));
+        assert_eq!(source(Some("#0A0b0C")), Source::Solid(Rgba::rgb(10, 11, 12)));
+        // Malformed colours stay images, so the "not found" note shows them.
+        assert_eq!(source(Some("#12345")), Source::Image);
+        assert_eq!(source(Some("#12345678")), Source::Image);
+        assert_eq!(source(Some("#gggggg")), Source::Image);
+    }
+
+    #[test]
+    fn default_is_the_theme_colour_below_256_colours_but_a_chosen_file_is_drawn() {
+        use crate::display::ColorDepth::*;
+        for d in [Mono, Ansi16] {
+            assert_eq!(draw_for(Some("default"), d), None, "{d:?}");
+            assert_eq!(draw_for(None, d), None, "{d:?}");
+            assert_eq!(draw_for(Some("forest.jpg"), d), Some(Source::Image), "{d:?}");
+            assert_eq!(draw_for(Some("black"), d), Some(Source::Solid(Rgba::rgb(0, 0, 0))), "{d:?}");
+        }
+        for d in [Ansi256, TrueColor] {
+            assert_eq!(draw_for(Some("default"), d), Some(Source::Image), "{d:?}");
+        }
+        assert_eq!(draw_for(Some("none"), TrueColor), None);
+    }
+
+    #[test]
+    fn solid_fills_every_cell_and_needs_no_chafa() {
+        let c = Rgba::rgb(1, 2, 3);
+        let buf = solid(c, 4, 2);
+        assert_eq!((buf.get(0, 0).unwrap().bg, buf.get(3, 1).unwrap().bg), (c, c));
+        assert_eq!(note(Some("black")), None);
+        assert_eq!(note(Some("#102030")), None);
+        assert_eq!(note(Some("none")), None);
+    }
 
     #[test]
     fn sgr_parses_16_and_256_colour_forms() {

@@ -5777,10 +5777,14 @@ or a remote-side error — its authorized_keys was left untouched)",
         if env.is_none() && !cfg.wallpaper_enabled {
             return None;
         }
+        let spec = env.as_deref().or(cfg.wallpaper.as_deref());
+        if let crate::wallpaper::Source::Solid(c) = crate::wallpaper::draw_for(spec, crate::display::depth())? {
+            return Some(crate::wallpaper::solid(c, w, h));
+        }
         // `default`, empty or unset draw the built-in image, and so does a
         // configured file that is missing: the desktop only goes plain when
         // the wallpaper is switched off (or chafa is missing).
-        let choice = crate::wallpaper::choose(env.as_deref().or(cfg.wallpaper.as_deref()));
+        let choice = crate::wallpaper::choose(spec);
         if let Some(m) = &choice.missing {
             crate::dbg_log(&format!("wallpaper: file not found: {}, using the built-in image", m.display()));
         }
