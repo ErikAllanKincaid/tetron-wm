@@ -1,4 +1,5 @@
 name = "newmoon"
+wallpaper = "black"   # midnight with a plain black desktop
 # base = "midnight"   # unset fields inherit from this built-in
 # appearance = "dark"
 

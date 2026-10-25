@@ -898,6 +898,58 @@ mod tests {
         assert!(!known("no-such-theme"));
     }
 
+    /// The repo `themes/` folder is what users install: every file must load
+    /// complete, readable, and with the pictures the suite installer promises.
+    #[test]
+    fn repo_theme_files_are_complete_readable_and_match_the_installer_pack() {
+        const ROLES: [&str; 15] = [
+            "desktop_bg", "window_bg", "title_focus", "title_blur", "title_fg", "border", "shadow", "ctrl_fg",
+            "close_fg", "menubar_bg", "dock_bg", "text", "dim", "accent", "active_bg",
+        ];
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let dir = root.join("themes");
+        let mut names = Vec::new();
+        for ent in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let (name, theme) = parse_theme_toml(&text).unwrap_or_else(|e| panic!("{stem}: {e}"));
+            assert_eq!(name.as_deref(), Some(stem.as_str()), "{stem}: name matches the file");
+            let doc: toml::Table = text.parse().unwrap();
+            for role in ROLES {
+                assert!(doc.contains_key(role), "{stem}: missing {role}");
+            }
+            // nord and dracula keep the stock palettes, whose inactive title bar
+            // sits close to the desktop colour (a picture covers it in use).
+            let stock = stem == "nord" || stem == "dracula";
+            let warns: Vec<String> = validate(&theme).into_iter().filter(|w| !(stock && w.contains("inactive titlebar"))).collect();
+            assert!(warns.is_empty(), "{stem}: {warns:?}");
+            names.push(stem);
+        }
+        // The pack (not built in) carries no [vt16] table: its 16-colour look
+        // is derived, exactly as the built-ins of the same name were.
+        let installer = std::fs::read_to_string(root.join("install-tetron-wm-suite.sh")).unwrap();
+        let pack_line = installer.lines().find(|l| l.starts_with("THEME_PACK=")).expect("THEME_PACK in the installer");
+        let pack: Vec<&str> = pack_line.trim_start_matches("THEME_PACK=").trim_matches('"').split_whitespace().collect();
+        assert!(!pack.is_empty());
+        for f in &pack {
+            assert!(dir.join(f).is_file(), "installer lists themes/{f}, which is missing");
+        }
+        for name in ["nord", "dracula", "dawn", "newmoon", "contrast"] {
+            assert!(pack.contains(&format!("{name}.toml").as_str()), "{name} is in the installer pack");
+            let doc: toml::Table = std::fs::read_to_string(dir.join(format!("{name}.toml"))).unwrap().parse().unwrap();
+            assert!(!doc.contains_key("vt16"), "{name}: no [vt16] in the pack");
+        }
+        // A picture promised by a pairing or a `wallpaper` file name exists.
+        for name in ["nord", "dracula", "dawn"] {
+            assert!(pack.contains(&format!("{name}.jpg").as_str()), "{name}.jpg is in the installer pack");
+        }
+        assert!(names.contains(&"contrast".to_string()));
+    }
+
     #[test]
     fn load_dir_reads_toml_and_skips_junk() {
         let dir = std::env::temp_dir().join(format!("tetron-theme-test-{}", std::process::id()));

@@ -1,0 +1,24 @@
+name = "contrast"
+appearance = "dark"
+wallpaper = "none"   # no picture: a plain black desktop
+
+# High contrast: white on black everywhere, blue and yellow for the parts you
+# need to find (focused title, selection, buttons). Every text pair is at least
+# 7:1, so it reads well for low vision or a washed-out display. For a terminal
+# with no colour at all, use colors = "mono" instead.
+
+desktop_bg  = "#000000"
+window_bg   = "#000000"
+title_focus = "#0000aa"   # blue bar, white text
+title_blur  = "#3a3a3a"   # grey bar, white text
+title_fg    = "#ffffff"
+border      = "#ffffff"
+shadow      = "#00000000"
+ctrl_fg     = "#ffffff"
+close_fg    = "#ff5555"
+menubar_bg  = "#1c1c1c"
+dock_bg     = "#1c1c1c"
+text        = "#ffffff"
+dim         = "#b0b0b0"
+accent      = "#ffff55"
+active_bg   = "#0000aa"

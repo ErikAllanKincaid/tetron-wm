@@ -22,7 +22,9 @@
 #
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
-#   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/,wallpapers/}   [all OSes]
+#   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/}               [all OSes]
+#      themes         — the extra themes (nord, dracula, dawn, newmoon, contrast)
+#                       with their pictures, into themes/; never overwrites
 #      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
 #                       btop, upower, alsa-utils, the DejaVu Sans Mono font, uv, catt
 #                       and casttui (Chromecast), and xclip / wl-clipboard on a desktop
@@ -47,6 +49,7 @@
 #   --all            wm + config + kmscon + console + autologin + autostart (=appliance)
 #   --wm / --no-wm             force the tetron-wm step on/off
 #   --config / --no-config     force the config-dir step on/off
+#   --themes / --no-themes     force the extra-themes download on/off (default yes)
 #   --extras / --no-extras     force the recommended-tools step on/off
 #   --services / --no-services force the system-services step on/off
 #   --kmscon / --no-kmscon     force the kmscon step on/off
@@ -92,7 +95,7 @@ fetch() {
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 ASSUME_YES=0
-WANT_WM=""; WANT_CONFIG=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""; WANT_FULLSCREEN=""
+WANT_WM=""; WANT_CONFIG=""; WANT_THEMES=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""; WANT_FULLSCREEN=""
 FSVT=9; VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -101,6 +104,7 @@ while [ $# -gt 0 ]; do
     --all)        PROFILE=appliance ;;
     --wm)         WANT_WM=y ;;     --no-wm)     WANT_WM=n ;;
     --config)     WANT_CONFIG=y ;; --no-config) WANT_CONFIG=n ;;
+    --themes)     WANT_THEMES=y ;; --no-themes) WANT_THEMES=n ;;
     --extras)     WANT_EXTRAS=y ;; --no-extras) WANT_EXTRAS=n ;;
     --services)   WANT_SERVICES=y ;; --no-services) WANT_SERVICES=n ;;
     --kmscon)     WANT_KMSCON=y ;; --no-kmscon) WANT_KMSCON=n ;;
@@ -172,8 +176,8 @@ wm_bin() { command -v tetron-wm 2>/dev/null || echo "${TETRON_WM_BIN_DIR:-/usr/l
 # ── Step 2: config dir ─────────────────────────────────────────────────────────
 seed_config() {
   local cfg="$HOME/.config/tetron-wm"
-  log "setting up $cfg (config.toml, themes/, wallpapers/)…"
-  mkdir -p "$cfg/themes" "$cfg/wallpapers"
+  log "setting up $cfg (config.toml, themes/)…"
+  mkdir -p "$cfg/themes"
   if [ -f "$cfg/config.toml" ]; then
     log "config.toml already exists — leaving it untouched"
   else
@@ -185,7 +189,27 @@ seed_config() {
       warn "could not fetch config.example.toml; run with no config (defaults apply) and add one later"
     fi
   fi
-  log "drop images in $cfg/wallpapers/ and set wallpaper=... ; editable themes: tetron-wm theme --dump <name>"
+  log "drop images in $cfg/themes/ and set wallpaper=... ; editable themes: tetron-wm theme --dump <name>"
+}
+
+# ── Step 2a: the extra themes ──────────────────────────────────────────────────
+# Not built into the binary. Each is a theme file plus (for most) its picture,
+# fetched from this repo into themes/. A file that is already there is kept, so
+# your edits and your own themes of the same name are never overwritten.
+THEME_PACK="nord.toml nord.jpg dracula.toml dracula.jpg dawn.toml dawn.jpg newmoon.toml contrast.toml"
+install_themes() {
+  local dir="$HOME/.config/tetron-wm/themes" f got=0 kept=0
+  mkdir -p "$dir"
+  log "downloading the extra themes into $dir…"
+  for f in $THEME_PACK; do
+    if [ -e "$dir/$f" ]; then kept=$((kept + 1)); continue; fi
+    if fetch "$RAW/themes/$f" > "$dir/$f.part" 2>/dev/null && [ -s "$dir/$f.part" ]; then
+      mv "$dir/$f.part" "$dir/$f"; got=$((got + 1))
+    else
+      rm -f "$dir/$f.part"; warn "could not fetch themes/$f"
+    fi
+  done
+  log "themes: $got downloaded, $kept already there. Pick one in Settings > Appearance (a new daemon start loads new files)."
 }
 
 # kmscon supports truecolor but does not set COLORTERM, so tetron-wm would
@@ -583,7 +607,7 @@ do_uninstall() {
     if [ -x "$wm" ] && confirm "Remove the tetron-wm binary ($wm)?" n; then
       rm -f "$wm" 2>/dev/null || $SUDO rm -f "$wm"; log "removed $wm"
     fi
-    if [ -d "$HOME/.config/tetron-wm" ] && confirm "Delete ~/.config/tetron-wm (config, themes, wallpapers)?" n; then
+    if [ -d "$HOME/.config/tetron-wm" ] && confirm "Delete ~/.config/tetron-wm (config and themes)?" n; then
       rm -rf "$HOME/.config/tetron-wm"; log "removed ~/.config/tetron-wm"
     fi
   else
@@ -660,7 +684,8 @@ main() {
   fi
 
   resolve WANT_WM     "Install tetron-wm (latest release)?" y
-  resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/, wallpapers/)?" y
+  resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/)?" y
+  resolve WANT_THEMES "Download the extra themes (nord, dracula, dawn, newmoon, contrast) into ~/.config/tetron-wm/themes/? Files you already have are kept." y
   # Only ask about packages that are actually missing; nothing to ask = skip.
   local extras services=""
   extras="$(extras_list)"
@@ -705,11 +730,12 @@ main() {
 
   echo
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
+    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG themes=$WANT_THEMES extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
     return 0
   fi
   [ "$WANT_WM" = y ]        && install_wm
   [ "$WANT_CONFIG" = y ]    && seed_config
+  [ "$WANT_THEMES" = y ]    && install_themes
   [ "$WANT_EXTRAS" = y ]    && pm_install "$extras"
   [ "$WANT_EXTRAS" = y ]    && fresh_via_script && install_fresh
   [ "$WANT_EXTRAS" = y ]    && uv_via_script && install_uv
