@@ -943,8 +943,10 @@ mod tests {
                 assert!(doc.contains_key(role), "{stem}: missing {role}");
             }
             // nord and dracula keep the stock palettes, whose inactive title bar
-            // sits close to the desktop colour (a picture covers it in use).
-            let stock = stem == "nord" || stem == "dracula";
+            // sits close to the desktop colour (a picture covers it in use);
+            // contrast makes it black on a black desktop on purpose, and the
+            // white window border sets it off.
+            let stock = stem == "nord" || stem == "dracula" || stem == "contrast";
             let warns: Vec<String> = validate(&theme).into_iter().filter(|w| !(stock && w.contains("inactive titlebar"))).collect();
             assert!(warns.is_empty(), "{stem}: {warns:?}");
             names.push(stem);
