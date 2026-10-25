@@ -7,6 +7,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("snap_threshold", "3", "cells from the edge that trigger snapping"),
     ("window_shadows", "false", "draw window drop shadows"),
     ("natural_scroll", "true", "invert wheel/touchpad scroll direction"),
+    ("fullscreen", "true", "full screen video, images and PDFs; false hides the items and skips the framebuffer, DRM and waiter probes"),
     ("grid_rows", "2", "tiling grid rows (1-6)"),
     ("grid_cols", "2", "tiling grid columns (1-6)"),
     ("tile_gap", "0", "cells of gutter between tiled windows"),
@@ -147,7 +148,8 @@ RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
 \x20 video with mpv; q returns, apps keep running. Under kmscon both work once the\n\
 \x20 full screen helper is installed (install-tetron-wm-suite.sh --fullscreen): it switches\n\
 \x20 to the spare VT, shows the video (mpv), images (fbi or fim) or PDF (fbgs) and switches\n\
-\x20 back, no sudo. A window's title bar has Minimize,\n\
+\x20 back, no sudo. Settings > Windows > Full screen helper service starts or stops it (sudo\n\
+\x20 systemctl, prompted in the terminal); the helper is off unless you install it. A window's title bar has Minimize,\n\
 \x20 Maximize, Move, Rename and Close.\n\n\
 IMAGE VIEWER (images and PDFs; image_viewer = auto | graphics | cells):\n\
 \x20 Kitty graphics where the terminal has them, else chafa cells (any terminal).\n\

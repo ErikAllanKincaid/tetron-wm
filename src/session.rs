@@ -668,6 +668,8 @@ pub struct SessionCore {
     /// A full-screen program (fbi + images) for the client to run on the real
     /// console; rides on the detach like `switch_to`.
     fullscreen: Option<Vec<String>>,
+    /// A waiter service switch was handed to the client: re-read its state on reattach.
+    refresh_waiter: bool,
     /// The display facts the client reported, before the `colors` setting is
     /// applied (so switching the setting back to auto restores them).
     client_caps: crate::display::ClientCaps,
@@ -762,6 +764,7 @@ impl SessionCore {
         let launcher = Launcher::new(Self::build_launcher_apps(&cfg, &systems));
         let desktop_dir = dirs::home_dir().map(|h| h.join("Desktop")).unwrap_or_default();
         let wallpaper = Self::build_wallpaper(w, h, &cfg);
+        crate::fullscreen::set_enabled(cfg.fullscreen);
         let mut core = Self {
             wm: WindowManager::new(work),
             contents: HashMap::new(),
@@ -831,6 +834,7 @@ impl SessionCore {
             systems,
             switch_to: None,
             fullscreen: None,
+            refresh_waiter: false,
             client_caps: crate::display::ClientCaps::default(),
             repaint: false,
         };
@@ -1356,6 +1360,10 @@ impl SessionCore {
                 }
             }
             Some(crate::settings::SettingsAction::RefreshSound) => self.refresh_sound_outputs(),
+            Some(crate::settings::SettingsAction::WaiterService(on)) => {
+                self.refresh_waiter = true;
+                self.hand_over(vec!["@waiter".to_string(), if on { "on" } else { "off" }.to_string()]);
+            }
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
             }
@@ -2068,6 +2076,12 @@ impl SessionCore {
         self.quit = false;
         self.switch_to = None;
         self.fullscreen = None;
+        if std::mem::take(&mut self.refresh_waiter) {
+            let st = crate::fullscreen::service_state();
+            if let Some(s) = self.focused_settings_mut() {
+                s.set_waiter(st);
+            }
+        }
     }
 
     /// The colour depth in use: `TETRON_WM_COLORS` (the client says it was
@@ -3826,6 +3840,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                 || cfg.terminal_fg != self.cfg.terminal_fg;
             let changed = cfg != self.cfg;
             self.cfg = cfg;
+            crate::fullscreen::set_enabled(self.cfg.fullscreen);
             self.tray.set_tools(self.cfg.tray_tools.clone());
             crate::theme::set(&self.cfg.theme);
             crate::iconset::set(self.cfg.icon_style);

@@ -57,8 +57,13 @@ impl Caps {
 
     /// What the daemon needs to know about this display (sent on attach).
     pub fn client_caps(&self) -> ClientCaps {
-        let hw = crate::fullscreen::Hw::detect();
-        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), vt_console: on_vt(), fb_device: hw.fb, drm_device: hw.drm, fullscreen_waiter: crate::fullscreen::waiter_available(), colors_forced: colors_forced() }
+        // `fullscreen = false` skips the probes (fb0, DRM, waiter) altogether.
+        let (vt_console, hw, waiter) = if crate::config::Config::load().fullscreen {
+            (on_vt(), crate::fullscreen::Hw::detect(), crate::fullscreen::waiter_available())
+        } else {
+            (false, crate::fullscreen::Hw::default(), false)
+        };
+        ClientCaps { colors: self.depth, vt: self.vt, kitty_graphics: self.kitty_graphics, packed_cells: false, fb_console: fb_console(), vt_console, fb_device: hw.fb, drm_device: hw.drm, fullscreen_waiter: waiter, colors_forced: colors_forced() }
     }
 }
 

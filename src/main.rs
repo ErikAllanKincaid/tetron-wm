@@ -271,6 +271,10 @@ fn attach(spawn_if_missing: bool, takeover: bool) -> std::io::Result<()> {
 fn run_fullscreen(argv: &[String]) {
     let Some((program, args)) = argv.split_first() else { return };
     // kmscon: ask the waiter on the spare VT (it switches there and back).
+    if program == "@waiter" {
+        tetron_wm::fullscreen::service_run(args.first().is_some_and(|a| a == "on"));
+        return;
+    }
     if program == "@fullscreen" {
         if let Some(kind) = args.first().and_then(|k| tetron_wm::fullscreen::Kind::parse(k)) {
             tetron_wm::fullscreen::show(kind, &args[1..]);

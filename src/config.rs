@@ -66,6 +66,10 @@ pub struct Config {
     /// Open new app windows maximized (filling the work area).
     #[serde(default)]
     pub launch_maximized: bool,
+    /// Full screen video, images and PDFs (right-click items, the viewer `f` key).
+    /// Off skips the `/dev/fb0`, DRM and waiter probes and hides the items.
+    #[serde(default = "default_true")]
+    pub fullscreen: bool,
     /// Active color theme name: a built-in preset (`theme::PRESETS`) or the stem
     /// of a `<config>/themes/<name>.toml` file (which, same name, overrides a
     /// built-in).
@@ -314,6 +318,7 @@ impl Default for Config {
             tile_gap: 0,
             auto_tile: false,
             launch_maximized: false,
+            fullscreen: true,
             theme: "newmoon".into(),
             theme_dir: None,
             terminal_bg: None,

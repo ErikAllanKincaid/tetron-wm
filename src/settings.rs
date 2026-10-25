@@ -68,6 +68,9 @@ pub enum SettingsAction {
     /// Sound section was entered: re-read the output list (a shell-out, so it
     /// runs on this action, not on every frame).
     RefreshSound,
+    /// Windows section: enable and start (`true`) or disable and stop the full
+    /// screen waiter service. Runs `sudo systemctl` on the real terminal.
+    WaiterService(bool),
 }
 
 /// Terminal color presets: (name, background, foreground). `None` = follow the
@@ -150,6 +153,9 @@ pub struct Settings {
     /// Problem with the wallpaper setting (missing file, no chafa), shown under
     /// the Appearance rows. Refreshed on open and on each commit, not per frame.
     wallpaper_note: Option<String>,
+    /// The waiter service as of open / the last section entry (a shell-out, so
+    /// never per frame).
+    waiter: crate::fullscreen::Service,
 }
 
 impl Settings {
@@ -160,6 +166,7 @@ impl Settings {
             apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
             sound: None, outputs: Vec::new(), in_sidebar: false, wallpaper_note: None,
+            waiter: crate::fullscreen::service_state(),
         }.with_wallpaper_note()
     }
 
@@ -196,6 +203,11 @@ impl Settings {
         self.sound = Some(st);
     }
 
+    /// Replace the waiter service state (after a refresh or a switch).
+    pub fn set_waiter(&mut self, st: crate::fullscreen::Service) {
+        self.waiter = st;
+    }
+
     /// Replace the audio output list (after a refresh or an output switch).
     pub fn set_outputs(&mut self, outputs: Vec<crate::system::AudioOutput>) {
         self.outputs = outputs;
@@ -216,6 +228,8 @@ impl Settings {
         self.sel = 0;
         if i == SOUND {
             self.action = Some(SettingsAction::RefreshSound);
+        } else if i == 0 {
+            self.waiter = crate::fullscreen::service_state();
         }
     }
 
@@ -263,7 +277,7 @@ impl Settings {
     /// Number of interactive rows in the current section.
     fn item_count(&self) -> usize {
         match self.section {
-            0 => 8,                            // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll
+            0 => 10,                           // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll, full screen, waiter service
             1 => 9,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label, colors
             2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
             3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
@@ -451,6 +465,10 @@ impl Settings {
             (0, 5) => self.cfg.auto_tile = flip(self.cfg.auto_tile, dir),
             (0, 6) => self.cfg.launch_maximized = flip(self.cfg.launch_maximized, dir),
             (0, 7) => self.cfg.natural_scroll = flip(self.cfg.natural_scroll, dir),
+            (0, 8) => self.cfg.fullscreen = flip(self.cfg.fullscreen, dir),
+            (0, 9) if self.waiter != crate::fullscreen::Service::Missing => {
+                self.action = Some(SettingsAction::WaiterService(self.waiter != crate::fullscreen::Service::Running));
+            }
             (1, 0) => self.cfg.window_shadows = flip(self.cfg.window_shadows, dir),
             (1, 1) => {
                 let presets = crate::theme::preset_names();
@@ -835,6 +853,13 @@ impl Settings {
                 self.row(&mut buf, cx, 8, 5, "Auto-tile windows", toggle_val(self.cfg.auto_tile));
                 self.row(&mut buf, cx, 9, 6, "Launch maximized", toggle_val(self.cfg.launch_maximized));
                 self.row(&mut buf, cx, 10, 7, "Natural scroll", toggle_val(self.cfg.natural_scroll));
+                self.row(&mut buf, cx, 11, 8, "Full screen video/images", toggle_val(self.cfg.fullscreen));
+                let waiter = match self.waiter {
+                    crate::fullscreen::Service::Missing => "not installed",
+                    crate::fullscreen::Service::Stopped => "stopped (Enter starts, sudo)",
+                    crate::fullscreen::Service::Running => "running (Enter stops, sudo)",
+                };
+                self.row(&mut buf, cx, 12, 9, "Full screen helper service", waiter.into());
             }
             1 => {
                 self.row(&mut buf, cx, 3, 0, "Window shadows", toggle_val(self.cfg.window_shadows));
@@ -1602,15 +1627,36 @@ mod tests {
     }
 
     #[test]
+    fn waiter_row_asks_for_the_opposite_state_and_is_inert_when_missing() {
+        use crate::fullscreen::Service;
+        let mut s = Settings::new(Config::default());
+        s.section = 0;
+        s.sel = 9;
+        s.set_waiter(Service::Missing);
+        s.toggle();
+        assert_eq!(s.take_action(), None);
+        s.set_waiter(Service::Stopped);
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::WaiterService(true)));
+        s.set_waiter(Service::Running);
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::WaiterService(false)));
+    }
+
+    #[test]
     fn newly_surfaced_keys_edit_config() {
         use crate::iconset::IconStyle;
         let mut s = Settings::new(Config::default());
         s.section = 0;
-        assert_eq!(s.item_count(), 8);
+        assert_eq!(s.item_count(), 10);
         s.sel = 7;
         let before = s.config().natural_scroll;
         s.toggle();
         assert_eq!(s.config().natural_scroll, !before);
+        s.sel = 8;
+        assert!(s.config().fullscreen);
+        s.toggle();
+        assert!(!s.config().fullscreen);
         s.section = 1;
         assert_eq!(s.item_count(), 9);
         s.sel = 8;

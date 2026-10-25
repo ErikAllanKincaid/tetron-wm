@@ -12,8 +12,79 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
+
+static ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Apply the `fullscreen` config switch (daemon side).
+pub fn set_enabled(on: bool) {
+    ENABLED.store(on, Ordering::Relaxed);
+}
+
+/// The systemd unit the suite installer sets up for the waiter.
+pub const UNIT: &str = "tetron-wm-fullscreen.service";
+
+/// Where the waiter service stands (Settings shows and switches it).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Service {
+    /// No unit installed (`install-tetron-wm-suite.sh --fullscreen` adds it).
+    #[default]
+    Missing,
+    Stopped,
+    Running,
+}
+
+/// Read `systemctl show -p LoadState -p ActiveState` output.
+pub fn parse_service(show: &str) -> Service {
+    let get = |k: &str| show.lines().find_map(|l| l.strip_prefix(k)).unwrap_or("");
+    if get("LoadState=") != "loaded" {
+        Service::Missing
+    } else if get("ActiveState=") == "active" {
+        Service::Running
+    } else {
+        Service::Stopped
+    }
+}
+
+/// Ask systemd (a short, capped shell-out; call it on open, not per frame).
+pub fn service_state() -> Service {
+    crate::system::run_capped("systemctl", &["show", "-p", "LoadState", "-p", "ActiveState", UNIT], 3)
+        .map(|s| parse_service(&s))
+        .unwrap_or_default()
+}
+
+/// Client side: enable and start (`on`) or disable and stop the unit, with
+/// sudo on the real terminal so the password prompt works. Waits for Enter so
+/// the result can be read before the screen comes back.
+pub fn service_run(on: bool) -> i32 {
+    let verb = if on { "enable" } else { "disable" };
+    // SAFETY: getuid never fails.
+    let root = unsafe { libc::getuid() } == 0;
+    let (program, mut args) = if root { ("systemctl", vec![]) } else { ("sudo", vec!["systemctl"]) };
+    args.extend([verb, "--now", UNIT]);
+    crate::dbg_log(&format!("fullscreen waiter service: {program} {args:?}"));
+    let code = match std::process::Command::new(program).args(&args).status() {
+        Ok(s) if s.success() => {
+            println!("tetron-wm: full screen helper {}.", if on { "enabled and started" } else { "disabled and stopped" });
+            0
+        }
+        Ok(s) => {
+            eprintln!("tetron-wm: {program} {verb} failed ({s})");
+            1
+        }
+        Err(e) => {
+            eprintln!("tetron-wm: could not run {program}: {e}");
+            1
+        }
+    };
+    crate::dbg_log(&format!("fullscreen waiter service: {verb} ended with {code}"));
+    print!("Press Enter to return to tetron-wm. ");
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stdin().read_line(&mut String::new());
+    code
+}
 
 /// The default spare VT (`tetron-wm fullscreen-waiter --vt N` overrides it).
 pub const DEFAULT_VT: u32 = 9;
@@ -230,7 +301,7 @@ pub fn possible(kind: Kind, have: &dyn Fn(&str) -> bool, hw: Hw) -> bool {
 /// Whether the attached client can show `kind` full screen: it is on a plain
 /// console (direct) or a waiter answers (kmscon and others), and a route exists.
 pub fn offered(kind: Kind, caps: &crate::display::ClientCaps, have: &dyn Fn(&str) -> bool) -> bool {
-    (caps.vt_console || caps.fullscreen_waiter) && possible(kind, have, Hw { fb: caps.fb_device, drm: caps.drm_device })
+    ENABLED.load(Ordering::Relaxed) && (caps.vt_console || caps.fullscreen_waiter) && possible(kind, have, Hw { fb: caps.fb_device, drm: caps.drm_device })
 }
 
 /// Where the mpv key file for image browsing lives.
@@ -480,6 +551,14 @@ pub fn play(kind: Kind, files: &[String]) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn service_state_follows_systemctl_show() {
+        assert_eq!(parse_service("LoadState=not-found\nActiveState=inactive\n"), Service::Missing);
+        assert_eq!(parse_service(""), Service::Missing);
+        assert_eq!(parse_service("LoadState=loaded\nActiveState=inactive\n"), Service::Stopped);
+        assert_eq!(parse_service("LoadState=loaded\nActiveState=active\n"), Service::Running);
+    }
+
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
