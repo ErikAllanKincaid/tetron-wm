@@ -3837,7 +3837,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             let wallpaper_changed = cfg.wallpaper_enabled != self.cfg.wallpaper_enabled
                 || cfg.wallpaper != self.cfg.wallpaper
                 || (crate::wallpaper::is_default(cfg.wallpaper.as_deref())
-                    && crate::wallpaper::theme_image(&cfg.theme) != crate::wallpaper::theme_image(&self.cfg.theme));
+                    && crate::wallpaper::theme_key(&cfg.theme) != crate::wallpaper::theme_key(&self.cfg.theme));
             let colors_changed = cfg.theme != self.cfg.theme
                 || cfg.terminal_bg != self.cfg.terminal_bg
                 || cfg.terminal_fg != self.cfg.terminal_fg;
@@ -5780,8 +5780,12 @@ or a remote-side error — its authorized_keys was left untouched)",
         if env.is_none() && !cfg.wallpaper_enabled {
             return None;
         }
-        let spec = env.as_deref().or(cfg.wallpaper.as_deref());
-        if let crate::wallpaper::Source::Solid(c) = crate::wallpaper::draw_for(spec, crate::display::depth())? {
+        // `default` shows the theme's own picture (a file next to its theme
+        // file, else the one bundled with it); anything else is the user's pick.
+        let themed = env.is_none() && crate::wallpaper::is_default(cfg.wallpaper.as_deref());
+        let theme_spec = if themed { crate::theme::wallpaper_for(&cfg.theme) } else { None };
+        let spec = theme_spec.as_deref().or(env.as_deref()).or(cfg.wallpaper.as_deref());
+        if let crate::wallpaper::Source::Solid(c) = crate::wallpaper::draw_for(spec, themed, crate::display::depth())? {
             return Some(crate::wallpaper::solid(c, w, h));
         }
         // `default`, empty or unset draw the built-in image, and so does a

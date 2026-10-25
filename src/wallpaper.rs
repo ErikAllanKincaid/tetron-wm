@@ -21,6 +21,13 @@ const EMBEDDED: &[(&str, &[u8])] = &[
 /// The picture for a theme with none of its own, and the plain default.
 const FALLBACK_IMAGE: &str = "midnight";
 
+/// What decides the picture `default` shows for `theme`: its file's picture, or
+/// the bundled one. Equal keys mean the same picture, so a theme change that
+/// keeps the key needs no redraw.
+pub fn theme_key(theme: &str) -> (Option<String>, &'static str) {
+    (crate::theme::wallpaper_for(theme), theme_image(theme))
+}
+
 /// Which bundled picture `default` shows for `theme` (a theme name, any case):
 /// its own when it has one, else midnight's.
 pub fn theme_image(theme: &str) -> &'static str {
@@ -77,14 +84,17 @@ pub fn source(spec: Option<&str>) -> Source {
 }
 
 /// What to put behind the icons for `spec` at colour `depth`, before any file
-/// is read. Below 256 colours the built-in image turns to noise, so `default`
+/// is read. Below 256 colours a theme's picture turns to noise, so `default`
 /// is the theme's own desktop colour there; a file the user chose is drawn at
 /// any depth.
-pub fn draw_for(spec: Option<&str>, depth: crate::display::ColorDepth) -> Option<Source> {
+///
+/// `themed` is true when the value is not the user's own pick: the config says
+/// `default`, so the theme's picture (or the built-in one) is shown.
+pub fn draw_for(spec: Option<&str>, themed: bool, depth: crate::display::ColorDepth) -> Option<Source> {
     match source(spec) {
         Source::Plain => None,
         s @ Source::Solid(_) => Some(s),
-        Source::Image if is_default(spec) && depth < crate::display::ColorDepth::Ansi256 => None,
+        Source::Image if (themed || is_default(spec)) && depth < crate::display::ColorDepth::Ansi256 => None,
         Source::Image => Some(Source::Image),
     }
 }
@@ -225,11 +235,12 @@ pub fn ensure_default(theme: &str) -> Option<PathBuf> {
 ///
 /// - An absolute path (`/…`) is used as-is.
 /// - A `~`-path is expanded against the home directory.
-/// - A relative path is resolved against the config dir
-///   (`~/.config/tetron-wm/`), trying a `wallpapers/` subdir first, then the
-///   config-dir root. It is **never** resolved against the process cwd (the
-///   daemon's cwd is unpredictable — a service, a reload, launched from
-///   anywhere), so a bare filename always means "next to your config".
+/// - A relative path is looked up in the themes folder
+///   (`~/.config/tetron-wm/themes/`), then the config dir root, then the old
+///   `wallpapers/` folder (kept so existing configs keep working). It is
+///   **never** resolved against the process cwd (the daemon's cwd is
+///   unpredictable — a service, a reload, launched from anywhere), so a bare
+///   filename always means "next to your config".
 ///
 /// Returns the first candidate that exists, or the best-effort candidate when
 /// none exist (so the caller's own "missing file" handling / log still fires).
@@ -245,16 +256,21 @@ pub fn resolve_path(path: &str) -> PathBuf {
     if p.is_absolute() {
         return p;
     }
+    let themes = crate::theme::themes_dir().map(|d| d.join(path));
+    if let Some(t) = themes.as_ref().filter(|t| t.exists()) {
+        return t.clone();
+    }
     if let Some(cfg) = crate::config::config_dir() {
-        let sub = cfg.join("wallpapers").join(path);
-        if sub.exists() {
-            return sub;
-        }
         let root = cfg.join(path);
         if root.exists() {
             return root;
         }
-        return sub; // best-effort (lets the caller log the expected location)
+        let legacy = cfg.join("wallpapers").join(path);
+        if legacy.exists() {
+            return legacy;
+        }
+        // best-effort (lets the caller log the expected location)
+        return themes.unwrap_or(root);
     }
     p
 }
@@ -542,15 +558,18 @@ mod tests {
     fn default_is_the_theme_colour_below_256_colours_but_a_chosen_file_is_drawn() {
         use crate::display::ColorDepth::*;
         for d in [Mono, Ansi16] {
-            assert_eq!(draw_for(Some("default"), d), None, "{d:?}");
-            assert_eq!(draw_for(None, d), None, "{d:?}");
-            assert_eq!(draw_for(Some("forest.jpg"), d), Some(Source::Image), "{d:?}");
-            assert_eq!(draw_for(Some("black"), d), Some(Source::Solid(Rgba::rgb(0, 0, 0))), "{d:?}");
+            assert_eq!(draw_for(Some("default"), false, d), None, "{d:?}");
+            assert_eq!(draw_for(None, false, d), None, "{d:?}");
+            assert_eq!(draw_for(Some("forest.jpg"), false, d), Some(Source::Image), "{d:?}");
+            assert_eq!(draw_for(Some("black"), false, d), Some(Source::Solid(Rgba::rgb(0, 0, 0))), "{d:?}");
         }
         for d in [Ansi256, TrueColor] {
-            assert_eq!(draw_for(Some("default"), d), Some(Source::Image), "{d:?}");
+            assert_eq!(draw_for(Some("default"), false, d), Some(Source::Image), "{d:?}");
         }
-        assert_eq!(draw_for(Some("none"), TrueColor), None);
+        assert_eq!(draw_for(Some("none"), false, TrueColor), None);
+        // A picture a theme brings is the theme's default too: flat below 256 colours.
+        assert_eq!(draw_for(Some("/t/dawn.jpg"), true, Ansi16), None);
+        assert_eq!(draw_for(Some("/t/dawn.jpg"), true, Ansi256), Some(Source::Image));
     }
 
     #[test]

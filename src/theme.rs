@@ -444,6 +444,9 @@ fn mono(t: Theme) -> Theme {
 
 /// Replace the current desktop theme (applied on the next rendered frame).
 pub fn set(name: &str) {
+    if !known(name) {
+        crate::dbg_log(&format!("theme: '{name}' not found, using midnight"));
+    }
     *slot().write().unwrap() = Theme::named(name);
 }
 
@@ -517,6 +520,11 @@ struct ThemeFile {
     active_bg: Option<String>,
     /// Optional 16-colour choices: `[vt16]` with `role = 0..15`.
     vt16: Option<Vt16>,
+    /// The theme's picture: a file next to the theme file, an absolute or `~`
+    /// path, `black`, `#rrggbb`, or `none`. Unset pairs with `<stem>.jpg|jpeg|
+    /// png|webp` in the same folder. Only used while the `wallpaper` config key
+    /// is `default`.
+    wallpaper: Option<String>,
 }
 
 /// Apply one optional color string over a default, logging (and keeping the
@@ -668,7 +676,7 @@ pub fn validate(t: &Theme) -> Vec<String> {
 
 /// Resolve the theme directory: `$TETRON_WM_THEMES_DIR`, else the `theme_dir`
 /// config key (relative to the config dir), else `<config>/themes`.
-fn themes_dir() -> Option<PathBuf> {
+pub(crate) fn themes_dir() -> Option<PathBuf> {
     if let Some(d) = std::env::var_os("TETRON_WM_THEMES_DIR") {
         return Some(PathBuf::from(d));
     }
@@ -717,6 +725,58 @@ fn load_dir(dir: &Path) -> Vec<(String, Theme)> {
 fn registry() -> &'static Vec<(String, Theme)> {
     static REG: OnceLock<Vec<(String, Theme)>> = OnceLock::new();
     REG.get_or_init(|| themes_dir().as_deref().map(load_dir).unwrap_or_default())
+}
+
+/// Picture extensions a theme file pairs with, best first.
+const PAIR_EXTS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
+
+/// The wallpaper value each file theme brings, as `(lowercase name, value)`:
+/// its `wallpaper` key (a relative path is looked up next to the theme file),
+/// else the picture sharing its file stem (`dawn.toml` + `dawn.jpg`). Themes
+/// with neither are left out. Pure (no globals), like [`load_dir`].
+fn load_wallpapers(dir: &Path) -> Vec<(String, String)> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let files: Vec<String> = rd.flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+    let mut out = Vec::new();
+    for file in &files {
+        let Some(stem) = file.strip_suffix(".toml") else { continue };
+        let Ok(text) = std::fs::read_to_string(dir.join(file)) else { continue };
+        let Ok(tf) = toml::from_str::<ThemeFile>(&text) else { continue };
+        let name = tf.name.clone().unwrap_or_else(|| stem.to_string()).to_lowercase();
+        let value = match tf.wallpaper.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            Some(v) if !v.starts_with(['/', '~']) && dir.join(v).exists() => Some(dir.join(v).to_string_lossy().into_owned()),
+            Some(v) => Some(v.to_string()),
+            None => PAIR_EXTS.iter().find_map(|ext| {
+                let want = format!("{}.{ext}", stem.to_lowercase());
+                files.iter().find(|f| f.to_lowercase() == want).map(|f| dir.join(f).to_string_lossy().into_owned())
+            }),
+        };
+        if let Some(v) = value {
+            out.push((name, v));
+        }
+    }
+    out
+}
+
+fn wallpaper_registry() -> &'static Vec<(String, String)> {
+    static REG: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    REG.get_or_init(|| themes_dir().as_deref().map(load_wallpapers).unwrap_or_default())
+}
+
+/// The wallpaper value the theme `name` brings from its file, if any. Built-in
+/// themes bring their embedded picture instead (see `wallpaper::theme_image`).
+pub fn wallpaper_for(name: &str) -> Option<String> {
+    let lname = name.trim().to_lowercase();
+    wallpaper_registry().iter().find(|(n, _)| *n == lname).map(|(_, v)| v.clone())
+}
+
+/// Whether `name` is a theme that exists: a built-in, the old `light`, or a
+/// theme file. An unknown name renders as midnight.
+pub fn known(name: &str) -> bool {
+    let lname = name.trim().to_lowercase();
+    lname == "light"
+        || PRESETS.iter().any(|p| *p == lname)
+        || registry().iter().any(|(n, _)| n.to_lowercase() == lname)
 }
 
 /// Write a built-in preset out as an editable theme file in the themes dir,
@@ -801,6 +861,41 @@ mod tests {
         // Use builtin() (not named()) to stay hermetic — no registry / home-dir IO.
         assert_eq!(Theme::builtin("light").accent, Theme::pastoral().accent);
         assert_eq!(Theme::builtin("pastoral").accent, Theme::pastoral().accent);
+    }
+
+    #[test]
+    fn a_theme_brings_the_picture_with_its_stem_or_the_one_it_names() {
+        let dir = std::env::temp_dir().join(format!("tetron-theme-pics-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = |f: &str, t: &str| std::fs::write(dir.join(f), t).unwrap();
+        w("dawn.toml", "name = \"Dawn\"\n");
+        w("dawn.PNG", "x"); // pairs by file stem, any case
+        w("dawn.jpg", "x"); // jpg beats png
+        w("sea.toml", "wallpaper = \"waves.webp\"\n");
+        w("waves.webp", "x"); // named, next to the file
+        w("flat.toml", "wallpaper = \"#102030\"\n");
+        w("quiet.toml", "wallpaper = \"none\"\n");
+        w("quiet.jpg", "x"); // an explicit key beats pairing
+        w("bare.toml", "accent = \"#010203\"\n"); // no picture at all
+        w("abs.toml", "wallpaper = \"/usr/share/x.png\"\n");
+        let got: std::collections::BTreeMap<_, _> = load_wallpapers(&dir).into_iter().collect();
+        let d = |f: &str| dir.join(f).to_string_lossy().into_owned();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(got.get("dawn"), Some(&d("dawn.jpg")));
+        assert_eq!(got.get("sea"), Some(&d("waves.webp")));
+        assert_eq!(got.get("flat").map(String::as_str), Some("#102030"));
+        assert_eq!(got.get("quiet").map(String::as_str), Some("none"));
+        assert_eq!(got.get("bare"), None);
+        assert_eq!(got.get("abs").map(String::as_str), Some("/usr/share/x.png"));
+    }
+
+    #[test]
+    fn known_covers_builtins_the_old_light_name_and_nothing_else() {
+        for n in PRESETS {
+            assert!(known(n), "{n}");
+        }
+        assert!(known("Light") && known(" gruvbox "));
+        assert!(!known("no-such-theme"));
     }
 
     #[test]

@@ -886,11 +886,12 @@ impl Settings {
                 self.row(&mut buf, cx, 11, 8, "Colors", format!("\u{25C2} {} \u{25B8}", color_choice_name(&self.cfg.colors)));
                 // A wallpaper problem goes on the spacer line under the rows,
                 // in the accent colour so it is not mistaken for a hint.
-                if let Some(n) = &self.wallpaper_note {
+                let theme_note = (!crate::theme::known(&self.cfg.theme)).then(|| format!("Theme '{}' not found, using midnight.", self.cfg.theme));
+                if let Some(n) = self.wallpaper_note.as_ref().or(theme_note.as_ref()) {
                     buf.write_str(cx, 12, n, pal_accent(), pal_bg());
                 }
-                buf.write_str(cx, 13, "Wallpaper file: default = built-in, a name in", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "~/.config/tetron-wm/wallpapers/, or a full path.", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "Wallpaper: default (follows the theme), black, #rrggbb,", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "none, a file in ~/.config/tetron-wm/themes/, or a full path.", pal_dim(), pal_bg());
                 buf.write_str(cx, 15, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
                 buf.write_str(cx, 16, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
                 buf.write_str(cx, 17, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
