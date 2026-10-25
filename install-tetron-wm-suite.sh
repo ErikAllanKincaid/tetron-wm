@@ -209,7 +209,7 @@ install_themes() {
       rm -f "$dir/$f.part"; warn "could not fetch themes/$f"
     fi
   done
-  log "themes: $got downloaded, $kept already there. Pick one in Settings > Appearance (a new daemon start loads new files)."
+  log "themes: $got downloaded, $kept already there. Pick one in Settings > Appearance (a running tetron-wm finds new files within a second)."
 }
 
 # kmscon supports truecolor but does not set COLORTERM, so tetron-wm would

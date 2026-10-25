@@ -169,7 +169,7 @@ pub const PRESETS: &[&str] = &["midnight", "gruvbox", "pastoral", "windows"];
 /// palette but keeps its slot, so it is not listed twice).
 pub fn preset_names() -> Vec<String> {
     let mut names: Vec<String> = PRESETS.iter().map(|s| s.to_string()).collect();
-    for (n, _) in registry() {
+    for (n, _) in registry().iter() {
         if !names.iter().any(|x| x.eq_ignore_ascii_case(n)) {
             names.push(n.clone());
         }
@@ -653,11 +653,55 @@ fn load_dir(dir: &Path) -> Vec<(String, Theme)> {
     out
 }
 
-/// The process-wide file-theme registry, scanned once on first use. A new file
-/// takes effect on the next daemon/apphost start (`tetron-wm kill` + relaunch).
-fn registry() -> &'static Vec<(String, Theme)> {
-    static REG: OnceLock<Vec<(String, Theme)>> = OnceLock::new();
-    REG.get_or_init(|| themes_dir().as_deref().map(load_dir).unwrap_or_default())
+/// What the themes folder held when last read.
+struct Scanned {
+    /// Newest modification time of the folder and its files, to spot a change.
+    stamp: Option<std::time::SystemTime>,
+    /// When the stamp was last compared (at most once a second).
+    checked: std::time::Instant,
+    themes: std::sync::Arc<Vec<(String, Theme)>>,
+    pictures: std::sync::Arc<Vec<(String, String)>>,
+}
+
+type Themes = std::sync::Arc<Vec<(String, Theme)>>;
+
+/// Newest modification time of `dir` and the files in it.
+fn dir_stamp(dir: &Path) -> Option<std::time::SystemTime> {
+    let newest = std::fs::metadata(dir).and_then(|m| m.modified()).ok()?;
+    let files = std::fs::read_dir(dir).ok()?.flatten().filter_map(|e| e.metadata().and_then(|m| m.modified()).ok());
+    Some(files.fold(newest, |a, b| a.max(b)))
+}
+
+/// The file themes and the pictures they bring, reading the themes folder again
+/// when something in it changed (checked at most once a second). So a theme or
+/// a picture dropped in while the daemon runs is found without a restart; the
+/// theme in use keeps its colours until it is selected again.
+fn scanned() -> (Themes, std::sync::Arc<Vec<(String, String)>>) {
+    static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    static SCAN: std::sync::Mutex<Option<Scanned>> = std::sync::Mutex::new(None);
+    let dir = DIR.get_or_init(themes_dir);
+    let mut guard = SCAN.lock().unwrap_or_else(|e| e.into_inner());
+    let now = std::time::Instant::now();
+    let due = guard.as_ref().is_none_or(|s| now.duration_since(s.checked) >= std::time::Duration::from_secs(1));
+    if due {
+        let stamp = dir.as_deref().and_then(dir_stamp);
+        let changed = guard.as_ref().is_none_or(|s| s.stamp != stamp);
+        match (changed, guard.as_mut()) {
+            (false, Some(s)) => s.checked = now,
+            _ => {
+                let themes = dir.as_deref().map(load_dir).unwrap_or_default();
+                let pictures = dir.as_deref().map(load_wallpapers).unwrap_or_default();
+                *guard = Some(Scanned { stamp, checked: now, themes: themes.into(), pictures: pictures.into() });
+            }
+        }
+    }
+    let s = guard.as_ref().expect("scanned above");
+    (s.themes.clone(), s.pictures.clone())
+}
+
+/// The file themes, as `(name, palette)`.
+fn registry() -> Themes {
+    scanned().0
 }
 
 /// Picture extensions a theme file pairs with, best first.
@@ -691,16 +735,11 @@ fn load_wallpapers(dir: &Path) -> Vec<(String, String)> {
     out
 }
 
-fn wallpaper_registry() -> &'static Vec<(String, String)> {
-    static REG: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    REG.get_or_init(|| themes_dir().as_deref().map(load_wallpapers).unwrap_or_default())
-}
-
 /// The wallpaper value the theme `name` brings from its file, if any. Built-in
 /// themes bring their embedded picture instead (see `wallpaper::theme_image`).
 pub fn wallpaper_for(name: &str) -> Option<String> {
     let lname = name.trim().to_lowercase();
-    wallpaper_registry().iter().find(|(n, _)| *n == lname).map(|(_, v)| v.clone())
+    scanned().1.iter().find(|(n, _)| *n == lname).map(|(_, v)| v.clone())
 }
 
 /// Whether `name` is a theme that exists: a built-in, the old `light`, or a
@@ -838,6 +877,36 @@ mod tests {
             assert!(!PRESETS.contains(&n), "{n}");
         }
         assert_eq!(PRESETS, ["midnight", "gruvbox", "pastoral", "windows"]);
+    }
+
+    /// The files in the repo `themes/` folder, as the suite installer lays them
+    /// out, bring the pictures they promise.
+    #[test]
+    fn the_shipped_theme_folder_pairs_pictures_with_themes() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
+        let got: std::collections::BTreeMap<_, _> = load_wallpapers(&dir).into_iter().collect();
+        let pic = |f: &str| dir.join(f).to_string_lossy().into_owned();
+        for n in ["nord", "dracula", "dawn", "midnight", "gruvbox", "pastoral", "windows"] {
+            assert_eq!(got.get(n), Some(&pic(&format!("{n}.jpg"))), "{n}");
+        }
+        assert_eq!(got.get("newmoon").map(String::as_str), Some("black"));
+        assert_eq!(got.get("contrast").map(String::as_str), Some("none"));
+    }
+
+    #[test]
+    fn a_picture_added_later_changes_the_folder_stamp() {
+        let dir = std::env::temp_dir().join(format!("tetron-theme-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("dawn.toml"), "name = \"dawn\"\n").unwrap();
+        let before = dir_stamp(&dir).unwrap();
+        assert!(load_wallpapers(&dir).is_empty());
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dir.join("dawn.jpg"), "x").unwrap();
+        let after = dir_stamp(&dir).unwrap();
+        let found = load_wallpapers(&dir);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(after > before, "adding a file moves the stamp");
+        assert_eq!(found.len(), 1, "and the picture is paired");
     }
 
     #[test]
