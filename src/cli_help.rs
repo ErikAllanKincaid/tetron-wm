@@ -13,13 +13,13 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("tile_gap", "0", "cells of gutter between tiled windows"),
     ("auto_tile", "false", "auto-arrange all windows into the grid"),
     ("launch_maximized", "false", "open new app windows maximized"),
-    ("theme", "midnight", "built-in preset or themes/<name>.toml stem"),
+    ("theme", "midnight", "built-in (midnight, gruvbox, pastoral, windows) or themes/<name>.toml stem (nord, dracula, dawn, newmoon, contrast: suite installer --themes)"),
     ("theme_dir", "<config>/themes", "directory of *.toml theme files"),
     ("terminal_bg", "theme", "terminal default background (#rrggbb or name)"),
     ("terminal_fg", "theme", "terminal default foreground (#rrggbb or name)"),
     ("scrollback", "10000", "scrollback lines per app window (0 to 100000); applies to new windows"),
     ("truecolor", "auto", "force 24-bit color on/off"),
-    ("wallpaper", "default", "wallpaper image: default (built-in), a file in wallpapers/, or a full path (needs chafa)"),
+    ("wallpaper", "default", "desktop picture: default (the theme's own), black, #rrggbb, none (the theme desktop colour), a file in themes/, or a full path (pictures need chafa)"),
     ("wallpaper_enabled", "true", "master wallpaper toggle"),
     ("colors", "auto", "color depth: auto | mono (no color) | 16 | 256 | truecolor (Settings > Appearance; TETRON_WM_COLORS wins)"),
     ("cast_device", "", "Chromecast for right-click Cast to Chromecast: a name or IP for catt -d; empty = catt's default device"),
@@ -115,9 +115,12 @@ COMMANDS:\n\
 \x20 screensaver [on|off|toggle|list] [effect]   cover the screen (default on); any key or mouse\n\
 \x20                       in the attached client wakes it. Effects: black, clock (see list)\n\
 \x20 theme <name>          switch theme\n\
-\x20 theme --list          list built-in and file themes\n\
+\x20 theme --list          list built-in and file themes (the suite installer downloads\n\
+\x20                       more into <config dir>/themes/: nord, dracula, dawn, newmoon, contrast)\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
 \x20                       to edit (e.g. theme --dump gruvbox, then set theme = \"gruvbox\")\n\
+\x20                       A theme file X.toml shows the picture X.jpg (or png, webp) next to it,\n\
+\x20                       or the one its wallpaper key names, while wallpaper = \"default\".\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
 \x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
 \x20 service [install|uninstall|status]  per-user apphost service (default session only)\n\

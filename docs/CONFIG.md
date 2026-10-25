@@ -28,7 +28,7 @@ Each row is the TOML key, its type, the default, and what it does.
 | `terminal_fg`                | string                            | unset (follow theme)                  | Default foreground inside hosted app windows: `#rrggbb` or a named color. Unset follows the theme's `text`. Same live apply and Settings section as `terminal_bg`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `scrollback`                 | int                               | `10000`                               | Scrollback lines kept per app window, 0 to 100000. The main memory cost of a busy window; lower it on small machines. Read when a window opens, so a change applies to new windows without restarting the app server. |
 | `truecolor`                  | bool                              | auto-detect                           | Force 24-bit color on/off. Unset = detect from known truecolor terminals + `COLORTERM`. Set `true` when the terminal supports truecolor but omits `COLORTERM` (common with `TERM=xterm-256color`), else subtle themes quantize to the 256-color cube (nord → teal/navy). `TETRON_WM_TRUECOLOR=1/0` env overrides this.                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `wallpaper`                  | string                            | `"default"`                           | Desktop wallpaper image, rendered to colored cells via `chafa` (so it works on any terminal incl. a kmscon console) and composited behind the windows. `"default"` (or empty) is the built-in image (70 KB, stamped to `~/.local/share/tetron-wm/wallpaper.jpg`). Otherwise an absolute path, a `~`-path, or a path relative to the config dir (a `wallpapers/` subdir is checked first, then the config root), so a bare filename means "drop it in `~/.config/tetron-wm/wallpapers/`". Surrounding quotes, `file://` URLs and a leading `$HOME` are accepted, so a pasted path works. A missing file shows the built-in image (logged, and noted under the row in Settings → Appearance); a missing `chafa` → solid desktop. For a solid desktop on purpose use `wallpaper_enabled = false`. In Settings, clearing the field writes `default` back. `TETRON_WM_WALLPAPER=<path>` env overrides this. |
+| `wallpaper`                  | string                            | `"default"`                           | Desktop wallpaper, a picture drawn as colored cells via `chafa` (so it works on any terminal incl. a kmscon console) and composited behind the windows. `"default"` (or empty) is the active theme's own picture: the theme file's `wallpaper` key, else the image next to it with the same name (`dawn.toml` + `dawn.jpg`), else the one built into the binary (midnight, gruvbox, pastoral and windows each have one; any other theme shows midnight's). `"black"` and a `"#rrggbb"` colour make a flat desktop with no `chafa`; `"none"` is the theme's own `desktop_bg`. Anything else is your own pick and stays when you change theme: an absolute path, a `~`-path, or a name looked up in `~/.config/tetron-wm/themes/`, then the config root, then the old `wallpapers/` folder. Surrounding quotes, `file://` URLs and a leading `$HOME` are accepted, so a pasted path works. Below 256 colors `default` is the theme's `desktop_bg` (a picture turns to noise there), while a file you chose is still drawn. A missing file shows the theme's picture (logged, and noted under the row in Settings → Appearance); a missing `chafa` → solid desktop. For a plain desktop on purpose use `wallpaper = "none"` or `wallpaper_enabled = false`. In Settings, clearing the field writes `default` back. `TETRON_WM_WALLPAPER=<value>` env overrides this. |
 | `wallpaper_enabled`          | bool                              | `true`                                | Master on/off for the wallpaper. When `false`, the desktop is solid even if `wallpaper` names an image. (Settings → Appearance toggles this.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `colors`                     | string                            | `"auto"`                              | Color depth: `"auto"` uses what the terminal reports (16 on the bare Linux console, black and white with `NO_COLOR` or a vt100-class `TERM`), or force `"mono"` (black and white), `"16"`, `"256"` or `"truecolor"`. Settings → Appearance → Colors switches it live, no reattach. `TETRON_WM_COLORS` set for a client wins over this. |
 | `cast_device`                | string                            | `""`                                  | The Chromecast for the right-click **Cast to Chromecast** on video, audio and image files: a device name or IP, as `catt -d` takes it. Empty uses catt's own default device (`catt set_default`). Needs [catt](https://github.com/skorokithakis/catt) installed; the item is hidden without it. The cast runs in a window (catt serves the file from this machine until playback ends), so the Chromecast must be on the same LAN, and closing the window stops it. |
@@ -191,8 +191,12 @@ tetron-wm
 tetron-wm theme --list
 ## Switch the theme.
 tetron-wm theme nord
-## Write a built-in theme to ~/.config/tetron-wm/themes/nord.toml to edit, then keep theme = "nord".
-tetron-wm theme --dump nord
+## Write a built-in theme to ~/.config/tetron-wm/themes/gruvbox.toml to edit, then keep theme = "gruvbox".
+tetron-wm theme --dump gruvbox
+## More themes: nord, dracula, dawn, newmoon and contrast (white on black, no picture)
+## come with the suite installer (--themes, on by default) and land in themes/.
+## A theme X.toml shows X.jpg (or png, webp) from the same folder while
+## wallpaper = "default", or the file its own `wallpaper = "..."` key names.
 ## Light desktop, dark terminals.
 theme = "pastoral"
 terminal_bg = "#000000"
@@ -217,9 +221,15 @@ TETRON_WM_COLORS=mono tetron-wm
 
 ```
 ## Needs chafa. Drop an image in, then reference it by name.
-mkdir -p ~/.config/tetron-wm/wallpapers && cp photo.jpg ~/.config/tetron-wm/wallpapers/
+mkdir -p ~/.config/tetron-wm/themes && cp photo.jpg ~/.config/tetron-wm/themes/
 wallpaper = "photo.jpg"
-## Solid desktop instead.
+## Follow the theme again (each theme brings its own picture).
+wallpaper = "default"
+## A flat desktop: black, any colour, or the theme's own desktop colour.
+wallpaper = "black"
+wallpaper = "#004040"
+wallpaper = "none"
+## No wallpaper at all.
 wallpaper_enabled = false
 ## Icon labels straight on the image, no backdrop.
 desktop_scrim = "none"

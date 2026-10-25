@@ -111,8 +111,8 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub truecolor: Option<bool>,
     /// Desktop wallpaper image. An absolute path, a `~`-path, or a path relative
-    /// to the config dir (`~/.config/tetron-wm/`, checking a `wallpapers/` subdir
-    /// first). Rendered to colored cells via `chafa` (so it works on any terminal,
+    /// to the config dir (`~/.config/tetron-wm/`, checking its `themes/` subdir
+    /// first, then the root, then the old `wallpapers/` subdir). Rendered to colored cells via `chafa` (so it works on any terminal,
     /// including a kmscon console) and composited behind the windows. Quotes, a
     /// `file://` URL and a leading `$HOME` are accepted (see
     /// `wallpaper::clean_spec`). Needs `chafa` installed; if it is missing or
