@@ -106,6 +106,7 @@ tetron-wm reload
 
 - [config.example.toml](config.example.toml) is a ready-to-copy file with every option at its default and a note on each.
 - [docs/CONFIG.md](docs/CONFIG.md) is the full reference plus copy-paste recipes: tiling grids, themes, wallpaper, launcher entries, clipboard, servers that must stay up, and more.
+- [docs/tetron-wm_theming_guide.html](docs/tetron-wm_theming_guide.html) teaches you to make your own theme: every color key shown on a picture of the desktop, screenshots of the built-in themes, and a step-by-step walkthrough (open the file in a browser).
 - Many options are also in the app under **Settings** (`Ctrl+Space`, then `,`).
 
 Common first changes:
