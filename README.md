@@ -5,7 +5,7 @@
 **A TUI desktop. A graphical tmux.** Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have.
 
 <p align="center">
-  <img src="assets/tetron-wm.png" alt="tetron-wm running in a terminal: floating windows, a top taskbar, a status tray and a mouse cursor" width="900">
+  <img src="docs/images/tetron-wm.png" alt="tetron-wm running in a terminal: floating windows, a top taskbar, a status tray and a mouse cursor" width="900">
 </p>
 
 Your apps run in the background, so you can close the terminal, drop an ssh connection or update tetron-wm, and everything is still there when you come back.
