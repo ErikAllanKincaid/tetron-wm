@@ -1,6 +1,6 @@
 # tetron-wm
 
-**A desktop for your terminal.** Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have. Think of it as a graphical tmux.
+**A TUI desktop. A graphical tmux.** Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have.
 
 <p align="center">
   <img src="assets/tetron-wm.png" alt="tetron-wm running in a terminal: floating windows, a top taskbar, a status tray and a mouse cursor" width="900">
