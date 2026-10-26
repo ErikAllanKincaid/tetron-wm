@@ -951,8 +951,6 @@ mod tests {
             assert!(warns.is_empty(), "{stem}: {warns:?}");
             names.push(stem);
         }
-        // The pack (not built in) carries no [vt16] table: its 16-colour look
-        // is derived, exactly as the built-ins of the same name were.
         let installer = std::fs::read_to_string(root.join("install-tetron-wm-suite.sh")).unwrap();
         let pack_line = installer.lines().find(|l| l.starts_with("THEME_PACK=")).expect("THEME_PACK in the installer");
         let pack: Vec<&str> = pack_line.trim_start_matches("THEME_PACK=").trim_matches('"').split_whitespace().collect();
@@ -962,8 +960,6 @@ mod tests {
         }
         for name in ["nord", "dracula", "dawn", "newmoon", "contrast"] {
             assert!(pack.contains(&format!("{name}.toml").as_str()), "{name} is in the installer pack");
-            let doc: toml::Table = std::fs::read_to_string(dir.join(format!("{name}.toml"))).unwrap().parse().unwrap();
-            assert!(!doc.contains_key("vt16"), "{name}: no [vt16] in the pack");
         }
         // A picture promised by a pairing or a `wallpaper` file name exists.
         for name in ["nord", "dracula", "dawn"] {

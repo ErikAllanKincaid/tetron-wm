@@ -22,5 +22,9 @@ menubar_bg  = "#000000"
 dock_bg     = "#000000"
 text        = "#ffffff"
 dim         = "#b0b0b0"
-accent      = "#ffff55"
-active_bg   = "#4d4d4d"   # selection and panel buttons: grey, white text
+accent      = "#ffffff"
+active_bg   = "#000000"   # selection and panel buttons: grey, white text
+
+# 16-colour console: the selection is light grey (a VT has no dark grey background).
+[vt16]
+active_bg = 7
