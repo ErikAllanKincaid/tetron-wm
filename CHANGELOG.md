@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- The macOS release builds failed to compile (`libc::ucred` and `SO_PEERCRED` exist only on Linux), so 0.14.17 shipped without its two macOS binaries. The full screen helper now reads the other end of its socket with `getpeereid` on macOS. Linux is unchanged.
+
 ## [0.14.17] — 2026-10-25
 
 ### Changed

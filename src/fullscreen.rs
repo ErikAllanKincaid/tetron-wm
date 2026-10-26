@@ -384,6 +384,7 @@ fn wait_active(n: u32, secs: u64) -> bool {
 }
 
 /// The uid on the other end of a unix socket (`SO_PEERCRED`).
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn peer_uid(s: &UnixStream) -> Option<u32> {
     use std::os::fd::AsRawFd;
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
@@ -391,6 +392,16 @@ fn peer_uid(s: &UnixStream) -> Option<u32> {
     // SAFETY: `cred` and `len` are valid for SO_PEERCRED, which fills a ucred.
     let rc = unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
     (rc == 0).then_some(cred.uid)
+}
+
+/// The uid on the other end of a unix socket (`getpeereid`; macOS has no `SO_PEERCRED`).
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn peer_uid(s: &UnixStream) -> Option<u32> {
+    use std::os::fd::AsRawFd;
+    let (mut uid, mut gid): (libc::uid_t, libc::gid_t) = (0, 0);
+    // SAFETY: `uid` and `gid` are valid out-pointers for getpeereid.
+    let rc = unsafe { libc::getpeereid(s.as_raw_fd(), &mut uid, &mut gid) };
+    (rc == 0).then_some(uid)
 }
 
 /// Waiter: serve play requests on this VT until killed. One at a time.
