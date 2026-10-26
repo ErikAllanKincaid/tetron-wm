@@ -3692,7 +3692,13 @@ or a remote-side error — its authorized_keys was left untouched)",
                 crate::theme::set(&name);
                 // A client sends this on every attach; only a real change is saved.
                 let changed = self.cfg.theme != name;
+                // `default` shows the theme's own picture, so a switch redraws it.
+                let new_picture = crate::wallpaper::is_default(self.cfg.wallpaper.as_deref())
+                    && crate::wallpaper::theme_key(&self.cfg.theme) != crate::wallpaper::theme_key(&name);
                 self.cfg.theme = name;
+                if new_picture {
+                    self.wallpaper = Self::build_wallpaper(self.w, self.h, &self.cfg);
+                }
                 self.push_terminal_colors();
                 if changed {
                     if let Err(e) = self.cfg.save() {
