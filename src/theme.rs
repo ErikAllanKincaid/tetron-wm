@@ -23,9 +23,35 @@ pub struct Theme {
     pub dim: Rgba,
     pub accent: Rgba,
     pub active_bg: Rgba,
+    /// "Good" status text: installed, verified, switched on, update available.
+    pub success: Rgba,
+    /// "Bad" status text: errors, low-contrast warnings, kill.
+    pub error: Rgba,
+    /// Text drawn on a fill of `accent` (the "+" new-shell button).
+    pub accent_fg: Rgba,
+    /// Desktop icon labels drawn over a wallpaper picture (on the scrim).
+    pub icon_fg: Rgba,
+    /// The 16 ANSI colours hosted apps see (black, red, … white, then the
+    /// bright forms), used when an app asks for a palette colour.
+    pub ansi: [Rgba; 16],
     /// Explicit 16-colour choices per role (see [`Vt16`]); usually empty.
     pub vt16: Vt16,
 }
+
+/// The ANSI palette a theme gets unless it sets its own `[ansi]` table.
+pub const DEFAULT_ANSI: [Rgba; 16] = [
+    rgb(0, 0, 0), rgb(205, 49, 49), rgb(13, 188, 121), rgb(229, 229, 16),
+    rgb(36, 114, 200), rgb(188, 63, 188), rgb(17, 168, 205), rgb(229, 229, 229),
+    rgb(102, 102, 102), rgb(241, 76, 76), rgb(35, 209, 139), rgb(245, 245, 67),
+    rgb(59, 142, 234), rgb(214, 112, 214), rgb(41, 184, 219), rgb(255, 255, 255),
+];
+
+/// The `[ansi]` key for each palette index, in order.
+pub const ANSI_NAMES: [&str; 16] = [
+    "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+    "bright_black", "bright_red", "bright_green", "bright_yellow",
+    "bright_blue", "bright_magenta", "bright_cyan", "bright_white",
+];
 
 const fn rgb(r: u8, g: u8, b: u8) -> Rgba {
     Rgba { r, g, b, a: 255 }
@@ -50,6 +76,11 @@ impl Theme {
             dim: rgb(120, 130, 150),
             accent: rgb(108, 182, 255),
             active_bg: rgb(45, 58, 85),
+            success: rgb(126, 231, 135),
+            error: rgb(255, 107, 107),
+            accent_fg: rgb(255, 255, 255),
+            icon_fg: rgb(255, 255, 255),
+            ansi: DEFAULT_ANSI,
             vt16: Vt16::NONE,
         }
     }
@@ -72,6 +103,11 @@ impl Theme {
             dim: rgb(146, 131, 116),
             accent: rgb(250, 189, 47),
             active_bg: rgb(80, 73, 69),
+            success: rgb(126, 231, 135),
+            error: rgb(251, 73, 52),
+            accent_fg: rgb(255, 255, 255),
+            icon_fg: rgb(255, 255, 255),
+            ansi: DEFAULT_ANSI,
             // USER choice 2026-10-21: warm brown desktop.
             vt16: Vt16 { desktop_bg: Some(3), ..Vt16::NONE },
         }
@@ -102,6 +138,11 @@ impl Theme {
             dim: rgb(110, 106, 94),
             accent: rgb(46, 125, 50),
             active_bg: rgb(215, 233, 205),
+            success: rgb(26, 127, 55),
+            error: rgb(209, 82, 76),
+            accent_fg: rgb(255, 255, 255),
+            icon_fg: rgb(255, 255, 255),
+            ansi: DEFAULT_ANSI,
             // USER choice 2026-10-21: grey desktop (a whole green screen is too
             // intense; a green wallpaper is the way to get one), green focused
             // title and selection.
@@ -128,6 +169,11 @@ impl Theme {
             dim: rgb(128, 128, 128),
             accent: rgb(0, 0, 128),
             active_bg: rgb(192, 192, 192),
+            success: rgb(26, 127, 55),
+            error: rgb(204, 0, 0),
+            accent_fg: rgb(255, 255, 255),
+            icon_fg: rgb(255, 255, 255),
+            ansi: DEFAULT_ANSI,
             vt16: Vt16::NONE,
         }
     }
@@ -237,6 +283,10 @@ pub struct Vt16 {
     pub dim: Option<u8>,
     pub accent: Option<u8>,
     pub active_bg: Option<u8>,
+    pub success: Option<u8>,
+    pub error: Option<u8>,
+    pub accent_fg: Option<u8>,
+    pub icon_fg: Option<u8>,
 }
 
 impl Vt16 {
@@ -245,7 +295,7 @@ impl Vt16 {
         desktop_bg: None, window_bg: None, title_focus: None, title_blur: None,
         title_fg: None, border: None, ctrl_fg: None, close_fg: None,
         menubar_bg: None, dock_bg: None, text: None, dim: None, accent: None,
-        active_bg: None,
+        active_bg: None, success: None, error: None, accent_fg: None, icon_fg: None,
     };
 }
 
@@ -319,6 +369,12 @@ fn vt16(t: Theme) -> Theme {
     close = fg(close, o.close_fg);
     let (text, dim) = (fg(text, o.text), fg(dim, o.dim));
     accent = fg(accent, o.accent);
+    // Status colours and the two "ink" colours: bright on dark, dark on light.
+    let success = fg(if light { 2 } else { 10 }, o.success);
+    let error = fg(if light { 1 } else { 9 }, o.error);
+    let icon_fg = fg(15, o.icon_fg);
+    // White on the accent fill unless that would vanish (as for a white accent).
+    let accent_fg = fg(if contrast(v(15), v(accent)) >= ACCENT_FG_MIN { 15 } else { 0 }, o.accent_fg);
     // Distinctions the UI relies on, unless the theme chose the role itself.
     if o.active_bg.is_none() && (active == window || active == desktop) {
         active = [6, 4, 2, 5, 3, 1].into_iter().find(|&i| i != window && i != desktop).unwrap();
@@ -342,6 +398,11 @@ fn vt16(t: Theme) -> Theme {
         dim: v(dim),
         accent: v(accent),
         active_bg: v(active),
+        success: v(success),
+        error: v(error),
+        accent_fg: v(accent_fg),
+        icon_fg: v(icon_fg),
+        ansi: t.ansi,
         vt16: t.vt16,
     }
 }
@@ -371,6 +432,11 @@ fn mono(t: Theme) -> Theme {
         dim: g(110),
         accent: g(255),
         active_bg: g(230),
+        success: g(192),
+        error: g(255),
+        accent_fg: g(0),
+        icon_fg: g(192),
+        ansi: t.ansi,
         vt16: t.vt16,
     }
 }
@@ -451,6 +517,13 @@ struct ThemeFile {
     dim: Option<String>,
     accent: Option<String>,
     active_bg: Option<String>,
+    // Optional colours: unset = derived from the colours above (see `into_theme`).
+    success: Option<String>,
+    error: Option<String>,
+    accent_fg: Option<String>,
+    icon_fg: Option<String>,
+    /// Optional `[ansi]` table: the 16 colours hosted apps see, by name.
+    ansi: Option<std::collections::BTreeMap<String, String>>,
     /// Optional 16-colour choices: `[vt16]` with `role = 0..15`.
     vt16: Option<Vt16>,
     /// The theme's picture: a file next to the theme file, an absolute or `~`
@@ -475,10 +548,24 @@ fn field(name: &str, dst: Rgba, src: &Option<String>) -> Rgba {
     }
 }
 
+/// Below this contrast against `accent`, white text on an accent fill is
+/// replaced by black (a white or very pale accent would otherwise hide it).
+const ACCENT_FG_MIN: f64 = 1.5;
+
+/// Defaults for the optional colours `(success, error, accent_fg, icon_fg)`,
+/// from the rest of a palette: a dark green on light themes, the theme's own
+/// `close_fg` for errors, white on the accent fill unless it would vanish.
+fn derived(t: &Theme) -> (Rgba, Rgba, Rgba, Rgba) {
+    let white = rgb(255, 255, 255);
+    let success = if is_light(t) { rgb(26, 127, 55) } else { rgb(126, 231, 135) };
+    let accent_fg = if contrast(white, t.accent) >= ACCENT_FG_MIN { white } else { rgb(0, 0, 0) };
+    (success, t.close_fg, accent_fg, white)
+}
+
 impl ThemeFile {
     fn into_theme(self) -> (Option<String>, Theme) {
         let base = Theme::builtin(&self.base.as_deref().unwrap_or("midnight").to_lowercase());
-        let t = Theme {
+        let mut t = Theme {
             desktop_bg: field("desktop_bg", base.desktop_bg, &self.desktop_bg),
             window_bg: field("window_bg", base.window_bg, &self.window_bg),
             title_focus: field("title_focus", base.title_focus, &self.title_focus),
@@ -494,8 +581,28 @@ impl ThemeFile {
             dim: field("dim", base.dim, &self.dim),
             accent: field("accent", base.accent, &self.accent),
             active_bg: field("active_bg", base.active_bg, &self.active_bg),
+            success: base.success,
+            error: base.error,
+            accent_fg: base.accent_fg,
+            icon_fg: base.icon_fg,
+            ansi: base.ansi,
             vt16: self.vt16.unwrap_or(base.vt16),
         };
+        // The optional colours follow this file's own palette, not the base's:
+        // a light file on a dark base must not keep the dark green.
+        let d = derived(&t);
+        t.success = field("success", d.0, &self.success);
+        t.error = field("error", d.1, &self.error);
+        t.accent_fg = field("accent_fg", d.2, &self.accent_fg);
+        t.icon_fg = field("icon_fg", d.3, &self.icon_fg);
+        if let Some(tbl) = &self.ansi {
+            for (i, name) in ANSI_NAMES.iter().enumerate() {
+                t.ansi[i] = field(&format!("ansi.{name}"), t.ansi[i], &tbl.get(*name).cloned());
+            }
+            for k in tbl.keys().filter(|k| !ANSI_NAMES.contains(&k.as_str())) {
+                crate::dbg_log(&format!("theme: [ansi] key '{k}' is not a colour name; ignored"));
+            }
+        }
         (self.name, t)
     }
 }
@@ -512,6 +619,29 @@ pub fn to_hex(c: Rgba) -> String {
         format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
     } else {
         format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
+    }
+}
+
+/// The 16 ANSI colours of `theme` as hex strings, in palette order, for the
+/// apphost (see [`resolve_terminal_colors`]).
+pub fn resolve_ansi(theme: &str) -> Vec<String> {
+    Theme::named(theme).ansi.iter().map(|c| to_hex(*c)).collect()
+}
+
+/// Replace the ANSI palette of the current theme from 16 hex strings; anything
+/// else (wrong count, bad colour) is ignored. Used by the apphost.
+pub fn set_ansi(ansi: &[String]) {
+    apply_ansi(&mut slot().write().unwrap(), ansi);
+}
+
+fn apply_ansi(t: &mut Theme, ansi: &[String]) {
+    if ansi.len() != 16 {
+        return;
+    }
+    for (i, s) in ansi.iter().enumerate() {
+        if let Some(c) = crate::badge::parse_color(s) {
+            t.ansi[i] = c;
+        }
     }
 }
 
@@ -555,17 +685,26 @@ pub fn to_file_toml(t: &Theme, name: &str) -> String {
          dim         = \"{}\"\n\
          accent      = \"{}\"\n\
          active_bg   = \"{}\"\n\n\
+         # Optional: unset, each is derived from the colours above.\n\
+         success     = \"{}\"   # installed, verified, on\n\
+         error       = \"{}\"   # errors, kill\n\
+         accent_fg   = \"{}\"   # text on an accent fill\n\
+         icon_fg     = \"{}\"   # desktop icon labels over a wallpaper\n\n\
          # 16-colour console (bare Linux VT): derived automatically from the\n\
          # colours above. Uncomment to pin a role to a palette index 0-15\n\
          # (0 black, 1 red, 2 green, 3 brown, 4 blue, 5 magenta, 6 cyan, 7 grey,\n\
          # 8-15 their bright forms; backgrounds can only use 0-7).\n\
          # [vt16]\n\
          # desktop_bg = 6\n\
-         # title_focus = 4\n",
+         # title_focus = 4\n\
+         # (also success, error, accent_fg, icon_fg)\n\n\
+         # The 16 colours hosted apps see; uncomment to change.\n\
+         # [ansi]\n{}",
         hex(t.desktop_bg), hex(t.window_bg), hex(t.title_focus), hex(t.title_blur),
         hex(t.title_fg), hex(t.border), hex(t.shadow), hex(t.ctrl_fg), hex(t.close_fg),
         hex(t.menubar_bg), hex(t.dock_bg), hex(t.text), hex(t.dim), hex(t.accent),
-        hex(t.active_bg),
+        hex(t.active_bg), hex(t.success), hex(t.error), hex(t.accent_fg), hex(t.icon_fg),
+        ANSI_NAMES.iter().zip(t.ansi).map(|(n, c)| format!("# {n} = \"{}\"\n", hex(c))).collect::<String>(),
     )
 }
 
@@ -781,6 +920,79 @@ mod tests {
         assert_eq!(to_file_toml(&Theme::windows(), "windows"), to_file_toml(&from_file, "windows"));
         assert!(PRESETS.contains(&"windows"));
         assert!(validate(&Theme::named("windows")).is_empty());
+    }
+
+    #[test]
+    fn optional_colours_follow_the_files_own_palette() {
+        // A light file on the (dark) midnight base gets the light green, the
+        // file's own close_fg as the error colour and white ink on a dark accent.
+        let (_, t) = parse_theme_toml("window_bg = \"#ffffff\"\nclose_fg = \"#aa0000\"\naccent = \"#000080\"").unwrap();
+        assert_eq!(t.success, rgb(26, 127, 55));
+        assert_eq!(t.error, rgb(170, 0, 0));
+        assert_eq!(t.accent_fg, rgb(255, 255, 255));
+        assert_eq!(t.icon_fg, rgb(255, 255, 255));
+        // A white accent would hide white text: black takes over.
+        let (_, t) = parse_theme_toml("accent = \"#ffffff\"").unwrap();
+        assert_eq!(t.accent_fg, rgb(0, 0, 0));
+        // Set explicitly, they win; a bad value keeps the derived one.
+        let (_, t) = parse_theme_toml("success = \"#00ff00\"\nerror = \"#ff00ff\"\naccent_fg = \"#101010\"\nicon_fg = \"nonsense\"").unwrap();
+        assert_eq!((t.success, t.error, t.accent_fg), (rgb(0, 255, 0), rgb(255, 0, 255), rgb(16, 16, 16)));
+        assert_eq!(t.icon_fg, rgb(255, 255, 255));
+    }
+
+    #[test]
+    fn optional_colours_survive_a_dump_and_reload() {
+        let (_, t) = parse_theme_toml("success = \"#00ff00\"\nicon_fg = \"#eeeeee\"").unwrap();
+        let (_, back) = parse_theme_toml(&to_file_toml(&t, "x")).unwrap();
+        assert_eq!((back.success, back.error, back.accent_fg, back.icon_fg), (t.success, t.error, t.accent_fg, t.icon_fg));
+    }
+
+    #[test]
+    fn vt16_and_mono_cover_the_optional_colours() {
+        let dark = vt16(Theme::midnight());
+        assert_eq!((dark.success, dark.error), (crate::display::VGA16[10], crate::display::VGA16[9]));
+        assert_eq!(dark.icon_fg, crate::display::VGA16[15]);
+        let light = vt16(Theme::pastoral());
+        assert_eq!((light.success, light.error), (crate::display::VGA16[2], crate::display::VGA16[1]));
+        // A white-ish accent gets black ink; [vt16] overrides win.
+        let mut t = Theme::midnight();
+        t.accent = rgb(255, 255, 255);
+        assert_eq!(vt16(t).accent_fg, crate::display::VGA16[0]);
+        t.vt16 = Vt16 { success: Some(14), error: Some(13), accent_fg: Some(4), icon_fg: Some(7), ..Vt16::NONE };
+        let o = vt16(t);
+        let p = &crate::display::VGA16;
+        assert_eq!((o.success, o.error, o.accent_fg, o.icon_fg), (p[14], p[13], p[4], p[7]));
+        let m = mono(Theme::midnight());
+        assert_eq!((m.success, m.error, m.accent_fg), (rgb(192, 192, 192), rgb(255, 255, 255), rgb(0, 0, 0)));
+    }
+
+    #[test]
+    fn ansi_table_sets_named_colours_and_survives_a_dump() {
+        let (_, t) = parse_theme_toml("[ansi]\nred = \"#ff0000\"\nbright_white = \"#fefefe\"\nbogus = \"#000000\"\nblue = \"nope\"").unwrap();
+        assert_eq!(t.ansi[1], rgb(255, 0, 0));
+        assert_eq!(t.ansi[15], rgb(254, 254, 254));
+        assert_eq!(t.ansi[4], DEFAULT_ANSI[4], "a bad value keeps the default");
+        assert_eq!(t.ansi[2], DEFAULT_ANSI[2], "unset keeps the default");
+        // The dump lists the palette commented out; uncommented it reloads equal.
+        let dump = to_file_toml(&t, "x");
+        assert!(dump.contains("# red = \"#ff0000\""));
+        let live: String = dump.lines().map(|l| l.strip_prefix("# ").filter(|r| r.starts_with("[ansi]") || ANSI_NAMES.iter().any(|n| r.starts_with(&format!("{n} =")))).unwrap_or(l)).collect::<Vec<_>>().join("\n");
+        let (_, back) = parse_theme_toml(&live).unwrap();
+        assert_eq!(back.ansi, t.ansi);
+        assert_eq!(resolve_ansi("midnight").len(), 16);
+    }
+
+    #[test]
+    fn set_ansi_replaces_only_a_full_valid_list() {
+        let mut t = Theme::midnight();
+        let mut list: Vec<String> = DEFAULT_ANSI.iter().map(|c| to_hex(*c)).collect();
+        apply_ansi(&mut t, &list[..3]);
+        assert_eq!(t.ansi, DEFAULT_ANSI);
+        list[1] = "#123456".into();
+        list[2] = "garbage".into();
+        apply_ansi(&mut t, &list);
+        assert_eq!(t.ansi[1], rgb(0x12, 0x34, 0x56));
+        assert_eq!(t.ansi[2], DEFAULT_ANSI[2]);
     }
 
     #[test]

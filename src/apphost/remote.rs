@@ -262,7 +262,7 @@ impl AppHost for RemoteAppHost {
         self.cache.lock().unwrap().proto
     }
 
-    fn set_colors(&mut self, theme: &str, terminal_bg: Option<&str>, terminal_fg: Option<&str>) {
+    fn set_colors(&mut self, theme: &str, terminal_bg: Option<&str>, terminal_fg: Option<&str>, ansi: Option<&[String]>) {
         // An apphost older than v4 would fail to parse the unknown variant.
         if self.proto_version() < 4 {
             crate::dbg_log("apphost: colors not pushed (apphost proto < 4; restart the app server to apply)");
@@ -272,6 +272,7 @@ impl AppHost for RemoteAppHost {
             theme: theme.to_string(),
             terminal_bg: terminal_bg.map(String::from),
             terminal_fg: terminal_fg.map(String::from),
+            ansi: ansi.map(<[String]>::to_vec),
         });
     }
 

@@ -54,7 +54,7 @@ Keys below are leader sequences: press `Ctrl+Space`, release, then the key. The 
 - **Terminal colors.** `terminal_bg` and `terminal_fg` decouple app colors from the desktop, for example a light desktop with dark terminals.
 - **Wallpaper.** Any image, rendered to colored cells with [chafa](https://hpjansson.org/chafa/), so it works on any terminal including a bare console.
 - **Icon style.** `auto` (the default) draws `ascii` glyphs on a bare Linux console, whose fonts lack most symbols, and `unicode` everywhere else. `nerd` and `emoji` are there for terminals with those fonts.
-- **Color depth.** Detected from the terminal: truecolor, 256, 16 on the bare console, black and white with `NO_COLOR`. Force it with `TETRON_WM_COLORS=mono|16|256|truecolor`. Themes adapt by role, so the desktop, windows and selection stay distinct even in 16 colors, and a theme file can pin its 16-color choices with a `[vt16]` table.
+- **Color depth.** Detected from the terminal: truecolor, 256, 16 on the bare console, black and white with `NO_COLOR`. Force it with `TETRON_WM_COLORS=mono|16|256|truecolor`. Themes adapt by role, so the desktop, windows and selection stay distinct even in 16 colors, and a theme file can pin its 16-color choices with a `[vt16]` table and set the 16 colors apps see with an `[ansi]` table.
 - **Screensaver.** On demand only: leader `z`, the launcher, or `tetron-wm screensaver`. Any key or mouse movement wakes it.
 - **Screenshots.** Leader `s` or `tetron-wm screenshot` saves a PNG of the whole screen.
 

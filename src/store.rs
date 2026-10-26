@@ -17,8 +17,8 @@ fn pal_dim() -> Rgba { crate::theme::current().dim }
 fn pal_sel() -> Rgba { crate::theme::current().active_bg }
 fn pal_accent() -> Rgba { crate::theme::current().accent }
 fn pal_panel() -> Rgba { crate::theme::current().menubar_bg }
-// Semantic success color (e.g. "installed" markers); not theme-swapped.
-const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
+// Semantic success color (e.g. "installed" markers): the theme's `success`.
+fn green() -> Rgba { crate::theme::current().success }
 
 const SIDEBAR_W: i32 = 16;
 const LIST_W: i32 = 30;
@@ -196,13 +196,13 @@ impl Store {
             // Verified-recipe badge.
             if let Some(r) = catalog::recipe(&app.name) {
                 if r.verified {
-                    buf.write_str(dx + 1, h - 3, &format!("{} verified \u{00B7} {}", crate::glyphs::get(crate::glyphs::Glyph::Check), r.method), GREEN, pal_panel());
+                    buf.write_str(dx + 1, h - 3, &format!("{} verified \u{00B7} {}", crate::glyphs::get(crate::glyphs::Glyph::Check), r.method), green(), pal_panel());
                 }
             }
             // Action hint.
             let installed = catalog::is_installed(&app.bin);
             let action = if installed { "[ Enter: Launch ]" } else { "[ Enter: Install ]" };
-            let acol = if installed { GREEN } else { pal_accent() };
+            let acol = if installed { green() } else { pal_accent() };
             buf.write_str(dx + 1, h - 2, action, acol, pal_panel());
         }
 
@@ -327,7 +327,7 @@ fn draw_list_row(buf: &mut CellBuffer, x: i32, y: i32, w: i32, name: &str, flags
         buf.set(x + dx, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() });
     }
     let mark = if installed { format!("{} ", crate::glyphs::get(crate::glyphs::Glyph::Check)) } else { "  ".to_string() };
-    buf.write_str(x, y, &mark, GREEN, bg);
+    buf.write_str(x, y, &mark, green(), bg);
     let badge_w = if cli { CLI_BADGE.len() as i32 + 1 } else { 0 };
     let name_w = (w - 3 - badge_w).max(1) as usize;
     buf.write_str(x + 2, y, truncate(name, name_w), pal_fg(), bg);

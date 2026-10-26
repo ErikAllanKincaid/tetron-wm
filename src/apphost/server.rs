@@ -247,9 +247,12 @@ fn serve_frontend(local: &mut LocalAppHost, stream: UnixStream, shutdown: &mut b
                         return;
                     }
                 }
-                Ok(HostReq::SetColors { theme, terminal_bg, terminal_fg }) => {
+                Ok(HostReq::SetColors { theme, terminal_bg, terminal_fg, ansi }) => {
                     crate::dbg_log(&format!("apphost: colors -> theme '{theme}' bg {terminal_bg:?} fg {terminal_fg:?}"));
                     crate::theme::set_with_terminal(&theme, terminal_bg.as_deref(), terminal_fg.as_deref());
+                    if let Some(ansi) = &ansi {
+                        crate::theme::set_ansi(ansi);
+                    }
                     // The new colours change every snapshot.
                     local.mark_all_dirty();
                 }

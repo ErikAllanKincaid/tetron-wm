@@ -109,7 +109,7 @@ pub fn render_menubar(width: i32, items: &[DockItem], segments: &[crate::tray::S
     buf.write_str(MODE_X, 0, &mode, t.accent, t.active_bg);
     buf.write_str(ASSIST_X, 0, &assist_label(), t.accent, t.active_bg);
     // The "+" new-shell button, just right of the assistant.
-    buf.write_str(NEW_SHELL_X, 0, NEW_SHELL_LABEL, crate::cell::Rgba::rgb(255, 255, 255), t.accent);
+    buf.write_str(NEW_SHELL_X, 0, NEW_SHELL_LABEL, t.accent_fg, t.accent);
     // Status-tray segments occupy the right side, out to the screen edge (the
     // power button moved into the launcher's system section).
     let tray_left = menubar_tray_left(width, segments);

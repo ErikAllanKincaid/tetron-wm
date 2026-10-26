@@ -300,7 +300,7 @@ impl<F: FsOps> DesktopIcons<F> {
         // labels sit directly on the wallpaper. On the plain desktop keep the
         // transparent label so nothing changes there.
         let (ink, empty_bg, glyph_bg) = if over_wallpaper {
-            (Rgba::rgb(255, 255, 255), scrim, scrim)
+            (th.icon_fg, scrim, scrim)
         } else {
             (FG, transparent, transparent)
         };

@@ -21,8 +21,8 @@ fn pal_fg() -> Rgba { crate::theme::current().text }
 fn pal_dim() -> Rgba { crate::theme::current().dim }
 fn pal_sel() -> Rgba { crate::theme::current().active_bg }
 fn pal_accent() -> Rgba { crate::theme::current().accent }
-// Semantic danger color (kill / high-usage); not theme-swapped.
-const RED: Rgba = Rgba { r: 241, g: 76, b: 76, a: 255 };
+// Semantic danger color (kill / high-usage): the theme's `error`.
+fn red() -> Rgba { crate::theme::current().error }
 
 /// In-progress kill confirmation: `Some((index, app_id))` while the user is
 /// being asked to confirm they really want to kill the selected app.
@@ -217,7 +217,7 @@ impl Activity {
 
                 // Kill button on the selected row (red glyph).
                 if sel {
-                    buf.write_str(cols.kill, y, "kill", RED, row_bg);
+                    buf.write_str(cols.kill, y, "kill", red(), row_bg);
                 } else {
                     buf.write_str(cols.kill, y, "    ", pal_fg(), row_bg);
                 }
@@ -260,7 +260,7 @@ impl Activity {
                 buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg, attrs: Default::default() });
             }
         }
-        buf.write_str(ox + 2, oy + 1, &label, RED, bg);
+        buf.write_str(ox + 2, oy + 1, &label, red(), bg);
     }
 }
 

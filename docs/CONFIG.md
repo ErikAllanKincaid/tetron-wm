@@ -21,7 +21,7 @@ Each row is the TOML key, its type, the default, and what it does.
 | `grid_cols`                  | int                               | `2`                                   | Tiling grid columns (1–6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `tile_gap`                   | int                               | `0`                                   | Cells of gutter between tiled windows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `theme`                      | string                            | `"midnight"`                          | Color theme: a built-in (`midnight`, `gruvbox`, `pastoral`, `windows`) or the stem of a theme file (see `theme_dir`; the suite installer downloads `nord`, `dracula`, `dawn`, `newmoon` and `contrast` there). An unknown name shows midnight and a note in Settings. A file with a built-in's name overrides it. (`light` is a deprecated alias for `pastoral`.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `theme_dir`                  | string                            | `<config>/themes`                     | Directory of `*.toml` theme files. Relative paths resolve against the config dir; also overridable via `$TETRON_WM_THEMES_DIR`. A theme file is a flat table of palette fields (`desktop_bg`, `window_bg`, `title_focus`, `title_blur`, `title_fg`, `border`, `shadow`, `ctrl_fg`, `close_fg`, `menubar_bg`, `dock_bg`, `text`, `dim`, `accent`, `active_bg`) → `#rrggbb` / `#rrggbbaa` / named color; optional `name` and `base` (built-in to inherit unset fields from), and an optional `[vt16]` table pinning roles to 16-colour palette indices (`desktop_bg = 6`; 0-7 for backgrounds) for the bare Linux console, where the 16-colour version is otherwise derived from the theme's own hues. Create one with `tetron-wm theme --dump <name>`; list all names with `tetron-wm theme --list`. Low-contrast themes are warned about in the debug log, never rejected.                                                                                  |
+| `theme_dir`                  | string                            | `<config>/themes`                     | Directory of `*.toml` theme files. Relative paths resolve against the config dir; also overridable via `$TETRON_WM_THEMES_DIR`. A theme file is a flat table of palette fields (`desktop_bg`, `window_bg`, `title_focus`, `title_blur`, `title_fg`, `border`, `shadow`, `ctrl_fg`, `close_fg`, `menubar_bg`, `dock_bg`, `text`, `dim`, `accent`, `active_bg`, plus the optional `success`, `error`, `accent_fg`, `icon_fg`) → `#rrggbb` / `#rrggbbaa` / named color (see [Theme file keys](#theme-file-keys)); optional `name` and `base` (built-in to inherit unset fields from), and an optional `[vt16]` table pinning roles to 16-colour palette indices (`desktop_bg = 6`; 0-7 for backgrounds) for the bare Linux console, where the 16-colour version is otherwise derived from the theme's own hues, and an optional `[ansi]` table setting the 16 colours hosted apps see. Create one with `tetron-wm theme --dump <name>`; list all names with `tetron-wm theme --list`. Low-contrast themes are warned about in the debug log, never rejected.                                                                                  |
 | `icon_style`                 | string                            | `"auto"`                              | Icon and symbol glyphs where graphical (Kitty) icons can't render (kmscon, bare VT, SSH): `auto` (ascii on a bare console, unicode elsewhere), `ascii` (kernel console fonts, renders everywhere), `unicode` (DejaVu Sans Mono symbols, kmscon and GUI terminals), `nerd` (Nerd Font glyphs, needs one installed — tetron-os ships it), or `emoji`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `launcher_label`             | string                            | `"tetron"`                            | Text of the menubar launcher button: up to 6 single-width characters (shorter ones are centred, so the bar never shifts), or `@session` to show the session name in a named session.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `terminal_bg`                | string                            | unset (follow theme)                  | Default background inside hosted app windows, independent of the desktop theme: `#rrggbb` or a named color. Unset follows the theme's `window_bg`. Applies live to running apps (no app-server restart) when the app server supports it (protocol v4+). Settings → Terminal edits it with presets, hex entry and a Preview / Save / Revert flow.                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -216,6 +216,53 @@ TETRON_WM_TRUECOLOR=1 tetron-wm
 TETRON_WM_COLORS=16 tetron-wm
 TETRON_WM_COLORS=mono tetron-wm
 ```
+
+
+#### Theme file keys
+
+A theme is `<config dir>/themes/<name>.toml`: a flat table of colors (`#rrggbb`, `#rrggbbaa`, or a color name). Start from `tetron-wm theme --dump <built-in>`. Any key left out is inherited (see each row), so a theme can be three lines. An invalid value is logged and the inherited one is kept.
+
+| Key | Colors | If unset |
+|---|---|---|
+| `desktop_bg` | the desktop behind the windows (and the plain desktop when `wallpaper = "none"`) | `base` theme |
+| `window_bg` | window body and terminal background | `base` |
+| `title_focus`, `title_blur` | title bar of the focused / other windows | `base` |
+| `title_fg` | title bar text | `base` |
+| `border` | window frame | `base` |
+| `shadow` | window shadow (alpha sets its strength; `#00000000` is none) | `base` |
+| `ctrl_fg` | the minimize / maximize glyphs | `base` |
+| `close_fg` | the close glyph and destructive-button fill | `base` |
+| `menubar_bg`, `dock_bg` | top bar, taskbar | `base` |
+| `text` | body, menu and terminal text | `base` |
+| `dim` | secondary text, hints | `base` |
+| `accent` | highlighted labels, panel button text, fill of the "+" button | `base` |
+| `active_bg` | selection: menu highlight, panel buttons, focused taskbar item | `base` |
+| `success` | status text that is good: installed, verified, switched on, update available | dark green, or a deeper green when `window_bg` is light |
+| `error` | status text that is bad: errors, low-contrast warning, kill | `close_fg` |
+| `accent_fg` | text drawn on a fill of `accent` (the "+" button) | white, or black when white would be unreadable on `accent` |
+| `icon_fg` | desktop icon labels over a wallpaper picture (on the `desktop_scrim`) | white |
+
+Other keys: `name`, `base` (a built-in to inherit from, default `midnight`), `appearance` (`dark` or `light`, informational), `wallpaper` (the theme's picture, see Wallpaper below).
+
+`success`, `error`, `accent_fg` and `icon_fg` follow the colors in the same file, not the `base` theme's, so a light file based on midnight does not keep midnight's dark-theme green.
+
+**`[ansi]`** sets the 16 colors hosted apps see when they use the palette (`ls --color`, `htop`, `git`), named `black red green yellow blue magenta cyan white` and the same with a `bright_` prefix. Set any subset; the rest keep the default palette. An app that asks the terminal for its colors (OSC 4) gets the same answers. Apps already running are repainted when the theme is switched.
+
+```toml
+[ansi]
+red = "#ff5555"
+bright_black = "#6272a4"
+```
+
+**`[vt16]`** is for the bare Linux console, which has 16 colors and only 8 backgrounds. By default the 16-color look is derived from the theme. To pin a role, give it a palette index (0 black, 1 red, 2 green, 3 brown, 4 blue, 5 magenta, 6 cyan, 7 grey, 8-15 the bright forms). Backgrounds can only use 0-7 (8-15 fold to 0-7). The roles are the 18 color keys above (all but `shadow`): `desktop_bg window_bg title_focus title_blur title_fg border ctrl_fg close_fg menubar_bg dock_bg text dim accent active_bg success error accent_fg icon_fg`. Grey themes need this: derivation only keeps a color that has a clear hue, so a grey `active_bg` becomes teal unless pinned.
+
+```toml
+[vt16]
+active_bg = 7     # light grey selection
+success = 10
+```
+
+Run `tetron-wm theme <name>` to try a theme; the file is read again within a second of saving, then re-select the theme to apply it. Colors that are hard to read are warned about in `~/tetron-wm-debug.log`, never rejected.
 
 ### Wallpaper and desktop
 

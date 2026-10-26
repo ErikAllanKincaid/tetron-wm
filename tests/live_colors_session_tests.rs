@@ -36,7 +36,7 @@ impl AppHost for Recorder {
     fn meta(&self, _: AppId) -> Option<Vec<u8>> { None }
     fn remove(&mut self, _: AppId) {}
     fn proto_version(&self) -> u32 { self.proto }
-    fn set_colors(&mut self, theme: &str, bg: Option<&str>, fg: Option<&str>) {
+    fn set_colors(&mut self, theme: &str, bg: Option<&str>, fg: Option<&str>, _ansi: Option<&[String]>) {
         self.calls.lock().unwrap().push((theme.into(), bg.map(String::from), fg.map(String::from)));
     }
 }

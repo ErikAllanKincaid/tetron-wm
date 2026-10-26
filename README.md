@@ -113,6 +113,7 @@ Common first changes:
 | I want                                   | Set                                                                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | A different color theme                  | `theme = "gruvbox"` (also `midnight`, `pastoral`, `windows`; `nord`, `dracula`, `dawn`, `newmoon`, `contrast` from the installer)                                            |
+| Your own color theme                     | `tetron-wm theme --dump midnight`, edit `~/.config/tetron-wm/themes/midnight.toml` (all keys, `[ansi]` app colors, `[vt16]`: docs/CONFIG.md)                  |
 | Windows to snap to screen edges          | `snapping_enabled = true`                                                                                                  |
 | Windows arranged in a grid automatically | `auto_tile = true`, `grid_rows`, `grid_cols`                                                                               |
 | Full screen video, images, PDFs          | `fullscreen = false` to turn them off                                                                                      |

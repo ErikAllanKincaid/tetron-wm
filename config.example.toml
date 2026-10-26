@@ -43,6 +43,8 @@ tile_gap = 0
 ## with the suite installer's extra themes). A file named like a built-in
 ## overrides it. Create a starter with: tetron-wm theme --dump <name>
 ## (list all: tetron-wm theme --list)
+## A theme file sets 18 colors, an [ansi] table (the 16 colors apps see) and a
+## [vt16] table (the 16-color console); all keys: docs/CONFIG.md, Theme file keys.
 theme = "midnight"
 ## Directory of *.toml theme files. Unset = <config dir>/themes/. A relative path
 ## resolves against the config dir.

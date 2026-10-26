@@ -15,9 +15,9 @@ fn pal_fg() -> Rgba { crate::theme::current().text }
 fn pal_dim() -> Rgba { crate::theme::current().dim }
 fn pal_sel() -> Rgba { crate::theme::current().active_bg }
 fn pal_accent() -> Rgba { crate::theme::current().accent }
-// Semantic success color (e.g. the "on"/checked state); not theme-swapped.
-const RED: Rgba = Rgba { r: 255, g: 107, b: 107, a: 255 };
-const GREEN: Rgba = Rgba { r: 126, g: 231, b: 135, a: 255 };
+// Semantic colors: the theme's `success` and `error`.
+fn red() -> Rgba { crate::theme::current().error }
+fn green() -> Rgba { crate::theme::current().success }
 
 const SIDEBAR_W: i32 = 18;
 const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "Sound", "About"];
@@ -904,7 +904,7 @@ impl Settings {
                 let sha = &crate::GIT_SHA[..crate::GIT_SHA.len().min(7)];
                 buf.write_str(cx, 7, &format!("installed: v{} ({})", crate::VERSION, sha), pal_dim(), pal_bg());
                 if !self.update_status.is_empty() {
-                    let col = if self.update_status.contains("available") { GREEN } else { pal_dim() };
+                    let col = if self.update_status.contains("available") { green() } else { pal_dim() };
                     buf.write_str(cx, 8, &self.update_status, col, pal_bg());
                 }
                 if self.cfg.update_branch != "main" {
@@ -1009,15 +1009,15 @@ impl Settings {
             y += 1;
         };
         if self.previewing {
-            note(buf, "Preview is live. Save keeps it, Revert undoes it.", GREEN);
+            note(buf, "Preview is live. Save keeps it, Revert undoes it.", green());
         } else if dirty {
             note(buf, "Edited, not applied yet. Preview to see it.", pal_dim());
         }
         if crate::theme::contrast(bg_rgb.unwrap_or(th.window_bg), fg_rgb.unwrap_or(th.text)) < 3.0 {
-            note(buf, "Low contrast: terminal text may be hard to read.", RED);
+            note(buf, "Low contrast: terminal text may be hard to read.", red());
         }
         if self.text.as_ref().is_some_and(|t| t.error) {
-            note(buf, "Not a color: use #rrggbb or a color name.", RED);
+            note(buf, "Not a color: use #rrggbb or a color name.", red());
         }
         if !self.colors_live {
             note(buf, "App server predates live colors: restart it to apply.", pal_dim());
@@ -1046,7 +1046,7 @@ impl Settings {
         self.row(buf, cx, 6, 3, "Mixer", mixer);
         let mut y = 8;
         if !available {
-            buf.write_str(cx, y, "No volume control: wpctl (PipeWire) not found.", RED, pal_bg());
+            buf.write_str(cx, y, "No volume control: wpctl (PipeWire) not found.", red(), pal_bg());
             y += 1;
         }
         for note in [
@@ -1092,7 +1092,7 @@ impl Settings {
         let add_sel = self.sel == self.cfg.launcher.len() && !self.in_sidebar;
         let marker = if add_sel { "\u{25B8} " } else { "  " };
         buf.write_str(cx, add_y, marker, pal_accent(), pal_bg());
-        buf.write_str(cx + 2, add_y, &format!("{} Add app\u{2026}", crate::glyphs::get(crate::glyphs::Glyph::Plus)), if add_sel { GREEN } else { pal_dim() }, pal_bg());
+        buf.write_str(cx + 2, add_y, &format!("{} Add app\u{2026}", crate::glyphs::get(crate::glyphs::Glyph::Plus)), if add_sel { green() } else { pal_dim() }, pal_bg());
     }
 
     /// Draw one labelled form field with a block cursor on the focused field.
@@ -1110,7 +1110,7 @@ impl Settings {
         buf.write_str(x, y, marker, pal_accent(), pal_bg());
         buf.write_str(x + 2, y, label, if sel { pal_fg() } else { pal_dim() }, pal_bg());
         let vx = x + 30;
-        let vcol = if value.contains("on") { GREEN } else { pal_fg() };
+        let vcol = if value.contains("on") { green() } else { pal_fg() };
         buf.write_str(vx, y, &value, vcol, pal_bg());
     }
 }

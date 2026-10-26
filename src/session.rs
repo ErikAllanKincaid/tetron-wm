@@ -3885,7 +3885,8 @@ or a remote-side error — its authorized_keys was left untouched)",
     /// still works: it applies the name, then overrides bg/fg with these values.
     fn send_terminal_colors(&mut self, bg: Option<&str>, fg: Option<&str>) {
         let (rbg, rfg) = crate::theme::resolve_terminal_colors(&self.cfg.theme, bg, fg);
-        self.apphost.set_colors(&self.cfg.theme, Some(&rbg), Some(&rfg));
+        let ansi = crate::theme::resolve_ansi(&self.cfg.theme);
+        self.apphost.set_colors(&self.cfg.theme, Some(&rbg), Some(&rfg), Some(&ansi));
     }
 
     /// Open the store window, or focus it if it's already open.

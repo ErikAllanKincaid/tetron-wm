@@ -12,10 +12,10 @@ use tetron_wm::theme::Theme;
 fn set_colors_request_round_trips_and_proto_is_v4() {
     let version = PROTO_VERSION;
     assert!(version >= 4);
-    let req = HostReq::SetColors { theme: "nord".into(), terminal_bg: Some("#112233".into()), terminal_fg: None };
+    let req = HostReq::SetColors { theme: "nord".into(), terminal_bg: Some("#112233".into()), terminal_fg: None, ansi: None };
     let json = serde_json::to_string(&req).unwrap();
     match serde_json::from_str::<HostReq>(&json).unwrap() {
-        HostReq::SetColors { theme, terminal_bg, terminal_fg } => {
+        HostReq::SetColors { theme, terminal_bg, terminal_fg, .. } => {
             assert_eq!((theme.as_str(), terminal_bg.as_deref(), terminal_fg), ("nord", Some("#112233"), None));
         }
         other => panic!("unexpected {other:?}"),
@@ -26,7 +26,7 @@ fn set_colors_request_round_trips_and_proto_is_v4() {
 fn local_host_ignores_set_colors() {
     // The in-process host shares the daemon's theme, so the default is a no-op.
     let mut host = LocalAppHost::new();
-    host.set_colors("nord", Some("#112233"), None);
+    host.set_colors("nord", Some("#112233"), None, None);
 }
 
 #[test]
@@ -58,15 +58,31 @@ fn running_app_repaints_with_new_default_colors() {
     };
 
     // Override the terminal background.
-    remote.set_colors("nord", Some("#112233"), Some("#aabbcc"));
+    remote.set_colors("nord", Some("#112233"), Some("#aabbcc"), None);
     assert!(wait_for(&remote, Rgba { r: 0x11, g: 0x22, b: 0x33, a: 255 }), "terminal_bg applied live");
 
     // Clearing the override goes back to following the theme (and the theme itself switches live).
-    remote.set_colors("pastoral", None, None);
+    remote.set_colors("pastoral", None, None, None);
     assert!(wait_for(&remote, Theme::pastoral().window_bg), "theme switch + cleared override applied live");
 
     remote.kill(id);
     remote.shutdown_apphost();
     let _ = std::fs::remove_file(&path);
     let _ = server.join();
+}
+
+#[test]
+fn set_colors_without_ansi_parses_and_with_ansi_round_trips() {
+    // A v5 frontend omits `ansi`; the field defaults to None.
+    let old = r##"{"SetColors":{"theme":"nord","terminal_bg":"#112233","terminal_fg":null}}"##;
+    match serde_json::from_str::<HostReq>(old).unwrap() {
+        HostReq::SetColors { ansi, .. } => assert!(ansi.is_none()),
+        other => panic!("unexpected {other:?}"),
+    }
+    let req = HostReq::SetColors { theme: "x".into(), terminal_bg: None, terminal_fg: None, ansi: Some(vec!["#000000".into(); 16]) };
+    let json = serde_json::to_string(&req).unwrap();
+    match serde_json::from_str::<HostReq>(&json).unwrap() {
+        HostReq::SetColors { ansi, .. } => assert_eq!(ansi.map(|a| a.len()), Some(16)),
+        other => panic!("unexpected {other:?}"),
+    }
 }

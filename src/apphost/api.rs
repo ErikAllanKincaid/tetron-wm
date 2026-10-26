@@ -98,8 +98,8 @@ pub trait AppHost: Send {
     /// renders the apps (running apps repaint on the next frame). Default no-op:
     /// the in-process host shares the daemon's own theme, and a remote host older
     /// than protocol v4 does not understand the request.
-    fn set_colors(&mut self, theme: &str, terminal_bg: Option<&str>, terminal_fg: Option<&str>) {
-        let _ = (theme, terminal_bg, terminal_fg);
+    fn set_colors(&mut self, theme: &str, terminal_bg: Option<&str>, terminal_fg: Option<&str>, ansi: Option<&[String]>) {
+        let _ = (theme, terminal_bg, terminal_fg, ansi);
     }
 
     /// Stop the underlying app host process, if any (default no-op for the

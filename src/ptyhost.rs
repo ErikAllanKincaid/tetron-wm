@@ -371,8 +371,8 @@ impl AppInstance {
                     y,
                     Cell {
                         ch,
-                        fg: resolve_color(cell.fg, th.text),
-                        bg: resolve_color(cell.bg, th.window_bg),
+                        fg: resolve_color(cell.fg, th.text, &th.ansi),
+                        bg: resolve_color(cell.bg, th.window_bg, &th.ansi),
                         attrs: CellAttrs {
                             bold: flags.contains(Flags::BOLD),
                             italic: flags.contains(Flags::ITALIC),
@@ -574,59 +574,52 @@ fn resolve_program(cmd: &str) -> String {
 /// (258) from the theme, the same defaults `snapshot` paints with.
 fn query_color(index: usize, th: &crate::theme::Theme) -> Rgba {
     match index {
-        0..=255 => idx_to_rgb(index as u8),
+        0..=255 => idx_to_rgb(index as u8, &th.ansi),
         257 => th.window_bg,
         _ => th.text,
     }
 }
 
 /// Resolve an alacritty cell color into our [`Rgba`].
-fn resolve_color(c: AColor, default: Rgba) -> Rgba {
+fn resolve_color(c: AColor, default: Rgba, ansi: &[Rgba; 16]) -> Rgba {
     match c {
         AColor::Spec(rgb) => Rgba::rgb(rgb.r, rgb.g, rgb.b),
-        AColor::Indexed(i) => idx_to_rgb(i),
-        AColor::Named(n) => named_to_rgb(n, default),
+        AColor::Indexed(i) => idx_to_rgb(i, ansi),
+        AColor::Named(n) => named_to_rgb(n, default, ansi),
     }
 }
 
 /// Map a named terminal color to RGB; `default` covers the terminal's own
 /// default fg/bg and any names we don't special-case (cursor, dim variants).
-fn named_to_rgb(n: NamedColor, default: Rgba) -> Rgba {
+fn named_to_rgb(n: NamedColor, default: Rgba, ansi: &[Rgba; 16]) -> Rgba {
     use NamedColor::*;
     match n {
         Foreground => default,
         Background => default,
-        Black => idx_to_rgb(0),
-        Red => idx_to_rgb(1),
-        Green => idx_to_rgb(2),
-        Yellow => idx_to_rgb(3),
-        Blue => idx_to_rgb(4),
-        Magenta => idx_to_rgb(5),
-        Cyan => idx_to_rgb(6),
-        White => idx_to_rgb(7),
-        BrightBlack => idx_to_rgb(8),
-        BrightRed => idx_to_rgb(9),
-        BrightGreen => idx_to_rgb(10),
-        BrightYellow => idx_to_rgb(11),
-        BrightBlue => idx_to_rgb(12),
-        BrightMagenta => idx_to_rgb(13),
-        BrightCyan => idx_to_rgb(14),
-        BrightWhite => idx_to_rgb(15),
+        Black => ansi[0],
+        Red => ansi[1],
+        Green => ansi[2],
+        Yellow => ansi[3],
+        Blue => ansi[4],
+        Magenta => ansi[5],
+        Cyan => ansi[6],
+        White => ansi[7],
+        BrightBlack => ansi[8],
+        BrightRed => ansi[9],
+        BrightGreen => ansi[10],
+        BrightYellow => ansi[11],
+        BrightBlue => ansi[12],
+        BrightMagenta => ansi[13],
+        BrightCyan => ansi[14],
+        BrightWhite => ansi[15],
         _ => default,
     }
 }
 
 /// Convert an xterm 256-color index to RGB (16 base + 6×6×6 cube + grayscale ramp).
-fn idx_to_rgb(i: u8) -> Rgba {
-    const BASE: [(u8, u8, u8); 16] = [
-        (0, 0, 0), (205, 49, 49), (13, 188, 121), (229, 229, 16),
-        (36, 114, 200), (188, 63, 188), (17, 168, 205), (229, 229, 229),
-        (102, 102, 102), (241, 76, 76), (35, 209, 139), (245, 245, 67),
-        (59, 142, 234), (214, 112, 214), (41, 184, 219), (255, 255, 255),
-    ];
+fn idx_to_rgb(i: u8, ansi: &[Rgba; 16]) -> Rgba {
     if (i as usize) < 16 {
-        let (r, g, b) = BASE[i as usize];
-        return Rgba::rgb(r, g, b);
+        return ansi[i as usize];
     }
     if i >= 232 {
         let v = 8 + (i - 232) * 10;
@@ -649,7 +642,21 @@ mod tests {
         let th = crate::theme::Theme::midnight();
         assert_eq!(query_color(257, &th), th.window_bg);
         assert_eq!(query_color(256, &th), th.text);
-        assert_eq!(query_color(1, &th), idx_to_rgb(1));
+        assert_eq!(query_color(1, &th), idx_to_rgb(1, &th.ansi));
+    }
+
+    #[test]
+    fn themed_ansi_palette_colours_indexed_and_named_cells() {
+        let mut ansi = crate::theme::DEFAULT_ANSI;
+        ansi[1] = Rgba::rgb(1, 2, 3);
+        let d = Rgba::rgb(9, 9, 9);
+        assert_eq!(resolve_color(AColor::Named(NamedColor::Red), d, &ansi), Rgba::rgb(1, 2, 3));
+        assert_eq!(resolve_color(AColor::Indexed(1), d, &ansi), Rgba::rgb(1, 2, 3));
+        // The 6x6x6 cube and grey ramp are not part of the table.
+        assert_eq!(resolve_color(AColor::Indexed(196), d, &ansi), Rgba::rgb(255, 0, 0));
+        let mut th = crate::theme::Theme::midnight();
+        th.ansi = ansi;
+        assert_eq!(query_color(1, &th), Rgba::rgb(1, 2, 3));
     }
 
     /// An OSC 11 background query reaches `PtyResponder` as `ColorRequest(257)`

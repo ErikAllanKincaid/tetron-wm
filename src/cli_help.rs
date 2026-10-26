@@ -121,6 +121,12 @@ COMMANDS:\n\
 \x20                       to edit (e.g. theme --dump gruvbox, then set theme = \"gruvbox\")\n\
 \x20                       A theme file X.toml shows the picture X.jpg (or png, webp) next to it,\n\
 \x20                       or the one its wallpaper key names, while wallpaper = \"default\".\n\
+\x20                       Theme file keys: desktop_bg window_bg title_focus title_blur title_fg\n\
+\x20                       border shadow ctrl_fg close_fg menubar_bg dock_bg text dim accent\n\
+\x20                       active_bg, optional success error accent_fg icon_fg (derived when\n\
+\x20                       unset), [ansi] (the 16 colours apps see: black red ... bright_white)\n\
+\x20                       and [vt16] (palette index 0-15 per role for the 16-colour console).\n\
+\x20                       See docs/CONFIG.md, Theme file keys.\n\
 \x20 msg '<json>'          send a raw ClientMsg\n\
 \x20 clip copy|paste|list|clear|pin N|delete N   the clipboard history (see `clip` alone)\n\
 \x20 service [install|uninstall|status]  per-user apphost service (default session only)\n\

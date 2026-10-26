@@ -27,7 +27,16 @@ pub enum HostReq {
     /// default colors on the next frame. `None` means "follow the theme"; the
     /// daemon always sends resolved colors, since the apphost may not know a
     /// theme file that was added after it started.
-    SetColors { theme: String, terminal_bg: Option<String>, terminal_fg: Option<String> },
+    ///
+    /// `ansi` (v6+) is the theme's 16 ANSI colours as hex, in palette order; an
+    /// older frontend omits it and an older apphost ignores it.
+    SetColors {
+        theme: String,
+        terminal_bg: Option<String>,
+        terminal_fg: Option<String>,
+        #[serde(default)]
+        ansi: Option<Vec<String>>,
+    },
     /// The frontend's [`PROTO_VERSION`], sent right after the `Roster` (protocol
     /// v5+). It tells the apphost which `Frame` encodings this frontend reads:
     /// from v5 the apphost sends [`PackedGrid`]s instead of JSON cell grids.
@@ -74,7 +83,11 @@ pub struct ImgBlob {
 /// (run-length binary, changed rows only) and leaves `grid` empty. JSON cell
 /// grids cost the daemon about half its CPU under heavy output. Both sides
 /// stay on JSON grids unless both are v5+, so no `MIN_COMPAT` bump.
-pub const PROTO_VERSION: u32 = 5;
+///
+/// v6 — `HostReq::SetColors` gained an optional `ansi` list (the theme's 16 ANSI
+/// colours). `#[serde(default)]` both ways: an older apphost ignores the field
+/// and keeps its palette, an older frontend omits it. Do NOT bump `MIN_COMPAT`.
+pub const PROTO_VERSION: u32 = 6;
 
 /// v3 — added `clip_reqs` to `HostEvt::Frame`: OSC 52 clipboard READ queries
 /// from the app, so the frontend can answer them. `#[serde(default)]`; an old
