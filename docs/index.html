@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tetron-wm: a desktop for your terminal</title>
+<meta name="description" content="Floating windows, a taskbar, an app store with 600+ TUIs and a mouse, all drawn inside the terminal you already have. A graphical tmux.">
+<style>
+  :root { --bg:#0e1116; --surface:#161b22; --surface-2:#1e252e; --fg:#e6eaf0; --muted:#98a3b1; --border:#2a323d;
+    --accent:#7ee0b0; --accent-2:#8fb8dc; --warn:#e0a96b; --bad:#e07b7b;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 var(--sans); -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent-2); }
+  .wrap { max-width:62rem; margin:0 auto; padding:0 20px; }
+  nav { position:sticky; top:0; z-index:10; background:rgba(14,17,22,.88); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+  nav .wrap { display:flex; gap:18px; align-items:center; height:48px; font-family:var(--mono); font-size:.85rem; }
+  nav .brand { color:var(--accent); font-weight:700; margin-right:auto; text-decoration:none; }
+  nav a { color:var(--muted); text-decoration:none; } nav a:hover { color:var(--fg); }
+  h1 { font-size:clamp(2.2rem,7vw,4rem); line-height:1.05; letter-spacing:-.03em; margin:0 0 1rem; text-wrap:balance; }
+  h1 em { font-style:normal; color:var(--accent); }
+  h2 { font-size:clamp(1.5rem,4vw,2.1rem); letter-spacing:-.02em; margin:0 0 .5rem; text-wrap:balance; }
+  .eyebrow { font:.75rem var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 1rem; }
+  .lede { font-size:1.2rem; color:var(--muted); max-width:40rem; margin:0 0 1.6rem; text-wrap:pretty; }
+  section { padding:4.5rem 0; border-top:1px solid var(--border); }
+  .hero { padding:4rem 0 3rem; border:0; }
+  .install { display:flex; align-items:center; gap:10px; background:#05070a; border:1px solid var(--border); border-radius:10px; padding:12px 14px; font:.88rem var(--mono); max-width:46rem; }
+  .install code { flex:1; overflow-x:auto; white-space:nowrap; color:var(--fg); }
+  .install .p { color:var(--accent); }
+  button { font:inherit; cursor:pointer; }
+  .copy { background:var(--surface-2); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:5px 12px; font:.8rem var(--mono); }
+  .copy:hover { border-color:var(--accent); }
+  .sub { color:var(--muted); font-size:.88rem; margin:.7rem 0 0; }
+  .shot { margin-top:2.5rem; border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+  .shot img { display:block; width:100%; height:auto; }
+  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:1.6rem; }
+  .pill { font:.78rem var(--mono); color:var(--muted); border:1px solid var(--border); border-radius:99px; padding:3px 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:14px; margin-top:2rem; }
+  .win { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .win .bar { display:flex; align-items:center; gap:6px; padding:7px 12px; background:var(--surface-2); border-bottom:1px solid var(--border); font:.75rem var(--mono); color:var(--muted); }
+  .win .bar i { width:9px; height:9px; border-radius:50%; background:var(--border); } .win .bar i:first-child { background:var(--bad); }
+  .win .body { padding:14px 16px; } .win p { margin:0; color:var(--muted); font-size:.93rem; } .win h3 { margin:0 0 .3rem; font-size:1.05rem; }
+  .cmp { width:100%; border-collapse:collapse; margin-top:2rem; font-size:.93rem; }
+  .cmp th, .cmp td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .cmp th { font:.75rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .cmp td:first-child { color:var(--muted); } .cmp .us { background:rgba(126,224,176,.07); color:var(--fg); }
+  .cmp th.us { color:var(--accent); }
+  .tablewrap { overflow-x:auto; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:2rem; }
+  .two pre { margin:0; padding:14px 16px; background:#05070a; border:1px solid var(--border); border-radius:10px; font:.82rem/1.5 var(--mono); overflow-x:auto; color:var(--muted); }
+  .two h3 { margin:0 0 .5rem; font:.78rem var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .two .good h3 { color:var(--accent); }
+  .demo { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:40px; margin-top:2.5rem; align-items:start; }
+  .steps .step { min-height:60vh; display:flex; flex-direction:column; justify-content:center; opacity:.35; transition:opacity .3s; }
+  .steps .step.on { opacity:1; }
+  .step .n { font:.8rem var(--mono); color:var(--accent); }
+  .step h3 { font-size:1.5rem; margin:.2rem 0 .4rem; } .step p { color:var(--muted); margin:0; }
+  .step kbd { font:.8rem var(--mono); background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:1px 6px; color:var(--fg); }
+  .stage { position:sticky; top:72px; }
+  .stage .frame { position:relative; border:1px solid var(--border); border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,16/10); background:#05070a; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .stage img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .45s; }
+  .stage img.on { opacity:1; }
+  .cap { font:.8rem var(--mono); color:var(--muted); margin-top:.6rem; text-align:center; }
+  .themes { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:12px; margin-top:2rem; }
+  .themes figure { margin:0; } .themes img { width:100%; display:block; border:1px solid var(--border); border-radius:8px; }
+  .themes figcaption { font:.78rem var(--mono); color:var(--muted); margin-top:.4rem; }
+  .vpn { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:40px; align-items:center; margin-top:2rem; }
+  .vpn ul { margin:0; padding:0; list-style:none; display:grid; gap:12px; }
+  .vpn li { color:var(--muted); padding-left:1.2rem; position:relative; } .vpn li b { color:var(--fg); font-weight:600; }
+  .vpn li::before { content:"\25CF"; position:absolute; left:0; color:var(--accent); font-size:.7rem; top:.35rem; }
+  .tray { background:#05070a; border:1px solid var(--border); border-radius:10px; font:.85rem/1.7 var(--mono); overflow:hidden; max-width:24rem; }
+  .tray .top { display:flex; gap:16px; padding:6px 14px; background:var(--surface-2); border-bottom:1px solid var(--border); color:var(--muted); } .tray .top .on { color:var(--accent); }
+  .tray .row { display:flex; justify-content:space-between; gap:12px; padding:2px 14px; } .tray .row span:last-child { color:var(--muted); }
+  .tray .hr { border-top:1px solid var(--border); margin:6px 0; } .tray .dir { color:var(--accent); } .tray .rel { color:var(--warn); }
+  .tray .pad { padding:8px 0; }
+  .tray .note { color:var(--muted); font-size:.72rem; padding:0 14px 8px; }
+  .btn { display:inline-block; margin-top:1.6rem; padding:10px 18px; border-radius:8px; background:var(--accent); color:#04130c; font-weight:600; text-decoration:none; }
+  .btn.ghost { background:none; color:var(--fg); border:1px solid var(--border); margin-left:8px; }
+  footer { border-top:1px solid var(--border); padding:2.5rem 0 3rem; color:var(--muted); font-size:.88rem; }
+  footer a { margin-right:16px; }
+  @media (max-width:760px) {
+    .two, .demo, .vpn { grid-template-columns:1fr; }
+    .stage { position:sticky; top:48px; z-index:2; background:var(--bg); padding:8px 0; }
+    .steps .step { min-height:45vh; }
+    nav .links { display:none; }
+  }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .stage img, .steps .step { transition:none; } }
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a class="brand" href="#top">tetron-wm</a>
+  <span class="links" style="display:contents"><a href="#why">why</a><a href="#compare">compare</a><a href="#tour">tour</a><a href="#vpn">vpn</a><a href="#themes">themes</a></span>
+  <a href="https://github.com/ErikAllanKincaid/tetron-wm">github</a>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <p class="eyebrow">A graphical tmux</p>
+  <h1>A <em>desktop</em> for your terminal.</h1>
+  <p class="lede">Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have. Close the terminal, drop the ssh. Your apps keep running.</p>
+  <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash</code><button class="copy" id="copy">copy</button></div>
+  <p class="sub">Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). Prebuilt binary, no Rust needed. Then run <code>tetron-wm</code>.</p>
+  <div class="shot"><img src="images/tetron-wm.png" alt="tetron-wm running in a terminal: floating windows, a top taskbar, a status tray and a mouse cursor"></div>
+  <div class="pills"><span class="pill">no X11</span><span class="pill">no Wayland</span><span class="pill">works over ssh</span><span class="pill">single Rust binary</span><span class="pill">MIT</span></div>
+</div></header>
+
+<section id="why"><div class="wrap">
+  <p class="eyebrow">Why</p>
+  <h2>Everything a desktop does, in a terminal.</h2>
+  <p class="lede">No compositor, no GPU, no toolkit. Just cells, so it runs wherever a terminal does.</p>
+  <div class="grid">
+    <div class="win"><div class="bar"><i></i><i></i><i></i>desktop</div><div class="body"><h3>A GUI desktop alternative</h3><p>Drag titlebars, resize edges, click the taskbar, right-click for menus. Files, desktop icons, viewers and a tray come built in.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>fun</div><div class="body"><h3>Super fun to use</h3><p>Wallpapers, themes, a mouse cursor and floating windows in a shell. It feels like a toy and works like a tool.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>detach</div><div class="body"><h3>Keeps running</h3><p>Detach and reattach from any terminal or over ssh. Reloading or updating the UI does not close your apps.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>store</div><div class="body"><h3>An ecosystem that grows</h3><p>An app store with 600+ curated TUIs. Search, install, launch. Missing toolchains are offered for you.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>theme</div><div class="body"><h3>Themable</h3><p>Four built-in themes plus nord, dracula, dawn and more. Write your own as a small file, wallpaper included.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>tetron</div><div class="body"><h3>tetron VPN integrated</h3><p>Peers, link quality and an on/off toggle for your P2P mesh sit in the tray. Hidden when tetron is absent.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>assistant</div><div class="body"><h3>AI assistant built in</h3><p>An optional panel running opencode or hermes that can drive the desktop through its own CLI.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>console</div><div class="body"><h3>Boots straight in</h3><p>On a bare Linux console it can be your whole desktop. The installer sets up autologin and autostart, and can undo it.</p></div></div>
+  </div>
+</div></section>
+
+<section id="compare"><div class="wrap">
+  <p class="eyebrow">Compare</p>
+  <h2>tmux power. Desktop manners.</h2>
+  <p class="lede">tmux splits a screen into tiles you drive with chords you have to memorize. tetron-wm gives you windows you can just grab.</p>
+  <div class="two">
+    <div><h3>tmux</h3><pre>$ tmux new -s work
+C-b %          # split
+C-b "          # split again
+C-b o          # which pane?
+C-b z          # zoom
+C-b d          # detach
+# plugins, a conf file, a cheat sheet</pre></div>
+    <div class="good"><h3>tetron-wm</h3><pre>$ tetron-wm
+click launcher  -> Shell, btop, vim
+drag titlebar   -> move
+drag edge       -> resize
+Ctrl+Space ?    -> every shortcut
+Ctrl+Space q    -> detach
+# works on first run</pre></div>
+  </div>
+  <div class="tablewrap"><table class="cmp">
+    <tr><th></th><th>GUI desktop</th><th>tmux</th><th class="us">tetron-wm</th></tr>
+    <tr><td>Floating, overlapping windows</td><td>yes</td><td>tiles only</td><td class="us">yes</td></tr>
+    <tr><td>Mouse: drag, resize, menus</td><td>yes</td><td>limited</td><td class="us">yes</td></tr>
+    <tr><td>Survives closed terminal or dropped ssh</td><td>no</td><td>yes</td><td class="us">yes</td></tr>
+    <tr><td>Needs X11, Wayland or a GPU</td><td>yes</td><td>no</td><td class="us">no</td></tr>
+    <tr><td>Works on a headless server</td><td>no</td><td>yes</td><td class="us">yes</td></tr>
+    <tr><td>App store, file manager, tray</td><td>yes</td><td>no</td><td class="us">yes</td></tr>
+    <tr><td>Learning curve</td><td>low</td><td>steep</td><td class="us">low, keys are optional</td></tr>
+  </table></div>
+</div></section>
+
+<section id="tour"><div class="wrap">
+  <p class="eyebrow">Tour</p>
+  <h2>Five minutes, start to finish.</h2>
+  <div class="demo">
+    <div class="steps" id="steps">
+      <div class="step on" data-img="0"><span class="n">01</span><h3>Launch it</h3><p>Run <kbd>tetron-wm</kbd>. Click the button at the top left or press <kbd>Ctrl+Space</kbd> then <kbd>l</kbd>. The first entry is a Shell.</p></div>
+      <div class="step" data-img="1"><span class="n">02</span><h3>Arrange windows</h3><p>Run btop, a shell, vim and a file manager side by side. Drag, resize, minimize, maximize. The mouse reaches apps that use it.</p></div>
+      <div class="step" data-img="2"><span class="n">03</span><h3>Get apps</h3><p>Open the Store with <kbd>Ctrl+Space</kbd> then <kbd>S</kbd>. Search 600+ TUIs and install in a click. <kbd>Ctrl+Space</kbd> <kbd>space</kbd> searches every app.</p></div>
+      <div class="step" data-img="3"><span class="n">04</span><h3>Make it yours</h3><p>Switch themes and wallpapers live from Settings, or write your own theme file.</p></div>
+      <div class="step" data-img="0"><span class="n">05</span><h3>Leave without closing anything</h3><p><kbd>Ctrl+Space</kbd> then <kbd>q</kbd> detaches. Run <kbd>tetron-wm</kbd> again, from any terminal or over ssh, and everything is where you left it.</p></div>
+    </div>
+    <div class="stage">
+      <div class="frame" style="--ar:16/10">
+        <img class="on" src="images/tetron-wm.png" alt="The tetron-wm desktop">
+        <img src="images/theme-midnight.png" alt="Midnight theme with several windows open">
+        <img src="images/theme-gruvbox.png" alt="Gruvbox theme">
+        <img src="images/theme-pastoral.png" alt="Pastoral theme">
+      </div>
+      <p class="cap" id="cap">the desktop</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="vpn"><div class="wrap">
+  <p class="eyebrow">tetron mesh VPN</p>
+  <h2>Your machines, one private network, one click away.</h2>
+  <p class="lede">tetron-wm has first-class support for <a href="https://erikallankincaid.github.io/tetron/">tetron</a>, a peer-to-peer mesh VPN with no accounts, no port forwarding and no exposed ports. Its status lives in the tray.</p>
+  <div class="vpn">
+    <ul>
+      <li><b>Status at a glance.</b> The tray shows the peer count and a dot: direct path, relay only, or standby.</li>
+      <li><b>Toggle from the popover.</b> One switch for everything, plus Resume and Standby for each network.</li>
+      <li><b>Open a terminal into it.</b> Launches tetron-tui, or drops you into a shell with the full tetron CLI.</li>
+      <li><b>Self-effacing.</b> No tetron installed or running? The tray segment hides. Nothing to configure.</li>
+      <li><b>Install both together.</b> The suite installer sets up tetron, its web dashboard and its tray client.</li>
+    </ul>
+    <div>
+      <div class="tray" role="img" aria-label="Illustration of the tetron tray popover: two networks, one direct and one relay">
+        <div class="top"><span>tetron-wm</span><span class="on">&#x21C4;3 &#x25CF;</span><span>14:02</span></div>
+        <div class="pad">
+          <div class="row"><span>Tetron</span><span>[on]</span></div><div class="hr"></div>
+          <div class="row"><span><span class="dir">&#x25CF;</span> homelab</span><span>Standby</span></div>
+          <div class="row"><span><span class="rel">&#x25CB;</span> travel</span><span>Standby</span></div><div class="hr"></div>
+          <div class="row"><span>Open terminal</span><span>&#x203A;</span></div>
+        </div>
+        <div class="note">Illustration. &#x25CF; direct, &#x25CB; relay only.</div>
+      </div>
+    </div>
+  </div>
+  <a class="btn" href="https://erikallankincaid.github.io/tetron/">Meet tetron</a><a class="btn ghost" href="https://github.com/ErikAllanKincaid/tetron">tetron on GitHub</a>
+</div></section>
+
+<section id="themes"><div class="wrap">
+  <p class="eyebrow">Themes</p>
+  <h2>Same desktop, any mood.</h2>
+  <p class="lede">A theme is a small file: colors, glyph style and an optional wallpaper. Four ship built in.</p>
+  <div class="themes">
+    <figure><img src="images/theme-midnight.png" alt="midnight" loading="lazy"><figcaption>midnight</figcaption></figure>
+    <figure><img src="images/theme-gruvbox.png" alt="gruvbox" loading="lazy"><figcaption>gruvbox</figcaption></figure>
+    <figure><img src="images/theme-pastoral.png" alt="pastoral" loading="lazy"><figcaption>pastoral</figcaption></figure>
+    <figure><img src="images/theme-windows.png" alt="windows" loading="lazy"><figcaption>windows</figcaption></figure>
+  </div>
+  <a class="btn" href="tetron-wm_theming_guide.html">Read the theming guide</a><a class="btn ghost" href="CONFIG.md">All config options</a>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Try it now.</h2>
+  <div class="install" style="margin-top:1rem"><span class="p">$</span><code>curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash</code></div>
+</div></section>
+
+<footer><div class="wrap">
+  <a href="https://github.com/ErikAllanKincaid/tetron-wm">GitHub</a><a href="FEATURES_tetron-wm_what_it_can_do.md">Features</a><a href="CONFIG.md">Config</a><a href="KEYS_tetron-wm_leader_key_table.md">Keys</a><a href="tetron-wm_theming_guide.html">Theming</a><a href="tetron-wm_bare_console_guide.html">Bare console</a><a href="https://erikallankincaid.github.io/tetron/">tetron VPN</a>
+  <p>MIT licensed.</p>
+</div></footer>
+
+<script>
+(function () {
+  var cmd = document.getElementById('cmd'), b = document.getElementById('copy');
+  b.addEventListener('click', function () {
+    var t = cmd.textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { b.textContent = 'copied'; }, function () {
+      var r = document.createRange(); r.selectNodeContents(cmd); var s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'select, ctrl+c';
+    });
+    setTimeout(function () { b.textContent = 'copy'; }, 2000);
+  });
+  var steps = [].slice.call(document.querySelectorAll('.step')), imgs = [].slice.call(document.querySelectorAll('.stage img')),
+      cap = document.getElementById('cap'), names = ['the desktop', 'midnight theme', 'gruvbox theme', 'pastoral theme'];
+  function show(s) {
+    steps.forEach(function (x) { x.classList.toggle('on', x === s); });
+    var i = +s.dataset.img; imgs.forEach(function (m, j) { m.classList.toggle('on', j === i); }); cap.textContent = names[i];
+  }
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) show(e.target); }); }, { rootMargin: '-45% 0px -45% 0px' });
+    steps.forEach(function (s) { io.observe(s); });
+  } else { steps.forEach(function (s) { s.classList.add('on'); }); }
+})();
+</script>
+</body>
+</html>
