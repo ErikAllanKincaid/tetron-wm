@@ -15,6 +15,7 @@ carry user-visible feature work and the occasional breaking config change.
 - Settings → Appearance → Colors calls the no-color choice "Mono", matching the `mono` config value and `TETRON_WM_COLORS=mono` (it was "Black and white").
 
 ### Fixed
+- A command that ran past its time cap was killed but never reaped, so it stayed behind as a defunct (zombie) process of the daemon until it restarted. On a machine where `nmcli` hangs (a wedged NetworkManager), every poll leaked one, about 150 in five hours, filling the process table. Timed-out commands, and a clipboard helper that failed or timed out, are now reaped on a background thread.
 - `tetron-wm theme NAME` (and a client attaching with `TETRON_WM_THEME`) now redraws the wallpaper when it follows the theme (`wallpaper = "default"`). It kept the old theme's picture until the next Settings change or restart.
 
 ### Added

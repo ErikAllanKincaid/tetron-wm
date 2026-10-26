@@ -62,7 +62,7 @@ pub fn write(b: Backend, text: &str) -> bool {
     };
     if let Some(mut si) = child.stdin.take() {
         if si.write_all(text.as_bytes()).is_err() {
-            let _ = child.kill();
+            crate::system::kill_and_reap(child);
             return false;
         }
     }
@@ -72,7 +72,7 @@ pub fn write(b: Backend, text: &str) -> bool {
             Ok(Some(st)) => return st.success(),
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
             _ => {
-                let _ = child.kill();
+                crate::system::kill_and_reap(child);
                 return false;
             }
         }

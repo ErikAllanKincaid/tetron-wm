@@ -360,6 +360,18 @@ pub fn backend() -> Box<dyn Backend> {
     }
 }
 
+/// Kill a child and reap it on a background thread. Dropping a `Child` (even
+/// after `kill`) never calls `wait`, so the dead process stays a zombie until
+/// this process exits; a command that hangs every poll (nmcli with a wedged
+/// NetworkManager) leaked one per cap. The thread also covers a child stuck in
+/// uninterruptible sleep, which would block a plain `wait` here.
+pub fn kill_and_reap(mut child: std::process::Child) {
+    let _ = child.kill();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+}
+
 /// Run a command with a hard timeout, returning trimmed stdout on success.
 /// Never blocks longer than `secs`; kills the child on timeout. This is the
 /// **only** sanctioned way to shell out — it keeps a hung tool from freezing
@@ -386,7 +398,7 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
             }
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    let _ = child.kill();
+                    kill_and_reap(child);
                     return None;
                 }
                 std::thread::sleep(Duration::from_millis(20));
@@ -459,6 +471,27 @@ pub fn run_capped_status(program: &str, args: &[&str], secs: u64) -> Capped {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn capped_timeout_leaves_no_zombie() {
+        assert_eq!(run_capped("sleep", &["31"], 1), None);
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let me = std::process::id().to_string();
+        let zombies = std::fs::read_dir("/proc")
+            .unwrap()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path().join("stat")).ok())
+            .filter(|st| {
+                // "pid (comm) S ppid ..."; comm may hold spaces, so split after the last ')'.
+                let rest = st.rsplit_once(')').map(|(_, r)| r.trim_start()).unwrap_or("");
+                let mut f = rest.split_whitespace();
+                let (state, ppid) = (f.next(), f.next());
+                st.contains("(sleep)") && state == Some("Z") && ppid == Some(me.as_str())
+            })
+            .count();
+        assert_eq!(zombies, 0);
+    }
 
     #[test]
     fn capped_status_distinguishes_done_failed_running_and_missing() {
