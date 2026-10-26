@@ -39,7 +39,12 @@
   .lede { font-size:1.2rem; color:var(--muted); max-width:40rem; margin:0 0 1.6rem; text-wrap:pretty; }
   section { padding:4.5rem 0; border-top:1px solid var(--border); }
   .hero { padding:4rem 0 3rem; border:0; }
-  .inst { margin:1.8rem 0 .5rem; }
+  .inst { font-size:clamp(1.5rem,4vw,2.2rem); font-weight:700; letter-spacing:.22em; text-align:center; margin:2.4rem 0 1rem; color:var(--accent); }
+  .hero .install { margin-left:auto; margin-right:auto; }
+  .hero .pills { justify-content:center; }
+  .hero .sub { text-align:center; margin-left:auto; margin-right:auto; max-width:46rem; }
+  .hero .apk { justify-content:center; text-align:center; }
+  .hero .apk span { flex:0 1 auto; }
   .install { display:flex; align-items:center; gap:10px; background:var(--code); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font:.88rem var(--mono); max-width:46rem; }
   .install code { flex:1; overflow-x:auto; white-space:nowrap; color:var(--fg); }
   .install .p { color:var(--accent); }
