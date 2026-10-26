@@ -3,11 +3,12 @@ appearance = "dark"
 wallpaper = "none"   # no picture: a plain black desktop
 
 # High contrast: white on black everywhere. The focused title bar is grey, the
-# inactive one black, and the menubar and dock are black; yellow marks buttons.
-# The selection (menu highlight, panel buttons, the focused taskbar item) is the
-# same grey as the focused title bar. Every text pair is at least 7:1, so it
-# reads well for low vision or a washed-out display. For a terminal with no
-# colour at all, use colors = "mono" instead.
+# inactive one black, and the menubar and dock are black; the accent is white.
+# The selection (menu highlight, panel buttons, the focused taskbar item) is
+# black with white text in colour, and light grey in 16 colours (see [vt16]).
+# Every text pair is at least 7:1, so it reads well for low vision or a
+# washed-out display. For a terminal with no colour at all, use colors = "mono"
+# instead.
 
 desktop_bg  = "#000000"
 window_bg   = "#000000"
@@ -23,7 +24,7 @@ dock_bg     = "#000000"
 text        = "#ffffff"
 dim         = "#b0b0b0"
 accent      = "#ffffff"
-active_bg   = "#000000"   # selection and panel buttons: grey, white text
+active_bg   = "#000000"   # selection and panel buttons: black, white text
 
 # 16-colour console: the selection is light grey (a VT has no dark grey background).
 [vt16]
