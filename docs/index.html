@@ -39,6 +39,7 @@
   .lede { font-size:1.2rem; color:var(--muted); max-width:40rem; margin:0 0 1.6rem; text-wrap:pretty; }
   section { padding:4.5rem 0; border-top:1px solid var(--border); }
   .hero { padding:4rem 0 3rem; border:0; }
+  .inst { margin:1.8rem 0 .5rem; }
   .install { display:flex; align-items:center; gap:10px; background:var(--code); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font:.88rem var(--mono); max-width:46rem; }
   .install code { flex:1; overflow-x:auto; white-space:nowrap; color:var(--fg); }
   .install .p { color:var(--accent); }
@@ -114,6 +115,7 @@
   <p class="eyebrow">A TUI desktop. A graphical tmux.</p>
   <h1>A <em>desktop</em> for your terminal.</h1>
   <p class="lede">Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have. Close the terminal, drop the ssh. Your apps keep running.</p>
+  <p class="eyebrow inst">Install</p>
   <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash</code><button class="copy" id="copy">copy</button></div>
   <p class="sub">Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). Prebuilt binary, no Rust needed. Then run <code>tetron-wm</code>.</p>
   <div class="shot"><img src="images/tetron-wm.png" alt="tetron-wm running in a terminal: floating windows, a top taskbar, a status tray and a mouse cursor"></div>
