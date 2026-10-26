@@ -106,7 +106,7 @@ tetron-wm reload
 
 - [config.example.toml](config.example.toml) is a ready-to-copy file with every option at its default and a note on each.
 - [docs/CONFIG.md](docs/CONFIG.md) is the full reference plus copy-paste recipes: tiling grids, themes, wallpaper, launcher entries, clipboard, servers that must stay up, and more.
-- [docs/tetron-wm_theming_guide.html](docs/tetron-wm_theming_guide.html) teaches you to make your own theme: every color key shown on a picture of the desktop, screenshots of the built-in themes, and a step-by-step walkthrough (open the file in a browser).
+- [The theming guide](https://erikallankincaid.github.io/tetron-wm/tetron-wm_theming_guide.html) teaches you to make your own theme: every color key shown on a picture of the desktop, screenshots of the built-in themes, and a step-by-step walkthrough.
 - Many options are also in the app under **Settings** (`Ctrl+Space`, then `,`).
 
 Common first changes:
@@ -136,7 +136,7 @@ curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/ins
 It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` (a login prompt, you start tetron-wm) or `login` (a login prompt, tetron-wm starts after you log in); it then asks "Do you want to log in automatically?" (default no, `--autologin` to say yes), and use `--dry-run` to preview the plan.
 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
-- Why each piece is needed, with diagrams: [docs/tetron-wm_bare_console_guide.html](docs/tetron-wm_bare_console_guide.html)
+- Why each piece is needed, with diagrams: [the bare console guide](https://erikallankincaid.github.io/tetron-wm/tetron-wm_bare_console_guide.html)
 - Just kmscon: [install-kmscon.sh](install-kmscon.sh)
 - Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard, and the right-click menu of a file opens with leader `.`.
 
