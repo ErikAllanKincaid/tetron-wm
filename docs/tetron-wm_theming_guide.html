@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Making a tetron-wm Theme</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; }
+  [hidden] { display: none !important; }
+  :root {
+    --bg:#f6f8fa; --surface:#ffffff; --surface-2:#eef1f5; --fg:#1b222c; --muted:#596573; --border:#dde2e9;
+    --accent:#4c6f99; --accent-ink:#35506f; --warn:#b06a2c; --good:#4f7a46;
+    --code-bg:#1d232c; --code-fg:#e7ecf3; --code-dim:#8b97a7;
+    --radius:10px; --maxw:50rem; color-scheme:light;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#1b2027; --surface:#232a33; --surface-2:#2b333e; --fg:#e6eaf0; --muted:#9ba6b4; --border:#333c48;
+      --accent:#8fb8dc; --accent-ink:#b0cfe9; --warn:#e0a96b; --good:#a3c293;
+      --code-bg:#12161c; --code-fg:#e7ecf3; --code-dim:#7d8a9b; color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#1b2027; --surface:#232a33; --surface-2:#2b333e; --fg:#e6eaf0; --muted:#9ba6b4; --border:#333c48;
+    --accent:#8fb8dc; --accent-ink:#b0cfe9; --warn:#e0a96b; --good:#a3c293;
+    --code-bg:#12161c; --code-fg:#e7ecf3; --code-dim:#7d8a9b; color-scheme:dark;
+  }
+  * { box-sizing: border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding-left:20px; padding-right:20px; }
+  header.hero { padding-block:4rem 2.5rem; }
+  .eyebrow { font-family:var(--mono); font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); margin:0 0 1rem; }
+  h1 { font-size:clamp(2.1rem,6vw,3.1rem); line-height:1.08; font-weight:600; letter-spacing:-.02em; text-wrap:balance; margin:0 0 1rem; }
+  .lede { font-size:1.18rem; color:var(--muted); max-width:38rem; text-wrap:pretty; margin:0; }
+  .lede strong { color:var(--fg); font-weight:600; }
+  section { padding-block:1.75rem; border-top:1px solid var(--border); }
+  h2 { font-size:1.5rem; font-weight:600; letter-spacing:-.01em; margin:.25rem 0 1rem; text-wrap:balance; }
+  h2 .num { font-family:var(--mono); font-size:.95rem; color:var(--accent-ink); margin-right:.6rem; font-weight:500; }
+  h3 { font-size:1.08rem; font-weight:600; margin:1.6rem 0 .5rem; }
+  p { margin:0 0 1rem; max-width:42rem; }
+  a { color:var(--accent-ink); text-underline-offset:2px; }
+  strong { font-weight:600; }
+  .mono-inline { font-family:var(--mono); font-size:.88em; background:var(--surface-2); border:1px solid var(--border); border-radius:5px; padding:.05em .4em; white-space:nowrap; }
+  .note, .warn { border:1px solid var(--border); border-left:3px solid var(--accent); background:var(--surface); border-radius:8px; padding:.9rem 1.1rem; margin:1.25rem 0; font-size:.95rem; }
+  .warn { border-left-color:var(--warn); }
+  .note .k, .warn .k { font-family:var(--mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.12em; display:block; margin-bottom:.3rem; }
+  .note .k { color:var(--accent-ink); } .warn .k { color:var(--warn); }
+  .note p:last-child, .warn p:last-child { margin-bottom:0; }
+  figure.code { margin:1rem 0; min-width:0; }
+  figure.code figcaption { font-family:var(--mono); font-size:.74rem; color:var(--muted); margin-bottom:.35rem; letter-spacing:.04em; }
+  .codebox { position:relative; }
+  pre { margin:0; background:var(--code-bg); color:var(--code-fg); border-radius:var(--radius); padding:1rem 1.1rem; overflow-x:auto; font-family:var(--mono); font-size:.85rem; line-height:1.6; tab-size:2; }
+  pre .c { color:var(--code-dim); } pre .p { color:#7fb3d5; }
+  .copy { position:absolute; top:.55rem; right:.55rem; font-family:var(--mono); font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--code-dim); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:6px; padding:.25rem .5rem; cursor:pointer; }
+  .copy:hover { color:var(--code-fg); } .copy.ok { color:var(--good); border-color:var(--good); }
+  ul.clean { margin:0 0 1rem; padding-left:1.2rem; max-width:42rem; } ul.clean li { margin-bottom:.4rem; }
+  table.trouble { border-collapse:collapse; width:100%; font-size:.92rem; }
+  .table-scroll { overflow-x:auto; margin:1rem 0; }
+  table.trouble th, table.trouble td { text-align:left; padding:.6rem .7rem; border-bottom:1px solid var(--border); vertical-align:top; }
+  table.trouble th { font-size:.74rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+  table.trouble td:first-child { font-weight:500; white-space:nowrap; }
+  table.trouble tr.grp td { font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-ink); background:var(--surface-2); }
+  footer { padding-block:2.5rem 3.5rem; color:var(--muted); font-size:.88rem; border-top:1px solid var(--border); }
+  footer .links { font-family:var(--mono); font-size:.8rem; line-height:2; }
+
+  /* ---- the mock desktop: every colour is a theme key ---- */
+  .picker { display:flex; flex-wrap:wrap; gap:.4rem; margin:.5rem 0 .8rem; }
+  .picker button { font-family:var(--mono); font-size:.78rem; color:var(--fg); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:.3rem .7rem; cursor:pointer; }
+  .picker button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent-ink); box-shadow:inset 0 0 0 1px var(--accent); }
+  .mock { --desktop_bg:#2c2e32; --window_bg:#11141d; --title_focus:#1d2433; --title_blur:#141822; --title_fg:#8fb7ff; --border:#3a4458; --shadow:#0000006e; --ctrl_fg:#96a5be; --close_fg:#ff6b6b; --menubar_bg:#161b27; --text:#c8d0dc; --dim:#788296; --accent:#6cb6ff; --active_bg:#2d3a55; --success:#7ee787; --error:#ff6b6b; --accent_fg:#ffffff; --icon_fg:#ffffff;
+    font-family:var(--mono); font-size:.8rem; line-height:1.35; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--desktop_bg); color:var(--text); margin:.5rem 0 1rem; }
+  .mock .bar { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; background:var(--menubar_bg); padding:.3rem .5rem; color:var(--text); }
+  .mock .btn { padding:0 .5rem; background:var(--active_bg); color:var(--accent); }
+  .mock .btn.plus { background:var(--accent); color:var(--accent_fg); }
+  .mock .pill { padding:0 .5rem; color:var(--text); }
+  .mock .pill.on { background:var(--active_bg); }
+  .mock .tray { margin-left:auto; color:var(--text); }
+  .mock .desk { position:relative; padding:.9rem .8rem 1.1rem; min-height:15rem; display:grid; grid-template-columns:5.2rem 1fr; gap:.8rem; }
+  .mock .icons { display:flex; flex-direction:column; gap:.7rem; }
+  .mock .icon { text-align:center; color:var(--icon_fg); background:rgba(0,0,0,.78); padding:.15rem .2rem; }
+  .mock .wins { position:relative; min-width:0; padding-bottom:3.4rem; }
+  .mock .win { border:1px solid var(--border); background:var(--window_bg); }
+  .mock .win.back { position:absolute; top:.9rem; left:2.2rem; right:-.2rem; height:8rem; }
+  .mock .win.front { position:relative; width:calc(100% - 8rem); margin-top:1.6rem; box-shadow:.45rem .45rem 0 var(--shadow); }
+  .mock .title { display:flex; align-items:center; gap:.4rem; padding:0 .4rem; }
+  .mock .win.front .title { background:var(--title_focus); color:var(--title_fg); }
+  .mock .win.back .title { background:var(--title_blur); color:var(--title_fg); }
+  .mock .title .sp { flex:1; }
+  .mock .ctrl { color:var(--ctrl_fg); } .mock .close { color:var(--close_fg); }
+  .mock .body { position:relative; padding:.4rem .5rem 1.4rem; color:var(--text); }
+  .mock .dim { color:var(--dim); } .mock .ok { color:var(--success); } .mock .bad { color:var(--error); }
+  .mock .sel { background:var(--active_bg); color:var(--accent); padding:0 .3rem; margin:.15rem -.3rem; }
+  .mock .ansi { display:flex; flex-wrap:wrap; gap:2px; margin-top:.35rem; }
+  .mock .ansi i { width:1.05rem; height:.8rem; display:block; }
+  .pin.abs { position:absolute; margin:0; z-index:2; }
+  .pin { font-style:normal; font-family:var(--sans); font-weight:600; font-size:.62rem; line-height:1; display:inline-grid; place-items:center; width:1.05rem; height:1.05rem; border-radius:50%; background:#e8590c; color:#fff; margin:0 .25rem; vertical-align:middle; box-shadow:0 0 0 1px #fff; }
+  .legend { list-style:none; margin:.4rem 0 1rem; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(19rem,1fr)); gap:.35rem .9rem; max-width:none; }
+  .legend li { display:flex; gap:.5rem; align-items:baseline; font-size:.9rem; padding:.2rem .35rem; border-radius:6px; }
+  .legend li:hover, .legend li.hi { background:var(--surface-2); }
+  .legend .pin { flex:none; margin:0; transform:translateY(.12rem); }
+  .legend code { font-family:var(--mono); font-size:.84em; }
+  .mock .hl { outline:2px dashed #e8590c; outline-offset:1px; }
+  .swatch { display:inline-block; width:.9rem; height:.9rem; border:1px solid var(--border); vertical-align:-.12rem; margin-right:.35rem; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Themes · colors · one small TOML file</p>
+    <h1>Make your own tetron-wm theme</h1>
+    <p class="lede">A theme is a short list of named colors. <strong>Every color on the desktop comes from one key</strong>, so once you know which key paints which part of the screen you can restyle the whole thing, share it, and have it behave on a 16-color console too. This guide shows the keys on a picture of the desktop, then walks you through building a theme of your own.</p>
+  </header>
+
+  <section>
+    <h2>What a theme is, and why it is only colors</h2>
+    <p>A theme file holds colors and nothing else. Layout, the position of buttons, and the readability rules stay in the program. That is on purpose: a theme can look odd, but it can not move a close button off the title bar or hide the text it draws. The worst a bad theme can do is look ugly, and the program warns you in the debug log when a pair of colors is hard to read (it never refuses to load one).</p>
+    <p>Colors are named by <strong>role</strong>, not by place. <span class="mono-inline">accent</span> is not "the blue thing"; it is the color of highlighted labels and the fill of the "+" button. One role can be used in several places, and the next section shows where.</p>
+    <p>Everything is optional. A theme names a <span class="mono-inline">base</span> (one of the built-ins) and only lists what is different. Three lines are a valid theme.</p>
+  </section>
+
+  <section>
+    <h2>The desktop, key by key</h2>
+    <p>This is an illustration of the desktop, drawn from the real values of five themes. Pick a theme to see its colors, and point at an entry in the list to outline where it is used. The numbers match the table in the next section. The mock leaves out the launcher, the terminal contents and anything that is not a theme color.</p>
+    <div class="picker" id="picker" role="group" aria-label="Theme shown in the picture"></div>
+
+    <div class="mock" id="mock" role="img" aria-label="A picture of the desktop: a top bar with buttons and window pills, desktop icons, a focused window over an unfocused one, with every colored part numbered.">
+      <div class="bar" data-k="menubar_bg">
+        <span class="btn" data-k="accent active_bg">☰ Apps</span>
+        <span class="btn plus" data-k="accent accent_fg">+<i class="pin">14</i></span>
+        <span class="pill on" data-k="active_bg text">term</span>
+        <span class="pill" data-k="menubar_bg text">files</span>
+        <span class="tray" data-k="text">cpu 12%  14:02</span>
+        <i class="pin">10</i>
+      </div>
+      <div class="desk" data-k="desktop_bg">
+        <div class="icons">
+          <div class="icon" data-k="icon_fg">▣<br>notes.txt</div>
+          <div class="icon" data-k="icon_fg">▣<br>photos</div>
+        </div>
+        <div class="wins">
+          <div class="win back" data-k="title_blur">
+            <div class="title"><span>logs</span><span class="sp"></span><span class="ctrl">–</span><span class="ctrl">□</span><span class="close">✕</span></div>
+          </div>
+          <div class="win front" data-k="border window_bg shadow">
+            <div class="title" data-k="title_focus"><span data-k="title_fg">term</span><i class="pin">3</i><span class="sp"></span><span class="ctrl" data-k="ctrl_fg">–</span><span class="ctrl" data-k="ctrl_fg">□</span><i class="pin">6</i><span class="close" data-k="close_fg">✕</span><i class="pin">7</i></div>
+            <div class="body">
+              <div data-k="text">$ ls --color <i class="pin">11</i></div>
+              <div class="ansi" data-k="ansi"><span id="ansi" style="display:contents"></span><i class="pin">13</i></div>
+              <div class="sel" data-k="active_bg accent">&gt; Settings → Appearance <i class="pin">15</i></div>
+              <div class="dim" data-k="dim">Enter to apply, Esc to go back <i class="pin">12</i></div>
+              <div class="ok" data-k="success">✔ catt installed <i class="pin">16</i></div>
+              <div class="bad" data-k="error">✖ chafa not found <i class="pin">17</i></div>
+              <i class="pin abs" style="left:.4rem;bottom:.3rem">2</i>
+            </div>
+            <i class="pin abs" style="right:-.55rem;top:45%">8</i>
+            <i class="pin abs" style="right:-1.05rem;bottom:-.95rem">9</i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ol class="legend" id="legend"></ol>
+
+    <div class="note">
+      <span class="k">Not on the picture</span>
+      <p><span class="mono-inline">dock_bg</span> is part of the theme format but nothing draws with it today: the taskbar lives in the top bar and uses <span class="mono-inline">menubar_bg</span>. Set it to match <span class="mono-inline">menubar_bg</span> so a future dock follows. The wallpaper picture and the 16 app colors (<span class="mono-inline">[ansi]</span>, row 13 above) are covered further down.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The four built-in themes</h2>
+    <p>These are real screenshots from tetron-wm, taken with the built-in <span class="mono-inline">tetron-wm screenshot</span> command, one per theme, each with its own wallpaper. The same three windows are open in each: a directory listing, the 16 ANSI colors, and an empty shell. Use them as a reference for what a finished theme looks like, and for how much the same roles change from one theme to the next.</p>
+    <p>The screenshot tool draws text with a Terminus console font, which has no glyph for a few symbols (the menu, the maximize and close marks), so they show as a question mark here. On a real screen they draw as in the picture above.</p>
+    <figure style="margin:1rem 0"><img src="images/theme-midnight.png" alt="The midnight theme: dark blue-grey windows, blue accents, a dark blue wallpaper." style="width:100%;border:1px solid var(--border);border-radius:8px"><figcaption style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-top:.3rem">midnight (the default): dark, blue accent</figcaption></figure>
+    <figure style="margin:1rem 0"><img src="images/theme-gruvbox.png" alt="The gruvbox theme: warm brown-grey windows with yellow accents." style="width:100%;border:1px solid var(--border);border-radius:8px"><figcaption style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-top:.3rem">gruvbox: warm, yellow accent</figcaption></figure>
+    <figure style="margin:1rem 0"><img src="images/theme-pastoral.png" alt="The pastoral theme: white windows, green title bar and selection, a paper wallpaper." style="width:100%;border:1px solid var(--border);border-radius:8px"><figcaption style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-top:.3rem">pastoral: the light theme, green accent</figcaption></figure>
+    <figure style="margin:1rem 0"><img src="images/theme-windows.png" alt="The windows theme: white windows, navy title bar, silver top bar, a blue sky and green hill wallpaper." style="width:100%;border:1px solid var(--border);border-radius:8px"><figcaption style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-top:.3rem">windows: silver chrome, navy title bar</figcaption></figure>
+    <div class="note">
+      <span class="k">Spot the gap</span>
+      <p>Look at the 16-color swatches in the pastoral and windows shots: the palette's last "white" square can not be seen on a white window. That is the default palette meeting a light theme, and it is exactly what the <span class="mono-inline">[ansi]</span> table in step 05 is for.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Every key</h2>
+    <p>The same list as a reference. "If unset" is what you get when the key is missing from your file.</p>
+    <div class="table-scroll">
+      <table class="trouble">
+        <thead><tr><th>#</th><th>Key</th><th>Paints</th><th>If unset</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Surfaces</td></tr>
+          <tr><td>1</td><td><span class="mono-inline">desktop_bg</span></td><td>The desktop behind the windows. With <span class="mono-inline">wallpaper = "none"</span> it is the whole desktop.</td><td>base</td></tr>
+          <tr><td>2</td><td><span class="mono-inline">window_bg</span></td><td>Window body and terminal background.</td><td>base</td></tr>
+          <tr><td>10</td><td><span class="mono-inline">menubar_bg</span></td><td>The top bar and its taskbar.</td><td>base</td></tr>
+          <tr><td>-</td><td><span class="mono-inline">dock_bg</span></td><td>Reserved, nothing draws with it yet.</td><td>base</td></tr>
+          <tr class="grp"><td colspan="4">Window frame</td></tr>
+          <tr><td>3</td><td><span class="mono-inline">title_focus</span></td><td>Title bar of the focused window.</td><td>base</td></tr>
+          <tr><td>4</td><td><span class="mono-inline">title_blur</span></td><td>Title bar of every other window.</td><td>base</td></tr>
+          <tr><td>5</td><td><span class="mono-inline">title_fg</span></td><td>Title bar text.</td><td>base</td></tr>
+          <tr><td>6</td><td><span class="mono-inline">ctrl_fg</span></td><td>The minimize and maximize glyphs.</td><td>base</td></tr>
+          <tr><td>7</td><td><span class="mono-inline">close_fg</span></td><td>The close glyph, and the fill of destructive buttons.</td><td>base</td></tr>
+          <tr><td>8</td><td><span class="mono-inline">border</span></td><td>The frame around a window.</td><td>base</td></tr>
+          <tr><td>9</td><td><span class="mono-inline">shadow</span></td><td>The shadow under a window. Its alpha is the strength; <span class="mono-inline">#00000000</span> turns it off.</td><td>base</td></tr>
+          <tr class="grp"><td colspan="4">Text and highlight</td></tr>
+          <tr><td>11</td><td><span class="mono-inline">text</span></td><td>Body, menu and terminal text.</td><td>base</td></tr>
+          <tr><td>12</td><td><span class="mono-inline">dim</span></td><td>Secondary text and hints.</td><td>base</td></tr>
+          <tr><td>14</td><td><span class="mono-inline">accent</span></td><td>Highlighted labels and panel button text, and the fill of the "+" button.</td><td>base</td></tr>
+          <tr><td>15</td><td><span class="mono-inline">active_bg</span></td><td>The selection: menu highlight, panel buttons, the focused taskbar item.</td><td>base</td></tr>
+          <tr class="grp"><td colspan="4">Optional, derived from the rest of your file</td></tr>
+          <tr><td>16</td><td><span class="mono-inline">success</span></td><td>Good status: installed, verified, switched on, update available.</td><td>Bright green; a deeper green if <span class="mono-inline">window_bg</span> is light.</td></tr>
+          <tr><td>17</td><td><span class="mono-inline">error</span></td><td>Bad status: errors, kill, low-contrast warning.</td><td>Your <span class="mono-inline">close_fg</span>.</td></tr>
+          <tr><td>18</td><td><span class="mono-inline">accent_fg</span></td><td>Text drawn on an <span class="mono-inline">accent</span> fill (the "+" button).</td><td>White, or black if white would be unreadable on your <span class="mono-inline">accent</span>.</td></tr>
+          <tr><td>19</td><td><span class="mono-inline">icon_fg</span></td><td>Desktop icon labels over a wallpaper picture (they sit on the <span class="mono-inline">desktop_scrim</span>).</td><td>White.</td></tr>
+          <tr class="grp"><td colspan="4">Tables and extras</td></tr>
+          <tr><td>13</td><td><span class="mono-inline">[ansi]</span></td><td>The 16 colors that apps in your windows see.</td><td>The default palette.</td></tr>
+          <tr><td>-</td><td><span class="mono-inline">[vt16]</span></td><td>Your own choices for the 16-color console.</td><td>Derived from your colors.</td></tr>
+          <tr><td>-</td><td><span class="mono-inline">wallpaper</span></td><td>The picture this theme shows while the config <span class="mono-inline">wallpaper</span> is <span class="mono-inline">default</span>.</td><td>A picture named like the theme file.</td></tr>
+          <tr><td>-</td><td><span class="mono-inline">name</span> <span class="mono-inline">base</span> <span class="mono-inline">appearance</span></td><td>Name (default: the file name), the built-in to inherit from (default <span class="mono-inline">midnight</span>), and <span class="mono-inline">dark</span> or <span class="mono-inline">light</span> as a note.</td><td>-</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>A color is <span class="mono-inline">#rrggbb</span>, <span class="mono-inline">#rrggbbaa</span> (the last pair is opacity) or a color name. A value that does not parse is logged and the inherited color is kept, so a typo never breaks the desktop. The complete option reference is in <a href="CONFIG.md#theme-file-keys">CONFIG.md</a>.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">01</span>Start from a theme you like</h2>
+    <p>Do not start from a blank file. Writing out the whole list is slower and easier to get wrong than changing a few lines of a working theme. You have two ways in.</p>
+    <p><strong>Inherit.</strong> Name a base and list only what changes. Unlisted keys come from the base, so this is the fastest way to a result.</p>
+    <figure class="code"><figcaption>~/.config/tetron-wm/themes/ember.toml</figcaption><div class="codebox"><pre>base   = "midnight"
+accent = "#ff9e64"        <span class="c"># orange highlights instead of blue</span>
+title_fg = "#ffb88a"</pre></div></figure>
+    <p><strong>Copy.</strong> Dump a built-in to a file you own, then edit it. The file is named after the built-in, so rename it before you change it, otherwise it replaces the built-in of that name.</p>
+    <figure class="code"><figcaption>shell</figcaption><div class="codebox"><pre><span class="p">$</span> cd ~/.config/tetron-wm/themes
+<span class="p">$</span> tetron-wm theme --dump gruvbox
+<span class="p">$</span> mv gruvbox.toml ember.toml</pre></div></figure>
+    <p>The dumped file lists every key, including the optional ones (with the values they were derived to), and shows the <span class="mono-inline">[ansi]</span> and <span class="mono-inline">[vt16]</span> tables commented out, ready to switch on.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>Try it, and see it change</h2>
+    <p>Switch to it by name, or pick it in Settings → Appearance. The themes folder is checked once a second, so a new file is found without a restart.</p>
+    <figure class="code"><figcaption>shell</figcaption><div class="codebox"><pre><span class="p">$</span> tetron-wm theme ember</pre></div></figure>
+    <div class="note">
+      <span class="k">After you edit a file</span>
+      <p>The theme that is in use keeps the colors it loaded. Run <span class="mono-inline">tetron-wm theme ember</span> again (or pick it again in Settings) and the edited file is read. That makes a quick loop: edit, save, run the command, look.</p>
+    </div>
+    <p>Change one key at a time. When something looks wrong, the picture above tells you which key it was.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>Keep text readable</h2>
+    <p>Most unreadable themes come from a handful of pairs. tetron-wm checks them when it loads your file and writes a line to <span class="mono-inline">~/tetron-wm-debug.log</span> (also in the in-app Logs viewer) for each that is too close. The number is a contrast ratio, where 1 means identical colors and 21 means black on white. See <a href="https://www.w3.org/TR/WCAG21/#contrast-minimum">WCAG contrast</a> for the idea behind it.</p>
+    <div class="table-scroll">
+      <table class="trouble">
+        <thead><tr><th>Pair</th><th>Minimum</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><span class="mono-inline">text</span> on <span class="mono-inline">window_bg</span></td><td>3.0</td><td>Everything you read and every terminal.</td></tr>
+          <tr><td><span class="mono-inline">text</span> on <span class="mono-inline">desktop_bg</span></td><td>2.5</td><td>Icon labels when there is no scrim.</td></tr>
+          <tr><td><span class="mono-inline">window_bg</span> on <span class="mono-inline">accent</span></td><td>2.0</td><td>Text on affirmative buttons.</td></tr>
+          <tr><td><span class="mono-inline">window_bg</span> on <span class="mono-inline">close_fg</span></td><td>2.0</td><td>Text on destructive buttons.</td></tr>
+          <tr><td><span class="mono-inline">title_blur</span> vs <span class="mono-inline">desktop_bg</span></td><td>1.12</td><td>An inactive title bar the same color as the desktop disappears.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>These are minimums for the program to stay quiet, not targets. For low vision, aim for 7 or more on <span class="mono-inline">text</span> and <span class="mono-inline">window_bg</span>, as the built-in <span class="mono-inline">contrast</span> theme does. Other pairs are not checked, so look at <span class="mono-inline">accent</span> on <span class="mono-inline">active_bg</span> (the selected row) and <span class="mono-inline">title_fg</span> on both title bars yourself.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>Give it a picture</h2>
+    <p>A theme can bring a wallpaper. Put an image next to the theme file with the same name and it is shown while the config key <span class="mono-inline">wallpaper</span> is <span class="mono-inline">default</span>: <span class="mono-inline">ember.toml</span> plus <span class="mono-inline">ember.jpg</span> (also png and webp). To use a different file, or none, set the theme's own key.</p>
+    <figure class="code"><figcaption>ember.toml</figcaption><div class="codebox"><pre>wallpaper = "sunset.png"   <span class="c"># a file in the themes folder, an absolute path, black, #rrggbb or none</span></pre></div></figure>
+    <p>Pictures are drawn as colored text cells with <span class="mono-inline">chafa</span>. Without it, <span class="mono-inline">black</span>, a hex color and <span class="mono-inline">none</span> still work. A picture you chose yourself in Settings stays when the theme changes. On the 16-color console a picture turns to noise, so <span class="mono-inline">default</span> shows <span class="mono-inline">desktop_bg</span> there instead.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>The colors apps see: <span class="mono-inline">[ansi]</span></h2>
+    <p>Programs inside your windows do not know your theme. When <span class="mono-inline">ls --color</span> prints a directory in blue, it only asks the terminal for "ANSI color 4" and the terminal decides what blue is. The <span class="mono-inline">[ansi]</span> table is that decision: the 16 colors a program can ask for by number, row 13 on the picture.</p>
+    <p>Why you would change it: the default palette suits a dark window. On a light theme the default yellow and white are close to invisible on a white window, and a theme with a strong palette (a favorite editor scheme) looks wrong if apps keep different reds and greens. Set any subset; the rest keep the default.</p>
+    <figure class="code"><figcaption>ember.toml</figcaption><div class="codebox"><pre>[ansi]
+red          = "#ff5555"
+green        = "#50fa7b"
+yellow       = "#b58900"     <span class="c"># darker, so it reads on a light window</span>
+bright_black = "#6272a4"     <span class="c"># the usual "dim" color in prompts and logs</span></pre></div></figure>
+    <p>The names are <span class="mono-inline">black red green yellow blue magenta cyan white</span> and the same eight with a <span class="mono-inline">bright_</span> prefix, in that order (palette 0 to 15). Apps that ask the terminal for a color with a query (OSC 4) get your values too, and apps that are already running repaint when you switch themes. Programs that print their own 24-bit colors are not affected, and the 256-color cube is not part of the table.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span>The 16-color console: <span class="mono-inline">[vt16]</span></h2>
+    <p>On a bare Linux console (and with <span class="mono-inline">TETRON_WM_COLORS=16</span>) the screen has only 16 colors, and only 8 of them can be a background. A subtle dark blue selection and a dark grey window both round to black, and the selection vanishes. So below 256 colors tetron-wm does not round your colors. It picks a 16-color palette entry for each role instead, so the roles that must stay distinct (desktop, window, selection, focused title) do.</p>
+    <p>It picks by looking at the <strong>hue</strong> of your color: a teal desktop becomes cyan, a navy title bar becomes blue. A color with no clear hue (a grey, black or white) carries no hint, so it takes a generic default, and for the selection that default is teal. If your theme uses greys, that is the surprise to expect, and <span class="mono-inline">[vt16]</span> is the fix: give the role a palette index yourself.</p>
+    <div class="table-scroll">
+      <table class="trouble">
+        <thead><tr><th>Index</th><th>Color</th><th>Index</th><th>Color</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td><span class="swatch" style="background:#000"></span>black</td><td>8</td><td><span class="swatch" style="background:#555"></span>dark grey (foreground only)</td></tr>
+          <tr><td>1</td><td><span class="swatch" style="background:#a00"></span>red</td><td>9</td><td><span class="swatch" style="background:#f55"></span>bright red</td></tr>
+          <tr><td>2</td><td><span class="swatch" style="background:#0a0"></span>green</td><td>10</td><td><span class="swatch" style="background:#5f5"></span>bright green</td></tr>
+          <tr><td>3</td><td><span class="swatch" style="background:#a50"></span>brown</td><td>11</td><td><span class="swatch" style="background:#ff5"></span>yellow</td></tr>
+          <tr><td>4</td><td><span class="swatch" style="background:#00a"></span>blue</td><td>12</td><td><span class="swatch" style="background:#55f"></span>bright blue</td></tr>
+          <tr><td>5</td><td><span class="swatch" style="background:#a0a"></span>magenta</td><td>13</td><td><span class="swatch" style="background:#f5f"></span>bright magenta</td></tr>
+          <tr><td>6</td><td><span class="swatch" style="background:#0aa"></span>cyan</td><td>14</td><td><span class="swatch" style="background:#5ff"></span>bright cyan</td></tr>
+          <tr><td>7</td><td><span class="swatch" style="background:#aaa"></span>light grey</td><td>15</td><td><span class="swatch" style="background:#fff"></span>white</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Indices 8 to 15 are for text colors. Roles that are backgrounds (<span class="mono-inline">desktop_bg window_bg title_focus title_blur menubar_bg dock_bg active_bg</span>) can only use 0 to 7; a bigger number is folded back into that range. The roles you can set are all the color keys except <span class="mono-inline">shadow</span>.</p>
+    <figure class="code"><figcaption>the built-in contrast theme</figcaption><div class="codebox"><pre>[vt16]
+active_bg = 7     <span class="c"># light grey selection (a console has no dark grey background)</span></pre></div></figure>
+    <p>Leave <span class="mono-inline">[vt16]</span> out until you have looked at your theme on the console. For themes with real hues the derived result is usually right. To see it on a normal terminal, start with <span class="mono-inline">TETRON_WM_COLORS=16 tetron-wm</span>. Whatever you pick, text on a background is still checked for legibility at draw time, so a pair that would be unreadable is flipped to black or white.</p>
+  </section>
+
+  <section>
+    <h2>When something looks wrong</h2>
+    <div class="table-scroll">
+      <table class="trouble">
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>My edit does nothing</td><td>Run <span class="mono-inline">tetron-wm theme NAME</span> again. The theme in use keeps its loaded colors until it is selected.</td></tr>
+          <tr><td>The theme is not in the list</td><td>The file must end in <span class="mono-inline">.toml</span> and sit in <span class="mono-inline">~/.config/tetron-wm/themes/</span> (or the folder set by <span class="mono-inline">theme_dir</span>). A file that fails to parse is skipped; the reason is in <span class="mono-inline">~/tetron-wm-debug.log</span>.</td></tr>
+          <tr><td>One color did not change</td><td>An invalid value keeps the inherited color. Check the log for <span class="mono-inline">invalid color</span>. Quote the value: <span class="mono-inline">"#ff9e64"</span>.</td></tr>
+          <tr><td>My new file replaced a built-in</td><td>A file named like a built-in (midnight, gruvbox, pastoral, windows) overrides it. Rename the file.</td></tr>
+          <tr><td>Selection is invisible</td><td><span class="mono-inline">active_bg</span> is too close to <span class="mono-inline">window_bg</span>. Move it further, or give it a different hue.</td></tr>
+          <tr><td>Selection is teal on the console</td><td>Your <span class="mono-inline">active_bg</span> is a grey. Set <span class="mono-inline">[vt16] active_bg</span> (see 06).</td></tr>
+          <tr><td>Green and red status text is hard to read</td><td>Set <span class="mono-inline">success</span> and <span class="mono-inline">error</span>; the derived ones assume a plain light or dark window.</td></tr>
+          <tr><td>Text on the "+" button is lost</td><td>Set <span class="mono-inline">accent_fg</span> to a color that contrasts with <span class="mono-inline">accent</span>.</td></tr>
+          <tr><td>Apps still draw the old colors</td><td>Apps already running repaint on a theme switch only when the app server is protocol 6 or newer (Settings → About). Restart the app server, or start the app again.</td></tr>
+          <tr><td>Everything is grey, no color at all</td><td>The terminal is in black and white mode (<span class="mono-inline">NO_COLOR</span> or <span class="mono-inline">TETRON_WM_COLORS=mono</span>). Only how light or dark each role is matters there; hues are dropped.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Share it</h2>
+    <p>A theme is one file, plus an optional picture with the same name. Send <span class="mono-inline">ember.toml</span> (and <span class="mono-inline">ember.jpg</span>) and the other person drops them into their themes folder. Nothing in the file is specific to your machine. A theme does not change layout, so it behaves the same on every screen size and over SSH.</p>
+    <p>The extra themes that come with the suite installer (nord, dracula, dawn, newmoon, contrast) are ordinary theme files, so they make good worked examples. Read them with <span class="mono-inline">cat ~/.config/tetron-wm/themes/contrast.toml</span>.</p>
+  </section>
+
+  <footer>
+    <p>Built so the next person can understand it, adapt it, and pass it on.</p>
+    <div class="links">
+      tetron-wm · github.com/ErikAllanKincaid/tetron-wm<br>
+      Option reference · docs/CONFIG.md (Theme file keys)<br>
+      Contrast ratio · w3.org/TR/WCAG21/#contrast-minimum
+    </div>
+  </footer>
+</div>
+
+<script>
+  // The five themes, with the values the program uses (optional keys as derived).
+  var THEMES = {"midnight": {"desktop_bg": "#2c2e32", "window_bg": "#11141d", "title_focus": "#1d2433", "title_blur": "#141822", "title_fg": "#8fb7ff", "border": "#3a4458", "shadow": "#0000006e", "ctrl_fg": "#96a5be", "close_fg": "#ff6b6b", "menubar_bg": "#161b27", "dock_bg": "#161b27", "text": "#c8d0dc", "dim": "#788296", "accent": "#6cb6ff", "active_bg": "#2d3a55", "success": "#7ee787", "error": "#ff6b6b", "accent_fg": "#ffffff", "icon_fg": "#ffffff"}, "gruvbox": {"desktop_bg": "#3c3836", "window_bg": "#282828", "title_focus": "#3c3836", "title_blur": "#32302f", "title_fg": "#fabd2f", "border": "#665c54", "shadow": "#00000078", "ctrl_fg": "#d5c4a1", "close_fg": "#fb4934", "menubar_bg": "#32302f", "dock_bg": "#32302f", "text": "#ebdbb2", "dim": "#928374", "accent": "#fabd2f", "active_bg": "#504945", "success": "#7ee787", "error": "#fb4934", "accent_fg": "#ffffff", "icon_fg": "#ffffff"}, "pastoral": {"desktop_bg": "#ece6d8", "window_bg": "#ffffff", "title_focus": "#c4e3b4", "title_blur": "#d4cfc1", "title_fg": "#2b2b2b", "border": "#4caf50", "shadow": "#322d1e33", "ctrl_fg": "#6a6a6a", "close_fg": "#d1524c", "menubar_bg": "#e7e2d6", "dock_bg": "#e7e2d6", "text": "#1a1a1a", "dim": "#6e6a5e", "accent": "#2e7d32", "active_bg": "#d7e9cd", "success": "#1a7f37", "error": "#d1524c", "accent_fg": "#ffffff", "icon_fg": "#ffffff"}, "windows": {"desktop_bg": "#008080", "window_bg": "#ffffff", "title_focus": "#000080", "title_blur": "#808080", "title_fg": "#ffffff", "border": "#808080", "shadow": "#00000026", "ctrl_fg": "#ffffff", "close_fg": "#cc0000", "menubar_bg": "#c0c0c0", "dock_bg": "#c0c0c0", "text": "#000000", "dim": "#808080", "accent": "#000080", "active_bg": "#c0c0c0", "success": "#1a7f37", "error": "#cc0000", "accent_fg": "#ffffff", "icon_fg": "#ffffff"}, "contrast": {"desktop_bg": "#000000", "window_bg": "#000000", "title_focus": "#4d4d4d", "title_blur": "#000000", "title_fg": "#ffffff", "border": "#ffffff", "shadow": "#00000000", "ctrl_fg": "#ffffff", "close_fg": "#ff5555", "menubar_bg": "#000000", "dock_bg": "#000000", "text": "#ffffff", "dim": "#b0b0b0", "accent": "#ffffff", "active_bg": "#000000", "success": "#7ee787", "error": "#ff5555", "accent_fg": "#000000", "icon_fg": "#ffffff"}};
+  var ANSI = ["#000000","#cd3131","#0dbc79","#e5e510","#2472c8","#bc3fbc","#11a8cd","#e5e5e5","#666666","#f14c4c","#23d18b","#f5f543","#3b8eea","#d670d6","#29b8db","#ffffff"];
+  var LEGEND = [
+    ["1","desktop_bg","the desktop behind the windows"],
+    ["2","window_bg","window body and terminal background"],
+    ["3","title_focus","focused window title bar"],
+    ["4","title_blur","other windows' title bars"],
+    ["5","title_fg","title bar text"],
+    ["6","ctrl_fg","minimize and maximize glyphs"],
+    ["7","close_fg","close glyph, destructive buttons"],
+    ["8","border","window frame"],
+    ["9","shadow","window shadow (alpha = strength)"],
+    ["10","menubar_bg","top bar and taskbar"],
+    ["11","text","body and terminal text"],
+    ["12","dim","secondary text, hints"],
+    ["13","[ansi]","the 16 colors apps see"],
+    ["14","accent","highlighted labels, fill of the + button"],
+    ["15","active_bg","selection, panel buttons, focused taskbar item"],
+    ["16","success","installed, verified, on"],
+    ["17","error","errors, kill"],
+    ["18","accent_fg","text on an accent fill"],
+    ["19","icon_fg","desktop icon labels over a picture"]
+  ];
+  var mock = document.getElementById('mock'), picker = document.getElementById('picker');
+  function pin(n) { var i = document.createElement('i'); i.className = 'pin'; i.textContent = n; return i; }
+  function apply(name) {
+    var t = THEMES[name];
+    Object.keys(t).forEach(function (k) { mock.style.setProperty('--' + k, t[k]); });
+    Array.prototype.forEach.call(picker.children, function (b) { b.setAttribute('aria-pressed', b.dataset.n === name ? 'true' : 'false'); });
+    try { localStorage.setItem('tetron-theming-pick', name); } catch (e) {}
+  }
+  Object.keys(THEMES).forEach(function (n) {
+    var b = document.createElement('button'); b.type = 'button'; b.dataset.n = n; b.textContent = n; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () { apply(n); }); picker.appendChild(b);
+  });
+  var an = document.getElementById('ansi');
+  ANSI.forEach(function (c) { var s = document.createElement('i'); s.style.background = c; an.appendChild(s); });
+  // Extra pins on parts that carry one key each.
+  [["[data-k='menubar_bg'] .btn:not(.plus)","15"],[".btn.plus","18"],[".icons","1"],[".win.back .title","4"],[".win.front .title span:first-child","5"],[".icon","19"]].forEach(function (p) {
+    var el = mock.querySelector(p[0]); if (el && !el.querySelector('.pin')) el.appendChild(pin(p[1]));
+  });
+  var lg = document.getElementById('legend');
+  LEGEND.forEach(function (r) {
+    var li = document.createElement('li'); li.dataset.k = r[1].replace(/[\[\]]/g, '');
+    li.appendChild(pin(r[0]));
+    var d = document.createElement('span'); d.innerHTML = '<code>' + r[1] + '</code> ' + r[2]; li.appendChild(d);
+    li.addEventListener('mouseenter', function () { mark(li.dataset.k, true); });
+    li.addEventListener('mouseleave', function () { mark(li.dataset.k, false); });
+    lg.appendChild(li);
+  });
+  function mark(k, on) {
+    Array.prototype.forEach.call(mock.querySelectorAll('[data-k]'), function (el) {
+      if (el.dataset.k.split(' ').indexOf(k) >= 0) el.classList.toggle('hl', on);
+    });
+  }
+  var start = 'midnight';
+  try { start = localStorage.getItem('tetron-theming-pick') || start; } catch (e) {}
+  apply(THEMES[start] ? start : 'midnight');
+
+  // Copy buttons.
+  document.querySelectorAll('.codebox').forEach(function (box) {
+    var pre = box.querySelector('pre'); if (!pre) return;
+    var btn = document.createElement('button'); btn.className = 'copy'; btn.type = 'button'; btn.textContent = 'copy';
+    btn.addEventListener('click', function () {
+      var done = function () { btn.textContent = 'copied'; btn.classList.add('ok'); setTimeout(function () { btn.textContent = 'copy'; btn.classList.remove('ok'); }, 1400); };
+      try { navigator.clipboard.writeText(pre.innerText).then(done, function () { sel(pre); }); } catch (e) { sel(pre); }
+    });
+    box.appendChild(btn);
+  });
+  function sel(pre) { try { var r = document.createRange(); r.selectNodeContents(pre); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} }
+</script>
+
+</body>
+</html>

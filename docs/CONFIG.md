@@ -220,6 +220,8 @@ TETRON_WM_COLORS=mono tetron-wm
 
 #### Theme file keys
 
+A picture of where each key is used, with a step-by-step walkthrough: [tetron-wm_theming_guide.html](tetron-wm_theming_guide.html).
+
 A theme is `<config dir>/themes/<name>.toml`: a flat table of colors (`#rrggbb`, `#rrggbbaa`, or a color name). Start from `tetron-wm theme --dump <built-in>`. Any key left out is inherited (see each row), so a theme can be three lines. An invalid value is logged and the inherited one is kept.
 
 | Key | Colors | If unset |
