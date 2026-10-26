@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.14.17] — 2026-10-25
+
 ### Changed
 - The wallpaper follows the theme. `wallpaper = "default"` now shows the active theme's own picture: the one built into the binary for midnight, gruvbox, pastoral and windows (all four are in the binary, about 134 KB), or, for a theme file, the image next to it with the same name (`dawn.toml` + `dawn.jpg`, also png and webp) or the file its `wallpaper` key names. Any other `wallpaper` value is your own pick and stays when you change theme. New values need no `chafa`: `black`, a `#rrggbb` colour, and `none` (the theme's `desktop_bg`). Below 256 colors (the 16-color console) `default` is the theme's `desktop_bg`, because a picture turns to noise there; a file you chose is still drawn. Bare file names are looked up in `~/.config/tetron-wm/themes/` first, then the config root, then the old `wallpapers/` folder (still works, no longer documented).
 - Built-in themes are now midnight, gruvbox, pastoral and windows (new, the Windows 3.1 look), and midnight is the default theme. newmoon, nord and dracula are no longer built in: they come with the extra themes the suite installer downloads into `~/.config/tetron-wm/themes/` (nord, dracula, dawn, newmoon and the new high-contrast `contrast`, with their pictures; `--themes` / `--no-themes`, on by default, never overwrites a file you have). The themes folder is read again when something in it changes (checked once a second), so a theme or picture dropped in while tetron-wm runs is found without a restart; the theme in use keeps its colours and picture until it is chosen again. A config that names a removed theme shows midnight and a note in Settings → Appearance until the theme file is there; `theme --dump` only writes built-ins. The 16-color look of every theme is unchanged.
@@ -15,6 +17,7 @@ carry user-visible feature work and the occasional breaking config change.
 - Settings → Appearance → Colors calls the no-color choice "Mono", matching the `mono` config value and `TETRON_WM_COLORS=mono` (it was "Black and white").
 
 ### Fixed
+- A command that ran past its time cap was killed but never reaped, so it stayed behind as a defunct (zombie) process of the daemon until it restarted. On a machine where `nmcli` hangs (a wedged NetworkManager), every poll leaked one, about 150 in five hours, filling the process table. Timed-out commands, and a clipboard helper that failed or timed out, are now reaped on a background thread.
 - `tetron-wm theme NAME` (and a client attaching with `TETRON_WM_THEME`) now redraws the wallpaper when it follows the theme (`wallpaper = "default"`). It kept the old theme's picture until the next Settings change or restart.
 
 ### Added
