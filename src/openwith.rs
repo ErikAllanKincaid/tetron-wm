@@ -203,6 +203,23 @@ pub fn with_extra(mut base: Vec<String>, extra: &[String]) -> Vec<String> {
     base
 }
 
+/// Whether `path` is a web page (by extension): its "Open with…" list adds
+/// the text browsers ahead of the editors (the role stays `Code`).
+pub fn is_web_page(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_lowercase().as_str(), "html" | "htm" | "xhtml"))
+}
+
+/// The installed terminal web browsers, for a web page's "Open with…" list.
+pub fn browsers() -> Vec<String> {
+    ["carbonyl", "w3m", "lynx", "links", "elinks", "browsh"]
+        .into_iter()
+        .filter(|b| crate::catalog::is_installed(b))
+        .map(String::from)
+        .collect()
+}
+
 /// The installed programs that suit `role` (before the `[open_with]` extras).
 fn detected(role: Role) -> Vec<String> {
     let gui = std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
