@@ -4,7 +4,8 @@ Usage: aimode "question"   one-shot
        aimode              full-screen TUI, keeps conversation context
        aimode --plain      simple prompt loop
        aimode --search     enable Google Search grounding (needs billing on the key)
-       aimode --strong     stronger, slower model (gemini-3.8-flash, waits up to 180s, falls back to the default)
+       aimode --strong     stronger, slower model (gemini-3.8-flash, waits up to 180s, falls back to the default);
+                           in the TUI the Strong ^T button toggles it per question
        aimode --models     list model IDs usable with AIMODE_MODEL
        aimode --key        enter (or replace) the saved API key
 Env:   GEMINI_API_KEY (or ~/.config/aimode/key), AIMODE_MODEL (default gemini-3.6-flash)
@@ -22,8 +23,12 @@ URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerate
 SEARCH = "--search" in sys.argv  # grounding needs a billed key; free tier is training data only
 FALLBACK_MODEL = "gemini-3.1-flash-lite"
 TIMEOUT = 45  # seconds without data before giving up on a model
-if STRONG:  # the strong model thinks long before its first byte; its fallback is the normal default
-    MODEL, FALLBACK_MODEL, TIMEOUT = "gemini-3.8-flash", "gemini-3.6-flash", 180
+STRONG_MODEL, STRONG_TIMEOUT = "gemini-3.8-flash", 180  # thinks long before its first byte
+
+
+def profile(strong):
+    """(model, fallback, timeout): strong falls back to the normal default model."""
+    return (STRONG_MODEL, MODEL, STRONG_TIMEOUT) if strong else (MODEL, FALLBACK_MODEL, TIMEOUT)
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200"
 BOLD, DIM, RST = ("\033[1m", "\033[2m", "\033[0m") if sys.stdout.isatty() else ("", "", "")
 
@@ -86,17 +91,18 @@ def prompt_key():
     return k
 
 
-def stream(history, key, model=None):
-    """On a 503 retry once with FALLBACK_MODEL. Yield ("text", str), ("src", (uri, title)) and finally ("err", msg) on failure."""
+def stream(history, key, strong=STRONG, model=None):
+    """On a 503 or a timeout retry once with the fallback model. Yield ("text", str), ("src", (uri, title)) and finally ("err", msg) on failure."""
     body = {"contents": history}
     if SEARCH:
         body["tools"] = [{"google_search": {}}]
     body = json.dumps(body).encode()
-    req = urllib.request.Request(URL % (model or MODEL), body,
+    first, fallback, timeout = profile(strong)
+    req = urllib.request.Request(URL % (model or first), body,
                                  {"Content-Type": "application/json", "x-goog-api-key": key})
     got = False  # once text has streamed a fallback would duplicate it
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             for line in r:
                 if not line.startswith(b"data: "):
                     continue
@@ -110,18 +116,18 @@ def stream(history, key, model=None):
                     if w.get("uri"):
                         yield "src", (w["uri"], w.get("title", ""))
     except urllib.error.HTTPError as e:
-        if e.code == 503 and not got and not model and MODEL != FALLBACK_MODEL:
-            yield "note", "%s is overloaded (503), using %s" % (MODEL, FALLBACK_MODEL)
-            yield from stream(history, key, FALLBACK_MODEL)
+        if e.code == 503 and not got and not model and first != fallback:
+            yield "note", "%s is overloaded (503), using %s" % (first, fallback)
+            yield from stream(history, key, strong, fallback)
             return
         yield "err", "HTTP %d: %s%s" % (e.code, e.read().decode(errors="replace")[:500],
                                         {400: " (a bad key? replace it: aimode --key)", 403: " (a bad key? replace it: aimode --key)", 404: " (try aimode --models)", 429: " (quota; search may need billing, try --no-search)"}.get(e.code, ""))
     except Exception as e:
-        if not got and not model and MODEL != FALLBACK_MODEL and "timed out" in str(e):
-            yield "note", "%s did not answer in %ds, using %s" % (MODEL, TIMEOUT, FALLBACK_MODEL)
-            yield from stream(history, key, FALLBACK_MODEL)
+        if not got and not model and first != fallback and "timed out" in str(e):
+            yield "note", "%s did not answer in %ds, using %s" % (first, timeout, fallback)
+            yield from stream(history, key, strong, fallback)
             return
-        yield "err", "%s (waited up to %ds)" % (e, TIMEOUT) if "timed out" in str(e) else str(e)
+        yield "err", "%s (waited up to %ds)" % (e, timeout) if "timed out" in str(e) else str(e)
 
 
 def ask(history, key):
@@ -162,13 +168,14 @@ def tui(scr, key):
     SCROLL_BOTTOM = 0x10001  # synthetic key sent by the Bottom button
     t0, cur = 0, 0  # cur: cursor position inside buf
     asked, hidx, draft = [], 0, ""   # question recall: Up/Down walk earlier questions
+    strong = STRONG  # Strong ^T: the next questions go to STRONG_MODEL
     BUTTONS = [("PgUp", curses.KEY_PPAGE), ("PgDn", curses.KEY_NPAGE), ("Bottom", SCROLL_BOTTOM),
-               ("New ^N", "\x0e"), ("Quit ^Q", "\x11")]
+               ("New ^N", "\x0e"), ("Strong ^T", "\x14"), ("Quit ^Q", "\x11")]
     attr = {"u": curses.A_BOLD, "a": 0, "s": curses.A_DIM, "e": curses.A_REVERSE}
 
-    def worker(h):
+    def worker(h, strong):
         text = ""
-        for kind, v in stream(h, key):
+        for kind, v in stream(h, key, strong):
             if kind == "text":
                 text += v
             q.put((kind, v))
@@ -227,14 +234,15 @@ def tui(scr, key):
                 pass
         btns, x = [], 0
         for label, k in BUTTONS:
-            t = " %s " % label
+            on = k == "\x14" and strong
+            t = " %s%s " % (label, " on" if on else "")
             try:
-                scr.addstr(h - 1, x, t, curses.A_REVERSE)
+                scr.addstr(h - 1, x, t, curses.A_REVERSE | (curses.A_BOLD if on else 0))
             except curses.error:
                 pass
             btns.append((x, x + len(t), k))
             x += len(t) + 1
-        info = "%s %s%s%s" % (MODEL, "[search]" if SEARCH else "[no search]",
+        info = "%s %s%s%s" % (profile(strong)[0], "[search]" if SEARCH else "[no search]",
                               " | thinking %ds..." % (time.time() - t0) if busy else "", " | up %d" % off if off else "")
         try:
             scr.addstr(h - 1, x + 1, info[:max(0, w - x - 2)], curses.A_DIM)
@@ -325,6 +333,10 @@ def tui(scr, key):
             return
         elif c == "\x0e":
             history.clear(); entries.clear(); off = 0
+        elif c == "\x14":
+            strong = not strong
+            m, fb, t = profile(strong)
+            entries.append(["s", "[next questions: %s, waits up to %ds, falls back to %s]" % (m, t, fb)])
         elif c in ("\x15",):
             buf, cur = "", 0
         elif c in ("\x7f", "\b", curses.KEY_BACKSPACE):
@@ -339,7 +351,7 @@ def tui(scr, key):
             entries.append(["u", buf.strip()])
             entries.append(["a", ""])
             buf, cur, off, busy, srcs, t0 = "", 0, 0, True, [], time.time()
-            threading.Thread(target=worker, args=(list(history),), daemon=True).start()
+            threading.Thread(target=worker, args=(list(history), strong), daemon=True).start()
         elif isinstance(c, str) and c.isprintable():
             buf, cur = buf[:cur] + c + buf[cur:], cur + 1
 
@@ -387,7 +399,7 @@ def main():
     if args:
         turn(" ".join(args))
         return
-    print("%saimode%s (%s). /new clears context, /quit or Ctrl+C exits." % (BOLD, RST, MODEL))
+    print("%saimode%s (%s). /new clears context, /quit or Ctrl+C exits." % (BOLD, RST, profile(STRONG)[0]))
     while True:
         try:
             q = input(BOLD + "> " + RST).strip()
