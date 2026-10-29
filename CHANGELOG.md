@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- Start Page and AI Mode ship with tetron-wm (`scripts/startpage`, `scripts/aimode`) and the suite installer installs them with the recommended tools, into `~/.local/bin`, with w3m. Both are in the catalog, so the launcher lists them (Web, AI) once they are on `PATH`, and the Store can install them. `startpage` with no arguments now opens the page in carbonyl, else w3m (`startpage build` only regenerates). AI Mode needs a free Gemini API key (https://aistudio.google.com/apikey): its first run asks for it, checks it with Google and saves it to `~/.config/aimode/key` with mode 600; `aimode --key` replaces it, and `aimode --help` prints usage instead of sending it as a question.
+
 ### Changed
 - Installer: the kmscon console prompt now says what it does in plain terms ("Make kmscon the login screen on tty1 (Ctrl+Alt+F1)? It replaces the plain kernel text console, adding truecolor and mouse") instead of "Run kmscon on tty1 in place of the kernel login prompt?".
 

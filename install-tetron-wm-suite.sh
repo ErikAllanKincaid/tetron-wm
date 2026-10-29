@@ -27,7 +27,8 @@
 #                       with their pictures, into themes/; never overwrites
 #      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
 #                       btop, upower, alsa-utils, the DejaVu Sans Mono font, uv, catt
-#                       and casttui (Chromecast), and xclip / wl-clipboard on a desktop
+#                       and casttui (Chromecast), w3m, Start Page and AI Mode
+#                       (startpage, aimode), and xclip / wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
 #                       machine manages sound, network and Bluetooth
@@ -241,6 +242,7 @@ EXTRAS="chafa:chafa:chafa:chafa:chafa
 uv::uv:uv:uv
 mpv:mpv::mpv:mpv
 pdftoppm:poppler-utils:poppler-utils:poppler:poppler
+w3m:w3m:w3m:w3m:w3m
 fresh::::fresh-editor
 sshpass:sshpass:sshpass:sshpass:
 htop:htop:htop:htop:htop
@@ -351,6 +353,32 @@ cast_tools_missing() {
   have catt || out="catt"
   have casttui || out="${out:+$out }casttui"
   printf '%s' "$out"
+}
+
+# tetron-wm's own small apps from scripts/: Start Page (bookmarks start page,
+# opened in carbonyl or w3m) and AI Mode (Gemini Q&A). Single stdlib Python 3
+# files, fetched into ~/.local/bin; the launcher lists them once on PATH.
+OWN_APPS="startpage aimode"
+own_apps_missing() {
+  local a out=""
+  for a in $OWN_APPS; do have "$a" || [ -x "$HOME/.local/bin/$a" ] || out="${out:+$out }$a"; done
+  printf '%s' "$out"
+}
+
+install_own_apps() {
+  have python3 || { warn "python3 is missing; startpage and aimode not installed"; return 0; }
+  local a d="$HOME/.local/bin"; mkdir -p "$d"
+  for a in $(own_apps_missing); do
+    log "installing $a into $d"
+    if fetch "$RAW/scripts/$a" > "$d/$a.tmp" && [ -s "$d/$a.tmp" ]; then
+      chmod +x "$d/$a.tmp" && mv "$d/$a.tmp" "$d/$a"
+    else
+      rm -f "$d/$a.tmp"; warn "could not download $a from $RAW/scripts/$a"
+    fi
+  done
+  [ -x "$d/aimode" ] && [ -z "${GEMINI_API_KEY:-}" ] && [ ! -s "$HOME/.config/aimode/key" ] &&
+    log "AI Mode needs a free Gemini API key: https://aistudio.google.com/apikey, its first run asks for it (aimode --key replaces it)"
+  return 0
 }
 
 install_cast_tools() {
@@ -694,6 +722,8 @@ main() {
   uv_via_script && shown="${shown:+$shown }uv"
   local cast; cast="$(cast_tools_missing)"
   [ -n "$cast" ] && shown="${shown:+$shown }$cast"
+  local own; own="$(own_apps_missing)"
+  [ -n "$own" ] && shown="${shown:+$shown }$own"
   [ "$IS_LINUX" = 1 ] && services="$(missing_pkgs "$SERVICES")"
   if [ -n "$shown" ]; then
     resolve WANT_EXTRAS "Install recommended tools ($shown)?" y
@@ -740,6 +770,7 @@ main() {
   [ "$WANT_EXTRAS" = y ]    && fresh_via_script && install_fresh
   [ "$WANT_EXTRAS" = y ]    && uv_via_script && install_uv
   [ "$WANT_EXTRAS" = y ]    && [ -n "$cast" ] && install_cast_tools
+  [ "$WANT_EXTRAS" = y ]    && [ -n "$own" ] && install_own_apps
   [ "$WANT_SERVICES" = y ]  && pm_install "$services"
   [ "$WANT_KMSCON" = y ]    && install_kmscon
   [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"

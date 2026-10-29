@@ -5880,5 +5880,25 @@
    "linux"
   ],
   "verified": true
+ },
+ "AI Mode": {
+  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/scripts/aimode -o ~/.local/bin/aimode && chmod +x ~/.local/bin/aimode",
+  "method": "script",
+  "os": [
+   "macos",
+   "linux"
+  ],
+  "tip": "Needs a free Gemini API key from https://aistudio.google.com/apikey. The first run asks for it and saves it to ~/.config/aimode/key (readable only by you); `aimode --key` replaces it, or set GEMINI_API_KEY. Google Search grounding (`aimode --search`) needs billing on the key.",
+  "verified": true
+ },
+ "Start Page": {
+  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/scripts/startpage -o ~/.local/bin/startpage && chmod +x ~/.local/bin/startpage",
+  "method": "script",
+  "os": [
+   "macos",
+   "linux"
+  ],
+  "tip": "Edit your bookmarks with `startpage edit` or `startpage add TITLE URL [SECTION]`. Opens in carbonyl if installed, else w3m.",
+  "verified": true
  }
 }
