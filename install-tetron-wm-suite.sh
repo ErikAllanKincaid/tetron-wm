@@ -422,7 +422,7 @@ setup_console() {
   warn "This edits the login console on tty$vt. Keep a second VT (Ctrl+Alt+F2) or an"
   warn "SSH session open so a mistake can never lock you out. To undo later:"
   warn "  install-tetron-wm-suite.sh --uninstall"
-  confirm "Run kmscon on tty$vt in place of the kernel login prompt?" y || { log "skipping console setup"; return 0; }
+  confirm "Make kmscon the login screen on tty$vt (Ctrl+Alt+F$vt)? It replaces the plain kernel text console, adding truecolor and mouse" y || { log "skipping console setup"; return 0; }
 
   # TERM must name what kmscon emulates (xterm-256color). Do NOT use $TERM here:
   # in a systemd unit it expands to the console's "linux", which makes tetron-wm
@@ -709,7 +709,7 @@ main() {
     local kdef=y; is_graphical && kdef=n
     resolve WANT_KMSCON "Install kmscon (truecolor + mouse console; compiles from source except on Debian trixie)?" "$kdef"
     [ "$WANT_AUTOLOGIN" = y ] && [ -z "$WANT_CONSOLE" ] && WANT_CONSOLE=y
-    resolve WANT_CONSOLE   "Run kmscon on a VT in place of the kernel login prompt?" n
+    resolve WANT_CONSOLE   "Make kmscon the login screen on a text console (Ctrl+Alt+F1..F6)? It replaces the plain kernel text console, adding truecolor and mouse" n
     if [ "$WANT_CONSOLE" = y ]; then
       resolve_vt
       resolve WANT_AUTOLOGIN "Do you want to log in automatically on tty$VT (no password; anyone at the keyboard gets your account)?" n
