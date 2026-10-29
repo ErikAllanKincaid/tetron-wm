@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""startpage: render a bookmarks file to a static HTML start page for text browsers (carbonyl, w3m).
+Usage: startpage                          regenerate the page, then open it in carbonyl (else w3m)
+       startpage build                    regenerate the page only
+       startpage add TITLE URL [SECTION]  append a bookmark (default section: Links) and regenerate
+       startpage list                     print the bookmarks file
+       startpage edit                     open the bookmarks file in $EDITOR, then regenerate
+Files: ~/.config/tetron-wm/bookmarks.txt (source), ~/.config/tetron-wm/start.html (output)
+Bookmarks format: a [Section] line starts a group, then one "Title | URL" per line. # starts a comment.
+"""
+import html, os, shutil, subprocess, sys
+
+DIR = os.path.expanduser("~/.config/tetron-wm")
+SRC, OUT = os.path.join(DIR, "bookmarks.txt"), os.path.join(DIR, "start.html")
+SEED = """# Edit by hand, or: startpage add TITLE URL [SECTION]
+[Search]
+DuckDuckGo Lite | https://lite.duckduckgo.com/lite
+Google AI Mode | https://www.google.com/search?udm=50
+[Reference]
+Wikipedia | https://en.wikipedia.org
+Gemini API docs | https://ai.google.dev/gemini-api/docs
+[News]
+Hacker News | https://news.ycombinator.com
+[Projects]
+tetron-wm | https://erikallankincaid.github.io/tetron-wm/
+"""
+
+
+def parse():
+    groups, cur = [], None
+    for ln in open(SRC):
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        if ln.startswith("[") and ln.endswith("]"):
+            cur = (ln[1:-1], [])
+            groups.append(cur)
+        elif "|" in ln:
+            t, u = (p.strip() for p in ln.split("|", 1))
+            if cur is None:
+                cur = ("Links", [])
+                groups.append(cur)
+            cur[1].append((t, u))
+    return groups
+
+
+def render():
+    e = html.escape
+    body = "".join("<h2>%s</h2>\n<ul>\n%s</ul>\n" % (
+        e(g), "".join('<li><a href="%s">%s</a></li>\n' % (e(u, quote=True), e(t)) for t, u in items))
+        for g, items in parse())
+    open(OUT, "w").write("""<!doctype html>
+<html><head><meta charset="utf-8"><title>Start</title></head>
+<body>
+<form action="https://lite.duckduckgo.com/lite/" method="get">
+<input name="q" size="40" autofocus> <input type="submit" value="Search">
+</form>
+%s</body></html>
+""" % body)
+
+
+def main():
+    os.makedirs(DIR, exist_ok=True)
+    if not os.path.exists(SRC):
+        open(SRC, "w").write(SEED)
+    a = sys.argv[1:]
+    if a[:1] == ["list"]:
+        return print(open(SRC).read(), end="")
+    if a[:1] == ["edit"]:
+        subprocess.run([os.environ.get("EDITOR", "vim"), SRC])
+    elif a[:1] == ["add"]:
+        if len(a) < 3:
+            sys.exit("usage: startpage add TITLE URL [SECTION]")
+        title, url, sec = a[1], a[2], (a[3] if len(a) > 3 else "Links")
+        lines = open(SRC).read().rstrip("\n").split("\n")
+        hdr = "[%s]" % sec
+        if hdr in lines:  # insert at the end of that section
+            i = lines.index(hdr) + 1
+            while i < len(lines) and not lines[i].startswith("["):
+                i += 1
+            while i > 0 and not lines[i - 1].strip():
+                i -= 1
+            lines.insert(i, "%s | %s" % (title, url))
+        else:
+            lines += [hdr, "%s | %s" % (title, url)]
+        open(SRC, "w").write("\n".join(lines) + "\n")
+    elif a and a != ["build"]:
+        sys.exit(__doc__)
+    render()
+    if a:
+        return print("wrote", OUT)
+    browser = shutil.which("carbonyl") or shutil.which("w3m")
+    if not browser:
+        sys.exit("wrote %s; install carbonyl or w3m to view it" % OUT)
+    os.execv(browser, [browser, "file://" + OUT])
+
+
+if __name__ == "__main__":
+    main()

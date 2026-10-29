@@ -35,6 +35,13 @@
   "homepage": "https://code.claude.com"
  },
  {
+  "name": "AI Mode",
+  "bin": "aimode",
+  "category": "AI",
+  "description": "Ask Gemini questions in a full screen terminal app, with optional Google Search grounding. Needs a free Gemini API key in GEMINI_API_KEY or ~/.config/aimode/key (https://aistudio.google.com/apikey).",
+  "homepage": "https://github.com/ErikAllanKincaid/tetron-wm/tree/main/scripts"
+ },
+ {
   "name": "Codex",
   "bin": "codex",
   "category": "AI",
@@ -4326,6 +4333,13 @@
   "category": "Web",
   "description": "Chromium running inside your terminal",
   "homepage": "https://github.com/fathyb/carbonyl"
+ },
+ {
+  "name": "Start Page",
+  "bin": "startpage",
+  "category": "Web",
+  "description": "Your bookmarks (~/.config/tetron-wm/bookmarks.txt) as a start page with a search box, opened in carbonyl or w3m. `startpage add TITLE URL [SECTION]` adds one.",
+  "homepage": "https://github.com/ErikAllanKincaid/tetron-wm/tree/main/scripts"
  },
  {
   "name": "castero",
