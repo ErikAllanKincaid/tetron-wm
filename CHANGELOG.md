@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Changed
+- Installer: the kmscon console prompt now says what it does in plain terms ("Make kmscon the login screen on tty1 (Ctrl+Alt+F1)? It replaces the plain kernel text console, adding truecolor and mouse") instead of "Run kmscon on tty1 in place of the kernel login prompt?".
+
 ## [0.14.18] — 2026-10-26
 
 ### Fixed
