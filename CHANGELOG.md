@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Added
+- Right-click **Open with…** on a web page (`.html`, `.htm`, `.xhtml`) lists the installed text browsers (carbonyl, w3m, lynx, links, elinks, browsh) first, then the editors. Before, it offered editors only.
 - Start Page and AI Mode ship with tetron-wm (`scripts/startpage`, `scripts/aimode`) and the suite installer installs them with the recommended tools, into `~/.local/bin`, with w3m. Both are in the catalog, so the launcher lists them (Web, AI) once they are on `PATH`, and the Store can install them. `startpage` with no arguments now opens the page in carbonyl, else w3m (`startpage build` only regenerates). AI Mode needs a free Gemini API key (https://aistudio.google.com/apikey): its first run asks for it, checks it with Google and saves it to `~/.config/aimode/key` with mode 600; `aimode --key` replaces it, and `aimode --help` prints usage instead of sending it as a question. Its default model is gemini-3.6-flash: gemini-3.8-flash often sent nothing for over 100 seconds, so every question waited out the 45 second limit and fell back to gemini-3.1-flash-lite (`AIMODE_MODEL` still picks any model). `aimode --strong` asks gemini-3.8-flash instead, waits up to 180 seconds for it, and falls back to gemini-3.6-flash. In the full screen app a **Strong ^T** button switches between the two for the next questions.
 
 ### Changed

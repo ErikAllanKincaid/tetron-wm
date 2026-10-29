@@ -221,11 +221,17 @@ pub fn archive_command(archive: &Path, dir: &Path, list: bool) -> Option<String>
 }
 
 /// The "Open with…" choices for `path`: the built-in viewer for images, then
-/// the installed terminal apps from the Default Apps candidates.
+/// the installed terminal apps from the Default Apps candidates. A web page
+/// lists the installed text browsers first, then the editors.
 pub fn open_with_actions(path: &Path) -> Vec<MenuAction> {
     let role = crate::openwith::classify(path, false);
-    crate::openwith::candidates(role)
-        .into_iter()
+    let mut cmds = if crate::openwith::is_web_page(path) { crate::openwith::browsers() } else { Vec::new() };
+    for c in crate::openwith::candidates(role) {
+        if !cmds.contains(&c) {
+            cmds.push(c);
+        }
+    }
+    cmds.into_iter()
         .filter(|c| !c.is_empty() && c != "@navigate" && (c != "@image" || role == Role::Image))
         .map(MenuAction::OpenWithApp)
         .collect()
@@ -393,6 +399,20 @@ mod tests {
         assert!(actions_for(Surface::Files, zip, none).contains(&A::ExtractHere));
         assert_eq!(actions_for(Surface::Files, file, all).last(), Some(&A::SendTo));
         assert!(!actions_for(Surface::Files, file, none).contains(&A::SendTo));
+    }
+
+    #[test]
+    fn open_with_lists_browsers_first_for_web_pages() {
+        let installed = crate::openwith::browsers();
+        let page = open_with_actions(Path::new("/x/Start.HTML"));
+        let first: Vec<_> = page.iter().take(installed.len()).cloned().collect();
+        assert_eq!(first, installed.iter().map(|b| MenuAction::OpenWithApp(b.clone())).collect::<Vec<_>>());
+        // The editors stay after the browsers; nothing is listed twice.
+        assert!(page.iter().enumerate().all(|(i, a)| !page[..i].contains(a)));
+        // Only web pages get browsers.
+        let css = open_with_actions(Path::new("/x/style.css"));
+        assert!(!css.iter().any(|a| matches!(a, MenuAction::OpenWithApp(c) if installed.contains(c))));
+        assert!(crate::openwith::is_web_page(Path::new("a.htm")) && !crate::openwith::is_web_page(Path::new("a.html.txt")));
     }
 
     #[test]
