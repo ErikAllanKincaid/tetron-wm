@@ -6,7 +6,7 @@ Usage: aimode "question"   one-shot
        aimode --search     enable Google Search grounding (needs billing on the key)
        aimode --models     list model IDs usable with AIMODE_MODEL
        aimode --key        enter (or replace) the saved API key
-Env:   GEMINI_API_KEY (or ~/.config/aimode/key), AIMODE_MODEL (default gemini-3.8-flash)
+Env:   GEMINI_API_KEY (or ~/.config/aimode/key), AIMODE_MODEL (default gemini-3.6-flash)
 Key:   free at https://aistudio.google.com/apikey; with none set, aimode asks for it on first run
 """
 import json, os, sys, time, urllib.request, urllib.error
@@ -15,7 +15,7 @@ try:
 except ImportError:
     pass
 
-MODEL = os.environ.get("AIMODE_MODEL", "gemini-3.8-flash")
+MODEL = os.environ.get("AIMODE_MODEL", "gemini-3.6-flash")  # 3.8-flash went 100s+ before its first byte (2026-10-29)
 URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse"
 SEARCH = "--search" in sys.argv  # grounding needs a billed key; free tier is training data only
 FALLBACK_MODEL = "gemini-3.1-flash-lite"
