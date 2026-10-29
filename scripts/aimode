@@ -4,6 +4,7 @@ Usage: aimode "question"   one-shot
        aimode              full-screen TUI, keeps conversation context
        aimode --plain      simple prompt loop
        aimode --search     enable Google Search grounding (needs billing on the key)
+       aimode --strong     stronger, slower model (gemini-3.8-flash, waits up to 180s, falls back to the default)
        aimode --models     list model IDs usable with AIMODE_MODEL
        aimode --key        enter (or replace) the saved API key
 Env:   GEMINI_API_KEY (or ~/.config/aimode/key), AIMODE_MODEL (default gemini-3.6-flash)
@@ -16,10 +17,13 @@ except ImportError:
     pass
 
 MODEL = os.environ.get("AIMODE_MODEL", "gemini-3.6-flash")  # 3.8-flash went 100s+ before its first byte (2026-10-29)
+STRONG = "--strong" in sys.argv
 URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse"
 SEARCH = "--search" in sys.argv  # grounding needs a billed key; free tier is training data only
 FALLBACK_MODEL = "gemini-3.1-flash-lite"
 TIMEOUT = 45  # seconds without data before giving up on a model
+if STRONG:  # the strong model thinks long before its first byte; its fallback is the normal default
+    MODEL, FALLBACK_MODEL, TIMEOUT = "gemini-3.8-flash", "gemini-3.6-flash", 180
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200"
 BOLD, DIM, RST = ("\033[1m", "\033[2m", "\033[0m") if sys.stdout.isatty() else ("", "", "")
 
@@ -364,7 +368,7 @@ def main():
         key = get_key()
     if "--models" in sys.argv:
         return list_models(key)
-    args = [a for a in sys.argv[1:] if a not in ("--plain", "--search", "--no-search", "--key")]
+    args = [a for a in sys.argv[1:] if a not in ("--plain", "--search", "--no-search", "--key", "--strong")]
     if not args and "--plain" not in sys.argv and sys.stdin.isatty() and sys.stdout.isatty():
         import curses, locale
         locale.setlocale(locale.LC_ALL, "")
