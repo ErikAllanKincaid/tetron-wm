@@ -377,7 +377,7 @@ install_own_apps() {
     fi
   done
   [ -x "$d/aimode" ] && [ -z "${GEMINI_API_KEY:-}" ] && [ ! -s "$HOME/.config/aimode/key" ] &&
-    log "AI Mode needs a free Gemini API key: https://aistudio.google.com/apikey, saved in ~/.config/aimode/key (mode 600) or GEMINI_API_KEY"
+    log "AI Mode needs a free Gemini API key: https://aistudio.google.com/apikey, its first run asks for it (aimode --key replaces it)"
   return 0
 }
 

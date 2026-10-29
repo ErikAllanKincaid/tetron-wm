@@ -5,7 +5,9 @@ Usage: aimode "question"   one-shot
        aimode --plain      simple prompt loop
        aimode --search     enable Google Search grounding (needs billing on the key)
        aimode --models     list model IDs usable with AIMODE_MODEL
+       aimode --key        enter (or replace) the saved API key
 Env:   GEMINI_API_KEY (or ~/.config/aimode/key), AIMODE_MODEL (default gemini-3.8-flash)
+Key:   free at https://aistudio.google.com/apikey; with none set, aimode asks for it on first run
 """
 import json, os, sys, time, urllib.request, urllib.error
 try:
@@ -22,13 +24,61 @@ MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=2
 BOLD, DIM, RST = ("\033[1m", "\033[2m", "\033[0m") if sys.stdout.isatty() else ("", "", "")
 
 
+KEYFILE = os.path.expanduser("~/.config/aimode/key")
+KEY_URL = "https://aistudio.google.com/apikey"
+
+
 def get_key():
     k = os.environ.get("GEMINI_API_KEY")
     if not k:
         try:
-            k = open(os.path.expanduser("~/.config/aimode/key")).read().strip()
+            k = open(KEYFILE).read().strip()
         except OSError:
-            sys.exit("No key. Set GEMINI_API_KEY or write it to ~/.config/aimode/key")
+            pass
+    if not k:
+        if not sys.stdin.isatty():
+            sys.exit("No key. Get a free one at %s, then run aimode once in a terminal, "
+                     "set GEMINI_API_KEY, or write it to %s" % (KEY_URL, KEYFILE))
+        k = prompt_key()
+    return k
+
+
+def key_ok(key):
+    """False only when Google rejects the key; network trouble counts as unknown (True)."""
+    try:
+        urllib.request.urlopen(urllib.request.Request(MODELS_URL, headers={"x-goog-api-key": key}), timeout=15).close()
+    except urllib.error.HTTPError as e:
+        return e.code not in (400, 401, 403)
+    except Exception as e:
+        print("%s(could not check the key: %s)%s" % (DIM, e, RST))
+    return True
+
+
+def prompt_key():
+    """Ask for a Gemini API key on the terminal, check it, save it to KEYFILE with mode 600."""
+    import getpass
+    print("%saimode needs a Gemini API key%s (free, no billing needed for plain questions).\n"
+          "  1. Open %s and sign in with a Google account\n"
+          "  2. Create API key, copy it\n"
+          "  3. Paste it below (it is not shown) and press Enter. Empty input quits.\n"
+          "It is saved to %s, readable only by you. Replace it later with: aimode --key"
+          % (BOLD, RST, KEY_URL, KEYFILE))
+    while True:
+        try:
+            k = getpass.getpass("Key: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            k = ""
+        if not k:
+            sys.exit("\nNo key entered.")
+        if key_ok(k):
+            break
+        print("Google rejected that key. Check it was copied whole, or create a new one.")
+    os.makedirs(os.path.dirname(KEYFILE), mode=0o700, exist_ok=True)
+    fd = os.open(KEYFILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(k + "\n")
+    os.chmod(KEYFILE, 0o600)  # an older file keeps its mode through O_TRUNC
+    print("Saved %s" % KEYFILE)
     return k
 
 
@@ -61,7 +111,7 @@ def stream(history, key, model=None):
             yield from stream(history, key, FALLBACK_MODEL)
             return
         yield "err", "HTTP %d: %s%s" % (e.code, e.read().decode(errors="replace")[:500],
-                                        {404: " (try aimode --models)", 429: " (quota; search may need billing, try --no-search)"}.get(e.code, ""))
+                                        {400: " (a bad key? replace it: aimode --key)", 403: " (a bad key? replace it: aimode --key)", 404: " (try aimode --models)", 429: " (quota; search may need billing, try --no-search)"}.get(e.code, ""))
     except Exception as e:
         if not got and not model and MODEL != FALLBACK_MODEL and "timed out" in str(e):
             yield "note", "%s did not answer in %ds, using %s" % (MODEL, TIMEOUT, FALLBACK_MODEL)
@@ -302,10 +352,19 @@ def list_models(key):
 
 
 def main():
-    key = get_key()
+    if sys.argv[1:2] in (["-h"], ["--help"]):
+        return print(__doc__, end="")
+    if "--key" in sys.argv:
+        if not sys.stdin.isatty():
+            sys.exit("aimode --key needs a terminal")
+        key = prompt_key()
+        if sys.argv[1:] == ["--key"]:
+            return
+    else:
+        key = get_key()
     if "--models" in sys.argv:
         return list_models(key)
-    args = [a for a in sys.argv[1:] if a not in ("--plain", "--search", "--no-search")]
+    args = [a for a in sys.argv[1:] if a not in ("--plain", "--search", "--no-search", "--key")]
     if not args and "--plain" not in sys.argv and sys.stdin.isatty() and sys.stdout.isatty():
         import curses, locale
         locale.setlocale(locale.LC_ALL, "")

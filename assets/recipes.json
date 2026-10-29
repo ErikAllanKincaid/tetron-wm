@@ -5888,7 +5888,7 @@
    "macos",
    "linux"
   ],
-  "tip": "Needs a free Gemini API key: create one at https://aistudio.google.com/apikey, then save it with `mkdir -p ~/.config/aimode && (umask 077; cat > ~/.config/aimode/key)` (paste, Enter, Ctrl+D) or export GEMINI_API_KEY. Google Search grounding (`aimode --search`) needs billing on the key.",
+  "tip": "Needs a free Gemini API key from https://aistudio.google.com/apikey. The first run asks for it and saves it to ~/.config/aimode/key (readable only by you); `aimode --key` replaces it, or set GEMINI_API_KEY. Google Search grounding (`aimode --search`) needs billing on the key.",
   "verified": true
  },
  "Start Page": {
