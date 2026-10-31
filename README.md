@@ -146,6 +146,8 @@ It asks before every step, is safe to re-run, and `--uninstall` puts your login 
 
 Inside the app: **Settings → Updates**. The default channel installs the latest prebuilt release, reloads, and keeps your apps running. Or re-run the install command above. If you track the `dev` branch it builds from source.
 
+On Debian and Ubuntu, tetron-wm installed by apt (the `.deb`) is updated through apt: Settings → Updates and the install command download the release `.deb`, check it, and let apt install it, so the packaged file is never overwritten. The `dev` channel is not used there, since a source build would put a second copy beside the package. A copy installed without the package keeps being updated in place; to switch it to the package, delete it and run the install command again.
+
 ## Troubleshooting
 
 - **Colors look washed out.** Your terminal may do 24-bit color without saying so. Set `truecolor = true`, or run once with `TETRON_WM_TRUECOLOR=1 tetron-wm`.

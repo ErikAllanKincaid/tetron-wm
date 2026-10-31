@@ -687,6 +687,8 @@ pub struct SessionCore {
     /// A suspend / reboot / power-off command chain running on a worker thread:
     /// the action and the slot its [`crate::powerctl::Report`] lands in.
     power_job: Option<(crate::powerctl::Kind, std::sync::Arc<std::sync::Mutex<Option<crate::powerctl::Report>>>)>,
+    /// Settings > Updates check worker, read by [`Self::poll_update_check`].
+    update_check: Option<std::sync::mpsc::Receiver<String>>,
     /// Settings > Get more themes worker, read by [`Self::poll_themes`].
     theme_job: Option<std::sync::mpsc::Receiver<crate::themefetch::Msg>>,
     /// Modal "are you sure?" shown when closing an app window (which kills it).
@@ -811,6 +813,7 @@ impl SessionCore {
             power_menu: PowerMenu::new(),
             power_job: None,
             theme_job: None,
+            update_check: None,
             confirm_close: ConfirmClose::new(),
             win_picker: crate::winpicker::WinPicker::new(),
             move_mode: None,
@@ -1325,14 +1328,24 @@ impl SessionCore {
                 self.clipmenu.history_changed(&hist);
             }
             Some(crate::settings::SettingsAction::CheckUpdates) => {
-                let branch = self.cfg.update_branch.clone();
-                let msg = check_for_updates(&branch);
-                crate::dbg_log(&format!(
-                    "update: check (branch {branch}, running v{}) -> {msg}",
-                    crate::VERSION
-                ));
+                // curl can take seconds (or its full time limit offline): run it
+                // on a worker, never on the render loop; poll_update_check
+                // delivers the result.
+                if self.update_check.is_none() {
+                    let branch = self.cfg.update_branch.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let mut msg = check_for_updates(&branch);
+                        if crate::packaging::running_is_packaged() {
+                            msg.push_str(" (installed by apt)");
+                        }
+                        crate::dbg_log(&format!("update: check (branch {branch}, running v{}) -> {msg}", crate::VERSION));
+                        let _ = tx.send(msg);
+                    });
+                    self.update_check = Some(rx);
+                }
                 if let Some(s) = self.focused_settings_mut() {
-                    s.set_update_status(msg);
+                    s.set_update_status("Checking…".into());
                 }
             }
             Some(crate::settings::SettingsAction::PreviewColors) => {
@@ -1395,11 +1408,20 @@ impl SessionCore {
                 crate::dbg_log("config: reload requested from Settings");
                 self.reload_to_general();
             }
+            Some(crate::settings::SettingsAction::InstallUpdate)
+                if crate::packaging::running_is_packaged() && sanitize_branch(&self.cfg.update_branch) != "main" =>
+            {
+                // A source build would add a second copy beside the packaged one.
+                crate::dbg_log("update: refused, dev channel on an apt-installed tetron-wm");
+                if let Some(s) = self.focused_settings_mut() {
+                    s.set_update_status("Installed by apt: dev builds from source. Use Channel main.".into());
+                }
+            }
             Some(crate::settings::SettingsAction::InstallUpdate) => {
                 // Remember to reopen Settings on the Updates screen after the
                 // reload, so the user isn't dumped back on the bare desktop.
                 write_reopen_hint(Ui_SETTINGS_UPDATES);
-                let cmd = update_command(&self.cfg.update_branch);
+                let cmd = update_command(&self.cfg.update_branch, crate::packaging::running_is_packaged());
                 crate::dbg_log(&format!(
                     "update: install requested (branch {}, running v{}, exe {:?}); running in a window",
                     self.cfg.update_branch,
@@ -1430,6 +1452,23 @@ impl SessionCore {
         };
         crate::dbg_log(&format!("config: open {} with {command}", path.display()));
         self.open_file_in("config.toml".into(), command, args, path.parent().map(|p| p.to_path_buf()));
+    }
+
+    /// Hand a finished update check to every open Settings panel (call once
+    /// per daemon tick).
+    pub fn poll_update_check(&mut self) {
+        let Some(rx) = self.update_check.as_ref() else { return };
+        let msg = match rx.try_recv() {
+            Ok(m) => m,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => "Couldn't check".into(),
+        };
+        self.update_check = None;
+        for c in self.contents.values_mut() {
+            if let WinContent::Settings(s) = c {
+                s.set_update_status(msg.clone());
+            }
+        }
     }
 
     /// Hand theme download progress to every open Settings panel (call once
@@ -6564,7 +6603,13 @@ fn sanitize_branch(branch: &str) -> String {
 /// to the latest release), falling back to a source build; on any other branch
 /// (the dev channel) it builds that branch from git. On success it reloads and
 /// EXITS so the updater window auto-closes; only a failure drops to a shell.
-fn update_command(branch: &str) -> String {
+///
+/// `packaged` (apt owns the running binary, WMDEB-005): `install.sh` upgrades
+/// through the release `.deb` and apt, with no source fallback (a cargo build
+/// would add a second, shadowing copy), and the dev channel refuses. On a raw
+/// install, `install.sh` exiting 3 (it found the package and refused) also
+/// skips the source fallback.
+fn update_command(branch: &str, packaged: bool) -> String {
     let branch = sanitize_branch(branch);
     let branch = branch.as_str();
     let repo = crate::REPO_URL;
@@ -6592,15 +6637,33 @@ fn update_command(branch: &str) -> String {
     // update is visible in the log the user pastes — the install runs in a
     // window whose output is otherwise lost.
     let log = "\"$HOME/tetron-wm-debug.log\"";
+    if packaged && branch != "main" {
+        return format!(
+            "clear; echo 'tetron-wm was installed by apt. The {branch} channel builds from source, which would add'; \
+echo 'a second copy beside the packaged one, so it is not used here. Switch Channel to main.'; \
+echo \"update: refused, {branch} channel on an apt-installed tetron-wm\" >> {log}; exec \"$SHELL\""
+        );
+    }
+    if packaged {
+        return format!(
+            "clear; echo 'Updating tetron-wm with apt (latest release .deb)…'; echo; \
+echo \"update: apt upgrade via install.sh (packaged)\" >> {log}; \
+if sh -c 'curl -fsSL {raw}/main/install.sh | sh'; then \
+echo \"update: install.sh ok; reloading via {reload}\" >> {log}; echo; echo 'Reloading…'; {reload} reload; exit 0; \
+else echo \"update: FAILED (install.sh, packaged)\" >> {log}; echo 'Update failed — tetron-wm not reloaded.'; exec \"$SHELL\"; fi"
+        );
+    }
     if branch == "main" {
         format!(
             "clear; echo 'Updating tetron-wm (latest release)…'; echo; \
 echo \"update: install -> {dir}\" >> {log}; \
 if TETRON_WM_BIN_DIR={dir} sh -c 'curl -fsSL {raw}/main/install.sh | sh'; then \
 echo \"update: install.sh ok; reloading via {reload}\" >> {log}; echo; echo 'Reloading…'; {reload} reload; exit 0; \
+else rc=$?; if [ \"$rc\" = 3 ]; then \
+echo \"update: install.sh found the apt package and changed nothing; no source fallback\" >> {log}; echo 'Update stopped — tetron-wm not reloaded.'; exec \"$SHELL\"; \
 elif cargo install --git {repo}{root_flag} --force; then \
 echo \"update: cargo fallback ok; reloading via {reload}\" >> {log}; echo; echo 'Reloading…'; {reload} reload; exit 0; \
-else echo \"update: FAILED (install.sh and cargo both failed)\" >> {log}; echo 'Update failed — tetron-wm not reloaded.'; exec \"$SHELL\"; fi",
+else echo \"update: FAILED (install.sh and cargo both failed)\" >> {log}; echo 'Update failed — tetron-wm not reloaded.'; exec \"$SHELL\"; fi; fi",
         )
     } else {
         format!(
@@ -7072,7 +7135,7 @@ mod tests {
 
     #[test]
     fn main_update_prefers_prebuilt_release() {
-        let cmd = update_command("main");
+        let cmd = update_command("main", false);
         assert!(cmd.contains("install.sh"), "fast path is the prebuilt release: {cmd}");
         assert!(cmd.contains("cargo install --git"), "with a source fallback");
         assert!(cmd.contains("/tetron-wm' reload"), "reloads via the installed binary's absolute path: {cmd}");
@@ -7080,6 +7143,35 @@ mod tests {
         assert!(cmd.contains("tetron-wm-debug.log"), "logs each step to the debug log");
         assert!(cmd.contains("exit 0"), "exits so the updater window auto-closes");
         assert!(!cmd.contains("--branch"), "main needs no branch flag");
+    }
+
+    #[test]
+    fn packaged_update_goes_through_apt_and_never_builds_from_source() {
+        let cmd = update_command("main", true);
+        assert!(cmd.contains("install.sh"), "the release .deb through install.sh: {cmd}");
+        assert!(!cmd.contains("cargo"), "no source build beside the package: {cmd}");
+        assert!(!cmd.contains("TETRON_WM_BIN_DIR"), "apt decides where the binary goes: {cmd}");
+        assert!(cmd.contains("/tetron-wm' reload"), "reloads the installed binary: {cmd}");
+        let dev = update_command("dev", true);
+        assert!(!dev.contains("cargo") && !dev.contains("install.sh"), "dev refuses on a packaged install: {dev}");
+        assert!(dev.contains("installed by apt"), "and says why: {dev}");
+    }
+
+    #[test]
+    fn every_update_command_is_valid_sh() {
+        for (branch, packaged) in [("main", false), ("main", true), ("dev", false), ("dev", true)] {
+            let cmd = update_command(branch, packaged);
+            let ok = std::process::Command::new("sh").args(["-n", "-c", &cmd]).status().unwrap().success();
+            assert!(ok, "sh -n rejects ({branch}, packaged {packaged}): {cmd}");
+        }
+    }
+
+    #[test]
+    fn raw_update_skips_the_source_fallback_when_install_sh_refuses() {
+        let cmd = update_command("main", false);
+        let refuse = cmd.find("= 3").expect("checks install.sh's refusal status");
+        let cargo = cmd.find("cargo install").expect("source fallback still there");
+        assert!(refuse < cargo, "the refusal check comes before the fallback: {cmd}");
     }
 
     #[test]
@@ -7096,7 +7188,7 @@ mod tests {
 
     #[test]
     fn dev_channel_builds_from_branch() {
-        let cmd = update_command("dev");
+        let cmd = update_command("dev", false);
         assert!(cmd.contains("cargo install --git"), "dev builds from source");
         assert!(cmd.contains("--branch dev"), "on the dev branch: {cmd}");
         assert!(!cmd.contains("install.sh"), "no prebuilt release off main");
@@ -7108,7 +7200,7 @@ mod tests {
         // broken ref into the updater command or the check URL.
         for junk in ["x; rm -rf ~", "a b", "evil'", "--force", "..", ""] {
             assert_eq!(sanitize_branch(junk), "main", "rejected: {junk:?}");
-            let cmd = update_command(junk);
+            let cmd = update_command(junk, false);
             assert!(cmd.contains("install.sh"), "junk → the safe main path: {cmd}");
             assert!(!cmd.contains("rm -rf"), "no injected payload survives: {cmd}");
         }

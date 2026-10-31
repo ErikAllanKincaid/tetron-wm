@@ -24,6 +24,8 @@ carry user-visible feature work and the occasional breaking config change.
 - `tetron-wm launch @files [dir]`, `@settings`, `@store` and the other built-ins now open the built-in window, as the launcher does. Before, the name was run as a program and the window closed at once.
 
 ### Changed
+- Updating on Debian and Ubuntu follows how tetron-wm was installed. When apt installed it (the `.deb`), Settings → Updates and `install.sh` download the release `.deb`, check its SHA-256, and install it with apt; when a release has no `.deb`, nothing is changed. The `dev` channel and the source-build fallback are not used on a packaged install, so a second copy can not appear beside it. A copy installed without the package is still upgraded in place, and a fresh Debian or Ubuntu host gets the `.deb` once releases carry one. Systems → Add Remote follows the same rules on the remote.
+- Settings → Updates → Check for updates runs in the background, so the desktop no longer freezes while it waits for GitHub (up to about 12 seconds offline). The row shows "Checking…" meanwhile.
 - Settings opens on **Appearance**, now the first section; Windows is second.
 - Installer: the kmscon console prompt now says what it does in plain terms ("Make kmscon the login screen on tty1 (Ctrl+Alt+F1)? It replaces the plain kernel text console, adding truecolor and mouse") instead of "Run kmscon on tty1 in place of the kernel login prompt?".
 

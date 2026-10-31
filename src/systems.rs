@@ -161,8 +161,8 @@ pub fn switch_script(spec: &SwitchSpec) -> String {
     if spec.setup {
         let name = sh_quote(&spec.name);
         let install = sh_quote(&format!(
-            "curl -fsSL {repo_raw}/main/install.sh | TETRON_WM_INSTALL_DEPS=1 sh || \
-{{ command -v cargo >/dev/null 2>&1 && cargo install --git {repo}; }}",
+            "curl -fsSL {repo_raw}/main/install.sh | TETRON_WM_INSTALL_DEPS=1 sh; rc=$?; \
+[ \"$rc\" = 0 ] || [ \"$rc\" = 3 ] || {{ command -v cargo >/dev/null 2>&1 && cargo install --git {repo}; }}",
             repo = crate::REPO_URL,
             repo_raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm",
         ));
@@ -351,6 +351,7 @@ mod tests {
         let attach = s.find("exec ssh -t").expect("ends by attaching");
         assert!(key < copy && copy < terminfo && terminfo < install && install < gpm && gpm < sync && sync < attach);
         assert!(s.contains("infocmp -x"), "terminfo export uses the extended format");
+        assert!(s.contains("[ \"$rc\" = 3 ]"), "install.sh refusing on an apt host skips the source build");
         assert!(!s.contains("hunter2"), "the password must never be embedded in the script");
         assert!(s.contains("sshpass -e"), "password flows via the SSHPASS env var");
         assert!(!s.contains("TETRON_WM_THEME"), "no theme env when the system has none");

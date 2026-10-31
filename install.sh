@@ -7,12 +7,24 @@
 # needs root — the script uses sudo when the dir is not writable. For a no-sudo,
 # userspace install set TETRON_WM_BIN_DIR to a writable dir, e.g.:
 #   TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL …/install.sh | sh
+#
+# One install method per host. On Debian and Ubuntu (dpkg and apt-get present):
+# - tetron-wm installed by apt: the release .deb upgrades it, through apt. When
+#   the release has no .deb the script changes nothing and exits with status 3,
+#   so it never writes over a file the package owns.
+# - a raw copy (not from a package): upgraded in place, as before.
+# - neither: the release .deb is installed when the release has one, else the
+#   raw binary.
+# Everywhere else (other Linux, macOS) the raw binary, as before.
 set -eu
 
 # Prebuilt binaries come from the tetron-wm release repo. The binary is named
 # `tetron-wm` and installs to its own paths, so it collides with nothing else.
 REPO="ErikAllanKincaid/tetron-wm"
+PKG="tetron-wm"
 BIN_DIR="${TETRON_WM_BIN_DIR:-/usr/local/bin}"
+# Release downloads and the tag can be overridden (tests serve a local release).
+RELEASES="${TETRON_WM_RELEASES_URL:-https://github.com/$REPO/releases}"
 
 # Does writing BIN_DIR need root? Walk up to the first existing ancestor and
 # test it: a path under $HOME (even if the dir doesn't exist yet) is writable
@@ -23,17 +35,19 @@ need_sudo_for() {
   [ -w "$d" ] && return 1 || return 0
 }
 SUDO=""
-if need_sudo_for "$BIN_DIR"; then
-  if [ "$(id -u)" -eq 0 ]; then :
-  elif command -v sudo >/dev/null 2>&1; then
-    echo "tetron-wm: $BIN_DIR needs root — using sudo (set TETRON_WM_BIN_DIR to a user dir for a no-sudo install)"
-    SUDO="sudo"
-  else
-    echo "tetron-wm: cannot write $BIN_DIR and sudo is unavailable." >&2
-    echo "  Retry with:  TETRON_WM_BIN_DIR=\"\$HOME/.local/bin\" curl -fsSL …/install.sh | sh" >&2
-    exit 1
+raw_sudo() {
+  if need_sudo_for "$BIN_DIR"; then
+    if [ "$(id -u)" -eq 0 ]; then :
+    elif command -v sudo >/dev/null 2>&1; then
+      echo "tetron-wm: $BIN_DIR needs root — using sudo (set TETRON_WM_BIN_DIR to a user dir for a no-sudo install)"
+      SUDO="sudo"
+    else
+      echo "tetron-wm: cannot write $BIN_DIR and sudo is unavailable." >&2
+      echo "  Retry with:  TETRON_WM_BIN_DIR=\"\$HOME/.local/bin\" curl -fsSL …/install.sh | sh" >&2
+      exit 1
+    fi
   fi
-fi
+}
 
 # Stock Debian often has wget but not curl; accept either.
 fetch() {
@@ -79,25 +93,106 @@ case "$os/$arch" in
     exit 1 ;;
 esac
 
-echo "tetron-wm: finding latest release…"
-tag="$(latest_tag || true)"
+tag="${TETRON_WM_TAG:-}"
+if [ -z "$tag" ]; then
+  echo "tetron-wm: finding latest release…"
+  tag="$(latest_tag || true)"
+fi
 if [ -z "${tag:-}" ]; then
   echo "tetron-wm: couldn't resolve the latest release (GitHub unreachable or rate-limited)."
   echo "Install with Rust instead:  cargo install --git https://github.com/$REPO"
   exit 1
 fi
 
-url="https://github.com/$REPO/releases/download/$tag/tetron-wm-$target.tar.gz"
-echo "tetron-wm: downloading $tag ($target)…"
-$SUDO mkdir -p "$BIN_DIR"
-if ! fetch "$url" | $SUDO tar -xz -C "$BIN_DIR" 2>/dev/null || [ ! -f "$BIN_DIR/tetron-wm" ]; then
-  echo "tetron-wm: no prebuilt binary for $target in $tag."
-  echo "Install with Rust instead:  cargo install --git https://github.com/$REPO"
-  exit 1
-fi
-$SUDO chmod +x "$BIN_DIR/tetron-wm"
+# Debian and Ubuntu: dpkg and apt-get present.
+deb_host() {
+  [ "$os" = Linux ] && command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1
+}
+# apt installed the tetron-wm package.
+pkg_installed() {
+  dpkg-query -W -f='${db:Status-Status}' "$PKG" 2>/dev/null | grep -qx installed
+}
+# The first tetron-wm (in BIN_DIR, else on PATH) that no package owns.
+raw_copy() {
+  for p in "$BIN_DIR/tetron-wm" "$(command -v tetron-wm 2>/dev/null || true)"; do
+    [ -n "$p" ] && [ -f "$p" ] || continue
+    dpkg -S "$(readlink -f "$p")" >/dev/null 2>&1 && continue
+    printf '%s\n' "$p"
+    return 0
+  done
+  return 1
+}
+# Name of the release's tetron-wm_<version>-<rev>_<arch>.deb, or nothing. Read
+# from the release page's asset list (not the rate-limited REST API), so a
+# packaging-only revision (-2) is found without guessing.
+deb_asset() {
+  fetch "$RELEASES/expanded_assets/$tag" 2>/dev/null \
+    | grep -o "${PKG}_[^\"/<> ]*_$1\.deb" | head -1 || true
+}
+# Download the .deb and its .sha256, check it, install it with apt-get.
+install_deb() {
+  asset="$1"
+  tmp="$(mktemp -d)"
+  echo "tetron-wm: downloading $asset ($tag)…"
+  if ! fetch "$RELEASES/download/$tag/$asset" > "$tmp/$asset" \
+    || ! fetch "$RELEASES/download/$tag/$asset.sha256" > "$tmp/$asset.sha256"; then
+    echo "tetron-wm: download of $asset failed; nothing changed." >&2
+    rm -rf "$tmp"; exit 1
+  fi
+  want="$(cut -d' ' -f1 < "$tmp/$asset.sha256")"
+  got="$(sha256sum "$tmp/$asset" | cut -d' ' -f1)"
+  if [ -z "$want" ] || [ "$want" != "$got" ]; then
+    echo "tetron-wm: checksum mismatch for $asset; nothing changed." >&2
+    rm -rf "$tmp"; exit 1
+  fi
+  apt_sudo=""
+  [ "$(id -u)" -eq 0 ] || apt_sudo="sudo"
+  echo "tetron-wm: installing $asset with apt-get…"
+  if ! $apt_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$tmp/$asset"; then
+    echo "tetron-wm: apt-get could not install $asset." >&2
+    rm -rf "$tmp"; exit 1
+  fi
+  rm -rf "$tmp"
+  BIN_DIR="/usr/bin"
+  echo "tetron-wm: installed $tag -> /usr/bin/tetron-wm (package $PKG, managed by apt)"
+}
 
-echo "tetron-wm: installed $tag -> $BIN_DIR/tetron-wm"
+method="raw"
+note=""
+if deb_host; then
+  debarch="$(dpkg --print-architecture)"
+  if pkg_installed; then
+    asset="$(deb_asset "$debarch")"
+    if [ -z "$asset" ]; then
+      echo "tetron-wm: installed by apt, and release $tag has no .deb for $debarch." >&2
+      echo "  Nothing changed. See $RELEASES/tag/$tag" >&2
+      exit 3
+    fi
+    method="deb"
+  elif raw="$(raw_copy)"; then
+    note="tetron-wm: $raw is not from a package, so it was upgraded in place. To let apt manage tetron-wm, delete it and run this script again."
+  else
+    asset="$(deb_asset "$debarch")"
+    [ -n "$asset" ] && method="deb"
+  fi
+fi
+
+if [ "$method" = deb ]; then
+  install_deb "$asset"
+else
+  raw_sudo
+  url="$RELEASES/download/$tag/tetron-wm-$target.tar.gz"
+  echo "tetron-wm: downloading $tag ($target)…"
+  $SUDO mkdir -p "$BIN_DIR"
+  if ! fetch "$url" | $SUDO tar -xz -C "$BIN_DIR" 2>/dev/null || [ ! -f "$BIN_DIR/tetron-wm" ]; then
+    echo "tetron-wm: no prebuilt binary for $target in $tag."
+    echo "Install with Rust instead:  cargo install --git https://github.com/$REPO"
+    exit 1
+  fi
+  $SUDO chmod +x "$BIN_DIR/tetron-wm"
+  echo "tetron-wm: installed $tag -> $BIN_DIR/tetron-wm"
+  [ -z "$note" ] || echo "$note"
+fi
 
 # Optional, OS-aware dependency step. Installs helpers some features need:
 #   blueutil (macOS)  — Bluetooth tray control
