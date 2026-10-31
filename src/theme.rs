@@ -746,8 +746,9 @@ pub fn validate(t: &Theme) -> Vec<String> {
     warns
 }
 
-/// Resolve the theme directory: `$TETRON_WM_THEMES_DIR`, else the `theme_dir`
-/// config key (relative to the config dir), else `<config>/themes`.
+/// The user's own theme directory, where `theme --dump` writes:
+/// `$TETRON_WM_THEMES_DIR`, else the `theme_dir` config key (relative to the
+/// config dir), else `<config>/themes`. The first entry of [`themes_dirs`].
 pub(crate) fn themes_dir() -> Option<PathBuf> {
     if let Some(d) = std::env::var_os("TETRON_WM_THEMES_DIR") {
         return Some(PathBuf::from(d));
@@ -760,6 +761,74 @@ pub(crate) fn themes_dir() -> Option<PathBuf> {
         }
         None => cfg_dir.map(|c| c.join("themes")),
     }
+}
+
+/// Where in-app theme downloads go: `$XDG_DATA_HOME/tetron-wm/themes`
+/// (default `~/.local/share/tetron-wm/themes`).
+pub fn download_dir() -> Option<PathBuf> {
+    data_home(std::env::var_os("XDG_DATA_HOME"), dirs::home_dir()).map(|d| d.join("tetron-wm/themes"))
+}
+
+fn data_home(xdg: Option<std::ffi::OsString>, home: Option<PathBuf>) -> Option<PathBuf> {
+    xdg.filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.is_absolute()).or_else(|| home.map(|h| h.join(".local/share")))
+}
+
+/// Every directory theme files are read from, first wins (WMDEB-002):
+/// `$TETRON_WM_THEMES_DIR` alone when set; else the user's dir
+/// ([`themes_dir`]), the download dir, then each `$XDG_DATA_DIRS` entry
+/// (default `/usr/local/share:/usr/share`) + `tetron-wm/themes`.
+pub(crate) fn themes_dirs() -> Vec<PathBuf> {
+    search_dirs(
+        std::env::var_os("TETRON_WM_THEMES_DIR"),
+        themes_dir(),
+        download_dir(),
+        std::env::var_os("XDG_DATA_DIRS"),
+    )
+}
+
+/// [`themes_dirs`] with its inputs passed in, so it is unit-testable.
+fn search_dirs(
+    over: Option<std::ffi::OsString>,
+    user: Option<PathBuf>,
+    download: Option<PathBuf>,
+    data_dirs: Option<std::ffi::OsString>,
+) -> Vec<PathBuf> {
+    if let Some(d) = over.filter(|d| !d.is_empty()) {
+        return vec![PathBuf::from(d)];
+    }
+    let system = data_dirs.filter(|v| !v.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    let mut out: Vec<PathBuf> = user.into_iter().chain(download).collect();
+    for d in std::env::split_paths(&system).filter(|d| d.is_absolute()) {
+        out.push(d.join("tetron-wm/themes"));
+    }
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|d| seen.insert(d.clone()));
+    out
+}
+
+/// `(name, palette)` pairs, and `(lowercase name, wallpaper value)` pairs.
+type ThemeList = Vec<(String, Theme)>;
+type PictureList = Vec<(String, String)>;
+
+/// The themes and theme pictures of `dirs`, first directory wins per theme
+/// name. A theme's picture always comes from the directory its colours came
+/// from, so a later directory can not pair its own picture with it.
+fn load_all(dirs: &[PathBuf]) -> (ThemeList, PictureList) {
+    let mut themes: ThemeList = Vec::new();
+    let mut pictures: PictureList = Vec::new();
+    for dir in dirs {
+        let fresh: Vec<(String, Theme)> = load_dir(dir)
+            .into_iter()
+            .filter(|(n, _)| !themes.iter().any(|(t, _)| t.eq_ignore_ascii_case(n)))
+            .collect();
+        if fresh.is_empty() {
+            continue;
+        }
+        let names: Vec<String> = fresh.iter().map(|(n, _)| n.to_lowercase()).collect();
+        pictures.extend(load_wallpapers(dir).into_iter().filter(|(n, _)| names.contains(n)));
+        themes.extend(fresh);
+    }
+    (themes, pictures)
 }
 
 /// Load every `*.toml` in `dir` into `(name, Theme)` pairs. Pure (no globals), so
@@ -794,7 +863,7 @@ fn load_dir(dir: &Path) -> Vec<(String, Theme)> {
 
 /// What the themes folder held when last read.
 struct Scanned {
-    /// Newest modification time of the folder and its files, to spot a change.
+    /// Newest modification time of the folders and their files, to spot a change.
     stamp: Option<std::time::SystemTime>,
     /// When the stamp was last compared (at most once a second).
     checked: std::time::Instant,
@@ -816,20 +885,19 @@ fn dir_stamp(dir: &Path) -> Option<std::time::SystemTime> {
 /// a picture dropped in while the daemon runs is found without a restart; the
 /// theme in use keeps its colours until it is selected again.
 fn scanned() -> (Themes, std::sync::Arc<Vec<(String, String)>>) {
-    static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    static DIRS: OnceLock<Vec<PathBuf>> = OnceLock::new();
     static SCAN: std::sync::Mutex<Option<Scanned>> = std::sync::Mutex::new(None);
-    let dir = DIR.get_or_init(themes_dir);
+    let dirs = DIRS.get_or_init(themes_dirs);
     let mut guard = SCAN.lock().unwrap_or_else(|e| e.into_inner());
     let now = std::time::Instant::now();
     let due = guard.as_ref().is_none_or(|s| now.duration_since(s.checked) >= std::time::Duration::from_secs(1));
     if due {
-        let stamp = dir.as_deref().and_then(dir_stamp);
+        let stamp = dirs.iter().filter_map(|d| dir_stamp(d)).max();
         let changed = guard.as_ref().is_none_or(|s| s.stamp != stamp);
         match (changed, guard.as_mut()) {
             (false, Some(s)) => s.checked = now,
             _ => {
-                let themes = dir.as_deref().map(load_dir).unwrap_or_default();
-                let pictures = dir.as_deref().map(load_wallpapers).unwrap_or_default();
+                let (themes, pictures) = load_all(dirs);
                 *guard = Some(Scanned { stamp, checked: now, themes: themes.into(), pictures: pictures.into() });
             }
         }
@@ -1178,6 +1246,62 @@ mod tests {
             assert!(pack.contains(&format!("{name}.jpg").as_str()), "{name}.jpg is in the installer pack");
         }
         assert!(names.contains(&"contrast".to_string()));
+    }
+
+    #[test]
+    fn search_dirs_order_and_override() {
+        let p = PathBuf::from;
+        let user = Some(p("/h/.config/tetron-wm/themes"));
+        let dl = Some(p("/h/.local/share/tetron-wm/themes"));
+        assert_eq!(
+            search_dirs(None, user.clone(), dl.clone(), None),
+            vec![
+                p("/h/.config/tetron-wm/themes"),
+                p("/h/.local/share/tetron-wm/themes"),
+                p("/usr/local/share/tetron-wm/themes"),
+                p("/usr/share/tetron-wm/themes"),
+            ],
+            "default XDG_DATA_DIRS"
+        );
+        assert_eq!(
+            search_dirs(None, user.clone(), dl.clone(), Some("/opt/share:relative:/opt/share".into())),
+            vec![p("/h/.config/tetron-wm/themes"), p("/h/.local/share/tetron-wm/themes"), p("/opt/share/tetron-wm/themes")],
+            "set XDG_DATA_DIRS replaces the default; relative entries and duplicates dropped"
+        );
+        assert_eq!(search_dirs(None, user.clone(), dl.clone(), Some("".into())).len(), 4, "empty means unset");
+        assert_eq!(search_dirs(Some("/t".into()), user, dl, None), vec![p("/t")], "override is exclusive");
+    }
+
+    #[test]
+    fn data_home_follows_xdg_spec() {
+        let home = Some(PathBuf::from("/h"));
+        assert_eq!(data_home(None, home.clone()), Some(PathBuf::from("/h/.local/share")));
+        assert_eq!(data_home(Some("/x".into()), home.clone()), Some(PathBuf::from("/x")));
+        assert_eq!(data_home(Some("rel".into()), home.clone()), Some(PathBuf::from("/h/.local/share")), "relative is invalid per the spec");
+        assert_eq!(data_home(Some("".into()), home), Some(PathBuf::from("/h/.local/share")));
+    }
+
+    #[test]
+    fn load_all_first_dir_wins_and_keeps_its_own_picture() {
+        let root = std::env::temp_dir().join(format!("tetron-theme-dirs-{}", std::process::id()));
+        let (a, b, gone) = (root.join("a"), root.join("b"), root.join("missing"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        // "dawn" in both: a's colours win, and a has no picture, so b's dawn.jpg must not attach.
+        std::fs::write(a.join("dawn.toml"), "accent = \"#111111\"\n").unwrap();
+        std::fs::write(b.join("dawn.toml"), "accent = \"#222222\"\n").unwrap();
+        std::fs::write(b.join("dawn.jpg"), "x").unwrap();
+        // "nord" only in b, with its picture.
+        std::fs::write(b.join("nord.toml"), "accent = \"#333333\"\n").unwrap();
+        std::fs::write(b.join("nord.jpg"), "x").unwrap();
+        let (themes, pics) = load_all(&[a.clone(), gone, b.clone()]);
+        std::fs::remove_dir_all(&root).ok();
+        let dawn = themes.iter().find(|(n, _)| n == "dawn").expect("dawn");
+        assert_eq!(dawn.1.accent, Rgba { r: 0x11, g: 0x11, b: 0x11, a: 255 }, "first dir wins");
+        assert_eq!(themes.iter().filter(|(n, _)| n == "dawn").count(), 1, "no duplicate");
+        assert!(themes.iter().any(|(n, _)| n == "nord"), "later dir adds new names");
+        assert!(!pics.iter().any(|(n, _)| n == "dawn"), "b's picture not paired with a's theme: {pics:?}");
+        assert_eq!(pics.iter().find(|(n, _)| n == "nord").map(|(_, v)| v.clone()), Some(b.join("nord.jpg").to_string_lossy().into_owned()));
     }
 
     #[test]

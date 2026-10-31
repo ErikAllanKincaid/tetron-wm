@@ -1,4 +1,5 @@
-## tetron-wm configuration: copy to ~/.config/tetron-wm/config.toml
+## tetron-wm configuration: copy to ~/.config/tetron-wm/config.toml, or run
+## `tetron-wm config init`, which writes this file there if none exists.
 ##
 ## Every option with a real default is set here to that DEFAULT, so this file can
 ## be dropped in as is and changes nothing. Edit a value to override it.

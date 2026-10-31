@@ -235,8 +235,9 @@ pub fn ensure_default(theme: &str) -> Option<PathBuf> {
 ///
 /// - An absolute path (`/…`) is used as-is.
 /// - A `~`-path is expanded against the home directory.
-/// - A relative path is looked up in the themes folder
-///   (`~/.config/tetron-wm/themes/`), then the config dir root, then the old
+/// - A relative path is looked up in the theme folders, in order
+///   (`~/.config/tetron-wm/themes/`, `~/.local/share/tetron-wm/themes/`, the
+///   system data dirs), then the config dir root, then the old
 ///   `wallpapers/` folder (kept so existing configs keep working). It is
 ///   **never** resolved against the process cwd (the daemon's cwd is
 ///   unpredictable — a service, a reload, launched from anywhere), so a bare
@@ -256,23 +257,25 @@ pub fn resolve_path(path: &str) -> PathBuf {
     if p.is_absolute() {
         return p;
     }
-    let themes = crate::theme::themes_dir().map(|d| d.join(path));
-    if let Some(t) = themes.as_ref().filter(|t| t.exists()) {
-        return t.clone();
+    resolve_relative(path, &crate::theme::themes_dirs(), crate::config::config_dir().as_deref())
+}
+
+/// A relative wallpaper path: the first theme directory that has it (in
+/// [`crate::theme::themes_dirs`] order), then the config dir root, then the old
+/// `wallpapers/` folder. When none has it, the best-effort candidate in the
+/// first theme directory, so the caller's "missing file" log names it.
+fn resolve_relative(path: &str, theme_dirs: &[PathBuf], cfg: Option<&std::path::Path>) -> PathBuf {
+    if let Some(t) = theme_dirs.iter().map(|d| d.join(path)).find(|t| t.exists()) {
+        return t;
     }
-    if let Some(cfg) = crate::config::config_dir() {
-        let root = cfg.join(path);
-        if root.exists() {
-            return root;
+    if let Some(cfg) = cfg {
+        for c in [cfg.join(path), cfg.join("wallpapers").join(path)] {
+            if c.exists() {
+                return c;
+            }
         }
-        let legacy = cfg.join("wallpapers").join(path);
-        if legacy.exists() {
-            return legacy;
-        }
-        // best-effort (lets the caller log the expected location)
-        return themes.unwrap_or(root);
     }
-    p
+    theme_dirs.first().map(|d| d.join(path)).or_else(|| cfg.map(|c| c.join(path))).unwrap_or_else(|| PathBuf::from(path))
 }
 
 /// chafa symbol classes the console font can draw. `ascii` (the default style)
@@ -537,6 +540,26 @@ fn xterm256(n: u8) -> Rgba {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relative_wallpaper_resolves_through_the_theme_dirs_in_order() {
+        let root = std::env::temp_dir().join(format!("tetron-wp-resolve-{}", std::process::id()));
+        let (user, data, cfg) = (root.join("user"), root.join("data"), root.join("cfg"));
+        for d in [&user, &data, &cfg.join("wallpapers")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(data.join("dl.jpg"), "x").unwrap();
+        std::fs::write(user.join("both.jpg"), "x").unwrap();
+        std::fs::write(data.join("both.jpg"), "x").unwrap();
+        std::fs::write(cfg.join("wallpapers/old.jpg"), "x").unwrap();
+        let dirs = [user.clone(), data.clone()];
+        let r = |p: &str| resolve_relative(p, &dirs, Some(&cfg));
+        assert_eq!(r("dl.jpg"), data.join("dl.jpg"), "found in the download dir");
+        assert_eq!(r("both.jpg"), user.join("both.jpg"), "user dir first");
+        assert_eq!(r("old.jpg"), cfg.join("wallpapers/old.jpg"), "legacy folder still works");
+        assert_eq!(r("nope.jpg"), user.join("nope.jpg"), "best effort names the first dir");
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     #[test]
     fn source_recognises_none_black_and_hex() {

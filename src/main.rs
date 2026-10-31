@@ -84,6 +84,30 @@ fn main() -> std::io::Result<()> {
             attach(false, takeover)
         }
         Some("ls") => ls(),
+        Some("config") => match rest.first().map(String::as_str) {
+            Some("init") => match tetron_wm::config::init() {
+                Ok(tetron_wm::config::InitOutcome::Written(p)) => {
+                    println!("tetron-wm: wrote the example config to {}", p.display());
+                    Ok(())
+                }
+                Ok(tetron_wm::config::InitOutcome::Exists(p)) => {
+                    println!("tetron-wm: {} already exists; left it unchanged", p.display());
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("tetron-wm config init: could not write the config: {e}");
+                    std::process::exit(1);
+                }
+            },
+            Some("example") => {
+                print!("{}", tetron_wm::config::EXAMPLE);
+                Ok(())
+            }
+            _ => {
+                eprintln!("usage: tetron-wm config init | example");
+                std::process::exit(2);
+            }
+        },
         Some("reload") => reload(),
         Some("service") => match rest.first().map(String::as_str) {
             Some("install") => tetron_wm::service::install(),
@@ -158,7 +182,7 @@ fn main() -> std::io::Result<()> {
         },
         Some(other) => {
             eprintln!(
-                "tetron-wm: unknown command '{other}' (try: attach, ls, screensaver, kill, kill-app, ps, reload, launch, tile, screenshot, theme, msg, service, --version, --help, --daemon)"
+                "tetron-wm: unknown command '{other}' (try: attach, ls, screensaver, kill, kill-app, ps, reload, launch, tile, screenshot, theme, config, msg, service, --version, --help, --daemon)"
             );
             Ok(())
         }

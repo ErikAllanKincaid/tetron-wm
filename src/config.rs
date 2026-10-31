@@ -428,6 +428,44 @@ pub fn config_file_path(
     Some(base.join("tetron-wm").join("config.toml"))
 }
 
+/// The example config, compiled in so a packaged install needs no file for it
+/// (WMDEB-002). Every default it sets is the built-in default, so writing it
+/// out changes nothing.
+pub const EXAMPLE: &str = include_str!("../config.example.toml");
+
+/// What [`init_at`] did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum InitOutcome {
+    /// The example was written to this path.
+    Written(std::path::PathBuf),
+    /// A file was already there; it was left untouched.
+    Exists(std::path::PathBuf),
+}
+
+/// Write [`EXAMPLE`] to `path` only when nothing is there (`create_new`, so a
+/// file appearing at the same moment is never overwritten either).
+pub fn init_at(path: &std::path::Path) -> std::io::Result<InitOutcome> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut f) => {
+            f.write_all(EXAMPLE.as_bytes())?;
+            Ok(InitOutcome::Written(path.to_path_buf()))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(InitOutcome::Exists(path.to_path_buf())),
+        Err(e) => Err(e),
+    }
+}
+
+/// `tetron-wm config init` against the real config path.
+pub fn init() -> std::io::Result<InitOutcome> {
+    let path = config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir())
+        .ok_or_else(|| std::io::Error::other("no home directory and no XDG_CONFIG_HOME"))?;
+    init_at(&path)
+}
+
 /// The tetron-wm config directory (`$XDG_CONFIG_HOME/tetron-wm` or
 /// `~/.config/tetron-wm`) — the parent of `config.toml`, used to locate the
 /// `themes/` subdir. `None` only if neither env var nor home dir resolves.
@@ -482,6 +520,24 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn init_writes_the_example_once_and_never_overwrites() {
+        let dir = std::env::temp_dir().join(format!("tetron-wm-init-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("tetron-wm/config.toml");
+        assert_eq!(init_at(&path).unwrap(), InitOutcome::Written(path.clone()), "creates the parent dirs");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), EXAMPLE);
+        std::fs::write(&path, "theme = \"gruvbox\"\n").unwrap();
+        assert_eq!(init_at(&path).unwrap(), InitOutcome::Exists(path.clone()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "theme = \"gruvbox\"\n", "untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn compiled_in_example_parses() {
+        assert!(Config::from_toml_str(EXAMPLE).is_ok());
+    }
     use std::path::PathBuf;
 
     #[test]
