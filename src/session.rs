@@ -3266,6 +3266,13 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
             ClientMsg::FileManagerCancel => { if let Some(f) = self.focused_filemanager_mut() { f.cancel_overlay(); } }
             ClientMsg::FileManagerClose => {
+                // Esc with a dialog open answers it (Cancel); only a bare Esc closes Files.
+                if let Some(f) = self.focused_filemanager_mut() {
+                    if f.overlay().is_some() {
+                        f.cancel_overlay();
+                        return;
+                    }
+                }
                 if let Some(id) = self.wm.focused() {
                     if matches!(self.contents.get(&id), Some(WinContent::FileManager(_))) {
                         self.close(id);
