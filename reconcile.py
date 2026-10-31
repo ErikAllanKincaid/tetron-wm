@@ -39,12 +39,23 @@ def check_lean_deb() -> dict:
     return {"ok": not problems, "problems": problems}
 
 
+def check_desktop_deb() -> dict:
+    p = Path("packaging/desktop.toml")
+    if not p.exists():
+        return {"ok": False, "problems": ["packaging/desktop.toml missing"]}
+    d = tomllib.loads(p.read_text())
+    problems = [f"{p}: has a binary file entry" for f in d.get("files", []) if f.get("src") in BUILT]
+    if not any(dep.split()[0] == "tetron-wm" for dep in d.get("depends", [])):
+        problems.append(f"{p}: depends does not name tetron-wm")
+    return {"ok": not problems, "problems": problems}
+
+
 def check_example_config() -> dict:
     hits = [str(p) for p in Path("src").rglob("*.rs") if 'include_str!("../config.example.toml")' in p.read_text()]
     return {"compiled_in": bool(hits), "files": hits}
 
 
 if __name__ == "__main__":
-    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "example_config": check_example_config()}
+    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "desktop_deb": check_desktop_deb(), "example_config": check_example_config()}
     print(json.dumps(ctx, indent=2))
-    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["example_config"]["compiled_in"] else 1)
+    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["desktop_deb"]["ok"] and ctx["example_config"]["compiled_in"] else 1)

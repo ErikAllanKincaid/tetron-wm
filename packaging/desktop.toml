@@ -1,0 +1,35 @@
+# tetron-wm-desktop: a metapackage for mkdeb (no binary, Architecture all).
+# Built once per release by the build-deb action. Spec: spec/packaging.py (WMDEB-007).
+#
+# `apt install tetron-wm-desktop` installs tetron-wm plus the tools its
+# features use, because apt installs Recommends by default. Each Recommends
+# name exists in Debian 12 and 13 and Ubuntu 22.04 and 24.04 (checked
+# 2026-10-31). Tools Debian does not package (carbonyl, fresh, casttui, catt,
+# uv, opencode, a symbols Nerd Font) stay with install-tetron-wm-suite.sh.
+name = "tetron-wm-desktop"
+description = "tetron-wm with the tools its features use"
+long_description = """
+Installs tetron-wm together with the programs that its features call:
+image wallpapers and previews (chafa), video and audio (mpv), PDF pages
+(poppler-utils), a text web browser (w3m), a system monitor (btop),
+battery status (upower), the console mouse (gpm), clipboard sync (xclip,
+wl-clipboard), sound (alsa-utils), remote systems (openssh-client, sshpass),
+archives (7zip, unzip), encryption (gnupg, age), Start Page and AI Mode
+(python3), updates and theme downloads (curl), console fonts for screenshots
+(console-setup-linux) and fonts-dejavu-core.
+
+Each is a Recommends, so it can be removed later without removing this
+package. System services (PipeWire, NetworkManager, BlueZ) and kmscon are
+only suggested."""
+section = "metapackages"
+license = "MIT"
+homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
+depends = ["tetron-wm (>= {minor})"]
+recommends = [
+  "mpv", "chafa", "poppler-utils", "btop", "upower", "w3m", "gpm",
+  "xclip", "wl-clipboard", "alsa-utils", "sshpass", "fonts-dejavu-core",
+  "7zip | p7zip-full", "gnupg", "age",
+  "python3", "curl", "openssh-client", "unzip", "console-setup-linux",
+]
+suggests = ["pipewire", "wireplumber", "network-manager", "bluez", "kmscon", "fbi"]
+files = []

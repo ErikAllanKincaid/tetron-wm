@@ -4,7 +4,7 @@
 #
 # Minimal on purpose: no Recommends, because apt installs Recommends by default
 # and `apt install tetron-wm` must add only tetron-wm. A missing tool only turns
-# its feature off. The fuller set comes with tetron-wm-desktop (deb-desktop.toml).
+# its feature off. The fuller set comes with tetron-wm-desktop (desktop.toml).
 name = "tetron-wm"
 description = "Desktop environment for the terminal"
 long_description = """

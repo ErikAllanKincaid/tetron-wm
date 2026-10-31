@@ -35,6 +35,9 @@ mkraw() { # mkraw <version> <tag dir>
 R=/rel; mkdir -p $R/download $R/expanded_assets
 for t in v9.9.7 v9.9.8 v9.9.9 v9.9.6; do mkdir -p $R/download/$t; : > $R/download/$t/assets.html; done
 mkdeb 9.9.8-1 $R/download/v9.9.8; mkraw 9.9.8 $R/download/v9.9.8
+# The release also lists the tetron-wm-desktop metapackage, first: install.sh
+# must never take it for tetron-wm.
+printf '<a href="/o/r/releases/download/x/tetron-wm-desktop_9.9.9-1_all.deb">tetron-wm-desktop_9.9.9-1_all.deb</a>\n' >> $R/download/v9.9.9/assets.html
 mkdeb 9.9.9-1 $R/download/v9.9.9; mkraw 9.9.9 $R/download/v9.9.9
 mkraw 9.9.7 $R/download/v9.9.7                       # v9.9.7: no .deb
 mkdeb 9.9.6-1 $R/download/v9.9.6; mkraw 9.9.6 $R/download/v9.9.6
