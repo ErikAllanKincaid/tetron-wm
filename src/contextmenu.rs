@@ -57,6 +57,12 @@ pub enum MenuAction {
     SendTo,
     /// Copy the entry to this Systems entry (by name) with scp.
     SendToSystem(String),
+    /// Replace the menu with the plain archive formats ([`pack_actions`]).
+    Compress,
+    /// Replace the menu with the password formats ([`pack_actions`]).
+    Encrypt,
+    /// Pack the entry into this format beside it, in a window.
+    PackAs(Pack),
     // Window (title bar) actions.
     Minimize,
     Maximize,
@@ -93,6 +99,9 @@ impl MenuAction {
             MenuAction::CastTo => "Cast to Chromecast".into(),
             MenuAction::SendTo => "Send to\u{2026}".into(),
             MenuAction::SendToSystem(name) => name.clone(),
+            MenuAction::Compress => "Compress\u{2026}".into(),
+            MenuAction::Encrypt => "Encrypt\u{2026}".into(),
+            MenuAction::PackAs(p) => p.label().into(),
             MenuAction::Minimize => "Minimize".into(),
             MenuAction::Maximize => "Maximize".into(),
             MenuAction::MoveWindow => "Move".into(),
@@ -115,6 +124,10 @@ pub struct Abilities {
     pub send: bool,
     /// catt is installed: "Cast to Chromecast" for video, audio and images.
     pub cast: bool,
+    /// tar is installed and the entry is on this machine: "Compress…".
+    pub compress: bool,
+    /// 7z, age or gpg is installed and the entry is on this machine: "Encrypt…".
+    pub encrypt: bool,
 }
 
 impl Abilities {
@@ -129,7 +142,14 @@ impl Abilities {
             fullscreen_pdf: offered(Kind::Pdf, &caps, &have),
             send: !crate::systems::load().is_empty() && have("scp"),
             cast: have("catt"),
+            compress: have("tar"),
+            encrypt: PackTools::current().choices(true).next().is_some(),
         }
+    }
+
+    /// Without the local-only actions, for a folder on a remote system.
+    pub fn remote(self) -> Self {
+        Abilities { compress: false, encrypt: false, ..self }
     }
 }
 
@@ -161,6 +181,12 @@ pub fn actions_for(surface: Surface, target: Target, can: Abilities) -> Vec<Menu
             v.push(A::Rename);
             if surface == Surface::Files {
                 v.extend([A::Copy, A::Cut]);
+            }
+            if can.compress {
+                v.push(A::Compress);
+            }
+            if can.encrypt {
+                v.push(A::Encrypt);
             }
             v.extend([A::Trash, A::CopyPath, A::OpenTerminalHere, A::GetInfo]);
             if can.send {
@@ -195,19 +221,68 @@ pub fn cast_command(file: &Path, device: &str) -> String {
     format!("catt {dev}cast {}", q(&file.to_string_lossy()))
 }
 
+/// Prefix for a script with pipelines: report the first failing stage where
+/// the shell knows `pipefail` (bash, busybox, recent dash), else the last.
+const PIPEFAIL: &str = "(set -o pipefail) 2>/dev/null && set -o pipefail; ";
+
+/// gpg asks for the passphrase on the window's tty (not a desktop pinentry)
+/// and does not cache it in the agent. `GPG_TTY` is set before the pipeline:
+/// inside it, `tty` would see the pipe.
+const GPG: &str = "gpg --pinentry-mode loopback --no-symkey-cache";
+const GPG_TTY: &str = "export GPG_TTY=$(tty); ";
+
 /// The shell command that extracts (`list` false) or lists `archive` into
 /// or from `dir`, chosen by its name; `None` for an unknown kind.
 pub fn archive_command(archive: &Path, dir: &Path, list: bool) -> Option<String> {
+    archive_command_with(archive, dir, list, PackTools::current().sevenz)
+}
+
+/// [`archive_command`] with the 7-Zip binary given (`None`: not installed).
+/// Encrypted files decrypt here: `.tar.gz.gpg` / `.tar.gz.age` straight into
+/// `dir`, a single `x.gpg` / `x.age` to `x` beside it.
+fn archive_command_with(archive: &Path, dir: &Path, list: bool, sevenz: Option<&str>) -> Option<String> {
     let q = |p: &Path| crate::systems::sh_quote(&p.to_string_lossy());
     let (a, d) = (q(archive), q(dir));
     let name = archive.file_name()?.to_string_lossy().to_ascii_lowercase();
     let tar = [".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2", ".tar.zst"];
+    let decrypt = if name.ends_with(".gpg") || name.ends_with(".pgp") {
+        Some((GPG_TTY, format!("{GPG} -d")))
+    } else if name.ends_with(".age") {
+        Some(("", "age -d".to_string()))
+    } else {
+        None
+    };
+    if let Some((env, dec)) = decrypt {
+        let inner = &name[..name.len() - 4];
+        if tar.iter().any(|e| inner.ends_with(e)) {
+            // tar only detects the compression of a file, not of a pipe.
+            let z = [("gz", "-z "), ("xz", "-J "), ("bz2", "-j "), ("zst", "--zstd ")]
+                .iter()
+                .find(|(e, _)| inner.ends_with(e))
+                .map_or("", |(_, f)| f);
+            let t = if list { format!("{z}-tvf -") } else { format!("{z}-xf - -C {d}") };
+            return Some(format!("{PIPEFAIL}{env}{dec} {a} | tar {t}"));
+        }
+        if list {
+            return None;
+        }
+        let orig = archive.file_name()?.to_string_lossy();
+        let out = unique_with_ext(dir, &orig[..orig.len() - 4], "");
+        let o = q(&out);
+        return Some(format!("{env}{dec} -o {o} {a} || {{ s=$?; rm -f {o}; (exit $s); }}"));
+    }
     Some(if tar.iter().any(|e| name.ends_with(e)) {
         if list { format!("tar -tvf {a}") } else { format!("tar -xf {a} -C {d}") }
     } else if name.ends_with(".zip") {
-        if list { format!("unzip -l {a}") } else { format!("unzip {a} -d {d}") }
+        // unzip can not open AES zips; 7-Zip can, and asks for the password.
+        match (list, sevenz) {
+            (true, _) => format!("unzip -l {a}"),
+            (false, Some(z)) => format!("{z} x {a} -o{d}"),
+            (false, None) => format!("unzip {a} -d {d}"),
+        }
     } else if name.ends_with(".7z") {
-        if list { format!("7z l {a}") } else { format!("7z x {a} -o{d}") }
+        let z = sevenz.unwrap_or("7z");
+        if list { format!("{z} l {a}") } else { format!("{z} x {a} -o{d}") }
     } else if name.ends_with(".rar") {
         if list { format!("unrar l {a}") } else { format!("unrar x {a} {d}/") }
     } else {
@@ -218,6 +293,142 @@ pub fn archive_command(archive: &Path, dir: &Path, list: bool) -> Option<String>
             .1;
         if list { format!("{tool} -l {a}") } else { format!("{tool} -dk {a}") }
     })
+}
+
+/// Whether working on `archive` may ask for a password (7z, AES zip, gpg,
+/// age), so it must own the window's tty rather than share it with `less`.
+pub fn archive_prompts(archive: &Path) -> bool {
+    let name = archive.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    [".7z", ".zip", ".gpg", ".pgp", ".age"].iter().any(|e| name.ends_with(e))
+}
+
+/// An archive format for "Compress…" (plain) and "Encrypt…" (asks for a
+/// password in the window). `.7z` is the default encrypted format: AES-256,
+/// names hidden, opens on every OS.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pack {
+    TarGz,
+    Zip,
+    SevenZ,
+    SevenZAes,
+    ZipAes,
+    TarGzAge,
+    TarGzGpg,
+}
+
+impl Pack {
+    /// Plain formats first, then the encrypted ones, each in menu order.
+    pub const ALL: [Pack; 7] = [Pack::SevenZ, Pack::Zip, Pack::TarGz, Pack::SevenZAes, Pack::ZipAes, Pack::TarGzAge, Pack::TarGzGpg];
+
+    pub fn encrypted(self) -> bool {
+        matches!(self, Pack::SevenZAes | Pack::ZipAes | Pack::TarGzAge | Pack::TarGzGpg)
+    }
+
+    /// The extension appended to the entry's name.
+    pub fn ext(self) -> &'static str {
+        match self {
+            Pack::TarGz => ".tar.gz",
+            Pack::Zip | Pack::ZipAes => ".zip",
+            Pack::SevenZ | Pack::SevenZAes => ".7z",
+            Pack::TarGzAge => ".tar.gz.age",
+            Pack::TarGzGpg => ".tar.gz.gpg",
+        }
+    }
+
+    /// The menu row, with a hint for choosing.
+    pub fn label(self) -> &'static str {
+        match self {
+            Pack::SevenZ => ".7z (any OS, smallest)",
+            Pack::Zip => ".zip (any OS)",
+            Pack::TarGz => ".tar.gz (Linux, keeps permissions)",
+            Pack::SevenZAes => ".7z AES-256 (any OS, hides names)",
+            Pack::ZipAes => ".zip AES-256 (any OS, shows names)",
+            Pack::TarGzAge => ".tar.gz.age (Linux, keeps permissions)",
+            Pack::TarGzGpg => ".tar.gz.gpg AES-256 (Linux, keeps permissions)",
+        }
+    }
+}
+
+/// The installed programs the [`Pack`] formats need.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PackTools {
+    pub tar: bool,
+    pub zip: bool,
+    /// The 7-Zip binary: `7z` (p7zip-full), `7zz` (7-Zip) or `7za`.
+    pub sevenz: Option<&'static str>,
+    pub age: bool,
+    pub gpg: bool,
+}
+
+impl PackTools {
+    pub fn current() -> Self {
+        let have = crate::catalog::is_installed;
+        PackTools {
+            tar: have("tar"),
+            zip: have("zip"),
+            sevenz: ["7z", "7zz", "7za"].into_iter().find(|b| have(b)),
+            age: have("age"),
+            gpg: have("gpg"),
+        }
+    }
+
+    /// The formats these tools can write, plain (`encrypted` false) or not.
+    pub fn choices(self, encrypted: bool) -> impl Iterator<Item = Pack> {
+        Pack::ALL.into_iter().filter(move |p| p.encrypted() == encrypted).filter(move |p| match p {
+            Pack::TarGz => self.tar,
+            Pack::Zip => self.zip || self.sevenz.is_some(),
+            Pack::SevenZ | Pack::SevenZAes | Pack::ZipAes => self.sevenz.is_some(),
+            Pack::TarGzAge => self.tar && self.age,
+            Pack::TarGzGpg => self.tar && self.gpg,
+        })
+    }
+
+    /// The command, run in the entry's folder, that packs `name` (a file or
+    /// folder there) into `out` (a new name there). The password, if any, is
+    /// asked by the tool itself on the window's tty: never argv, disk or log.
+    /// A failed or cancelled run removes the partial `out`.
+    pub fn command(self, pack: Pack, name: &str, out: &str) -> String {
+        // A leading '-' would read as an option.
+        let arg = |s: &str| crate::systems::sh_quote(&if s.starts_with('-') { format!("./{s}") } else { s.to_string() });
+        let (n, o) = (arg(name), arg(out));
+        let z = self.sevenz.unwrap_or("7z");
+        let cmd = match pack {
+            Pack::TarGz => format!("tar -czf {o} {n}"),
+            Pack::Zip if self.zip => format!("zip -r {o} {n}"),
+            Pack::Zip => format!("{z} a -tzip {o} {n}"),
+            Pack::SevenZ => format!("{z} a {o} {n}"),
+            Pack::SevenZAes => format!("{z} a -t7z -mhe=on -p {o} {n}"),
+            Pack::ZipAes => format!("{z} a -tzip -mem=AES256 -p {o} {n}"),
+            Pack::TarGzAge => format!("{PIPEFAIL}tar -czf - {n} | age -p -o {o}"),
+            // gpg asks only once on a tty, so a typo would lock the data: confirm by
+            // decrypting it again (which also checks the archive).
+            Pack::TarGzGpg => format!(
+                "{PIPEFAIL}{GPG_TTY}tar -czf - {n} | {GPG} --symmetric --cipher-algo AES256 -o {o} \
+                 && echo 'Confirm: enter the passphrase again.' && {GPG} -d {o} | tar -tzf - > /dev/null"
+            ),
+        };
+        format!("{cmd} || {{ s=$?; rm -f {o}; (exit $s); }}")
+    }
+}
+
+/// The "Compress…" (`encrypted` false) or "Encrypt…" choices installed here.
+pub fn pack_actions(encrypted: bool) -> Vec<MenuAction> {
+    PackTools::current().choices(encrypted).map(MenuAction::PackAs).collect()
+}
+
+/// `stem` + `ext` in `dir`, or `stem copy` + `ext`, `stem copy 2` + `ext`, …
+/// when taken (like [`crate::fileops::unique_destination`], but keeping a
+/// compound extension such as `.tar.gz.gpg` whole).
+pub fn unique_with_ext(dir: &Path, stem: &str, ext: &str) -> std::path::PathBuf {
+    (1..1_000_000)
+        .map(|n| match n {
+            1 => format!("{stem}{ext}"),
+            2 => format!("{stem} copy{ext}"),
+            n => format!("{stem} copy {}{ext}", n - 1),
+        })
+        .map(|name| dir.join(name))
+        .find(|p| !p.exists())
+        .unwrap_or_else(|| dir.join(format!("{stem}-{}{ext}", std::process::id())))
 }
 
 /// The "Open with…" choices for `path`: the built-in viewer for images, then
@@ -373,7 +584,7 @@ mod tests {
     fn actions_differ_by_surface_and_target() {
         use MenuAction as A;
         let none = Abilities::default();
-        let all = Abilities { fullscreen_image: true, fullscreen_video: true, fullscreen_pdf: true, send: true, cast: false };
+        let all = Abilities { fullscreen_image: true, fullscreen_video: true, fullscreen_pdf: true, send: true, cast: false, compress: false, encrypt: false };
         let file = Target::Entry { is_dir: false, pinned: false, role: Role::Text };
         let dir = Target::Entry { is_dir: true, pinned: false, role: Role::Directory };
         let img = Target::Entry { is_dir: false, pinned: false, role: Role::Image };
@@ -423,6 +634,88 @@ mod tests {
         assert_eq!(archive_command(Path::new("/x/a.7z"), d, false).as_deref(), Some("7z x '/x/a.7z' -o'/x'"));
         assert_eq!(archive_command(Path::new("/x/log.gz"), d, false).as_deref(), Some("gzip -dk '/x/log.gz'"));
         assert_eq!(archive_command(Path::new("/x/a.txt"), d, false), None);
+    }
+
+    #[test]
+    fn compress_and_encrypt_are_offered_for_local_files_and_folders() {
+        use MenuAction as A;
+        let can = Abilities { compress: true, encrypt: true, ..Abilities::default() };
+        for t in [
+            Target::Entry { is_dir: true, pinned: false, role: Role::Directory },
+            Target::Entry { is_dir: false, pinned: false, role: Role::Text },
+        ] {
+            for surface in [Surface::Desktop, Surface::Files] {
+                let v = actions_for(surface, t, can);
+                let i = v.iter().position(|a| *a == A::Compress).expect("Compress");
+                assert_eq!(v[i + 1], A::Encrypt, "Encrypt follows Compress");
+                assert!(!actions_for(surface, t, can.remote()).iter().any(|a| matches!(a, A::Compress | A::Encrypt)), "remote folders: local tools only");
+                assert!(!actions_for(surface, t, Abilities::default()).contains(&A::Compress), "no tools, no item");
+            }
+        }
+        assert_eq!(actions_for(Surface::Desktop, Target::Entry { is_dir: false, pinned: true, role: Role::Other }, can), vec![A::Open, A::Unpin]);
+        assert_eq!(A::Encrypt.label(), "Encrypt\u{2026}");
+        assert_eq!(A::PackAs(Pack::SevenZAes).label(), ".7z AES-256 (any OS, hides names)");
+    }
+
+    #[test]
+    fn pack_choices_follow_the_installed_tools_with_7z_first() {
+        let all = PackTools { tar: true, zip: true, sevenz: Some("7z"), age: true, gpg: true };
+        assert_eq!(all.choices(false).collect::<Vec<_>>(), vec![Pack::SevenZ, Pack::Zip, Pack::TarGz]);
+        assert_eq!(all.choices(true).collect::<Vec<_>>(), vec![Pack::SevenZAes, Pack::ZipAes, Pack::TarGzAge, Pack::TarGzGpg]);
+        let gpg_only = PackTools { tar: true, gpg: true, ..PackTools::default() };
+        assert_eq!(gpg_only.choices(true).collect::<Vec<_>>(), vec![Pack::TarGzGpg]);
+        assert_eq!(gpg_only.choices(false).collect::<Vec<_>>(), vec![Pack::TarGz], "zip needs zip or 7z");
+        let seven = PackTools { sevenz: Some("7zz"), ..PackTools::default() };
+        assert_eq!(seven.choices(false).collect::<Vec<_>>(), vec![Pack::SevenZ, Pack::Zip], "7z writes zip too");
+        assert_eq!(PackTools::default().choices(true).count(), 0);
+        assert!(Pack::ALL.iter().all(|p| p.label().starts_with(p.ext())), "the row names the extension");
+    }
+
+    #[test]
+    fn pack_commands_quote_names_and_never_carry_the_password() {
+        let t = PackTools { tar: true, zip: false, sevenz: Some("7zz"), age: true, gpg: true };
+        let cleanup = " || { s=$?; rm -f 'it'\\''s.7z'; (exit $s); }";
+        assert_eq!(t.command(Pack::SevenZAes, "it's", "it's.7z"), format!("7zz a -t7z -mhe=on -p 'it'\\''s.7z' 'it'\\''s'{cleanup}"));
+        assert_eq!(t.command(Pack::Zip, "a", "a.zip"), "7zz a -tzip 'a.zip' 'a' || { s=$?; rm -f 'a.zip'; (exit $s); }", "7-Zip writes zip when zip is missing");
+        assert!(t.command(Pack::TarGz, "-rf", "-rf.tar.gz").starts_with("tar -czf './-rf.tar.gz' './-rf'"), "a leading dash is not an option");
+        let gpg = t.command(Pack::TarGzGpg, "d", "d.tar.gz.gpg");
+        assert!(gpg.contains("export GPG_TTY=$(tty); tar -czf - 'd' | gpg --pinentry-mode loopback"), "{gpg}");
+        assert!(gpg.contains("--cipher-algo AES256") && gpg.contains("-d 'd.tar.gz.gpg' | tar -tzf -"), "confirmed by decrypting: {gpg}");
+        assert!(t.command(Pack::TarGzAge, "d", "d.tar.gz.age").contains("tar -czf - 'd' | age -p -o 'd.tar.gz.age'"));
+        for p in Pack::ALL {
+            let c = t.command(p, "d", "o");
+            assert!(!c.contains("-p'") && !c.contains("--passphrase") && !c.contains("SSHPASS"), "{p:?}: the tool asks on the tty");
+        }
+    }
+
+    #[test]
+    fn encrypted_files_decrypt_in_extract_here() {
+        let d = Path::new("/nonexistent-x");
+        let x = |n: &str, list| archive_command_with(&d.join(n), d, list, Some("7z"));
+        assert_eq!(
+            x("a.tar.gz.gpg", false).as_deref(),
+            Some("(set -o pipefail) 2>/dev/null && set -o pipefail; export GPG_TTY=$(tty); gpg --pinentry-mode loopback --no-symkey-cache -d '/nonexistent-x/a.tar.gz.gpg' | tar -z -xf - -C '/nonexistent-x'")
+        );
+        assert!(x("a.tar.xz.age", true).unwrap().ends_with("age -d '/nonexistent-x/a.tar.xz.age' | tar -J -tvf -"));
+        assert_eq!(x("n.txt.age", false).as_deref(), Some("age -d -o '/nonexistent-x/n.txt' '/nonexistent-x/n.txt.age' || { s=$?; rm -f '/nonexistent-x/n.txt'; (exit $s); }"));
+        assert_eq!(x("n.txt.gpg", true), None, "a single file has no listing");
+        assert_eq!(x("a.zip", false).as_deref(), Some("7z x '/nonexistent-x/a.zip' -o'/nonexistent-x'"), "7-Zip opens AES zips");
+        assert_eq!(archive_command_with(&d.join("a.zip"), d, false, None).as_deref(), Some("unzip '/nonexistent-x/a.zip' -d '/nonexistent-x'"));
+        assert!(archive_prompts(Path::new("a.7z")) && archive_prompts(Path::new("a.TAR.GZ.GPG")) && !archive_prompts(Path::new("a.tar.gz")));
+        assert_eq!(crate::openwith::classify(Path::new("x.tar.gz.age"), false), Role::Archive);
+    }
+
+    #[test]
+    fn unique_with_ext_keeps_compound_extensions() {
+        let d = std::env::temp_dir().join(format!("tetron-pack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert_eq!(unique_with_ext(&d, "a", ".tar.gz.gpg"), d.join("a.tar.gz.gpg"));
+        std::fs::write(d.join("a.tar.gz.gpg"), b"").unwrap();
+        assert_eq!(unique_with_ext(&d, "a", ".tar.gz.gpg"), d.join("a copy.tar.gz.gpg"));
+        std::fs::write(d.join("a copy.tar.gz.gpg"), b"").unwrap();
+        assert_eq!(unique_with_ext(&d, "a", ".tar.gz.gpg"), d.join("a copy 2.tar.gz.gpg"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -493,3 +786,4 @@ mod tests {
         assert_eq!(row, "Open");
     }
 }
+

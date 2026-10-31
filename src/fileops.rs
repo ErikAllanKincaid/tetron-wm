@@ -36,6 +36,10 @@ pub trait FsOps {
     fn trash(&self, path: &Path) -> io::Result<()>;
     /// Set Unix permission bits on `path` (no-op on non-unix).
     fn set_mode(&self, path: &Path, mode: u32) -> io::Result<()>;
+    /// Whether paths are on this machine, so local tools (tar, 7z) can run on them.
+    fn is_local(&self) -> bool {
+        true
+    }
 }
 
 /// The production filesystem implementation.
@@ -351,6 +355,10 @@ impl SshFs {
 }
 
 impl FsOps for SshFs {
+    fn is_local(&self) -> bool {
+        false
+    }
+
     fn list(&self, dir: &Path, show_hidden: bool) -> io::Result<Vec<Entry>> {
         let cmd = format!("cd {} && LC_ALL=C ls -lA", Self::q(dir));
         let out = self.ssh(&cmd, 5).ok_or_else(|| Self::err("list"))?;
