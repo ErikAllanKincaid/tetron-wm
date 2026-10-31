@@ -37,3 +37,14 @@ class LeanDebDeclaresNoPackages(Constraint):
     """
     constraint_id = "CON-WD03"
     enforcement_logic = "{{ lean_deb.ok }}"
+
+
+class DesktopIsAMetapackageOnTetronWm(Constraint):
+    """CONSTRAINT-ID: CON-WD04
+
+    `packaging/desktop.toml` is a metapackage (no files entry with src
+    binary or asset) and its depends names tetron-wm (WMDEB-007).
+    ENFORCEMENT (reconcile.py): desktop_deb.ok is true.
+    """
+    constraint_id = "CON-WD04"
+    enforcement_logic = "{{ desktop_deb.ok }}"

@@ -95,8 +95,18 @@ class LeanDeb(Requirement):
 class DesktopMetapackage(Requirement):
     """REQUIREMENT-ID: WMDEB-007
 
-    `tetron-wm-desktop` (arch all) Depends `tetron-wm (>= version)` and
-    Recommends the apps tetron-wm calls; services and kmscon are Suggests.
+    `tetron-wm-desktop` (`packaging/desktop.toml`, a metapackage: no
+    binary, Architecture all) Depends `tetron-wm (>= {minor})`, so any
+    later tetron-wm satisfies it and it never blocks an upgrade, and
+    Recommends the apps tetron-wm calls, by names present in Debian 12 and
+    13 and Ubuntu 22.04 and 24.04 (apt installs Recommends by default, so
+    `apt install tetron-wm-desktop` brings the full set). Services
+    (pipewire, wireplumber, network-manager, bluez), kmscon and fbi are
+    Suggests. Tools Debian does not package (carbonyl, fresh, casttui,
+    catt, uv, opencode, a symbols Nerd Font) stay with the installer
+    scripts. Release CI builds it once, on the amd64 job, and tests it by
+    installing it together with that job's tetron-wm .deb in a clean
+    container, Recommends included.
     """
 
 
