@@ -273,4 +273,19 @@ mod tests {
         // Leave the cache empty so a later real scan repopulates it lazily.
         *BINS.write().unwrap() = None;
     }
+
+    /// tetron-wm's own helpers: the launcher finds them by a prefixed name on
+    /// PATH (never a generic `startpage`/`aimode`), and each Store recipe
+    /// fetches a script that exists in `scripts/` under that same name.
+    #[test]
+    fn own_helpers_use_prefixed_names_backed_by_scripts() {
+        for (name, bin) in [("Start Page", "tetron-wm-startpage"), ("AI Mode", "tetron-aimode")] {
+            let app = catalog().iter().find(|a| a.name == name).unwrap_or_else(|| panic!("{name} in the catalog"));
+            assert_eq!(app.bin, bin);
+            let r = recipe(name).unwrap_or_else(|| panic!("{name} recipe"));
+            assert!(r.install.contains(&format!("/scripts/{bin} ")), "{}", r.install);
+            assert!(r.install.contains(&format!("~/.local/bin/{bin}")), "{}", r.install);
+            assert!(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join(bin).is_file());
+        }
+    }
 }

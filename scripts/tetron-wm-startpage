@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""startpage: render a bookmarks file to a static HTML start page for text browsers (carbonyl, w3m).
-Usage: startpage                          regenerate the page, then open it in carbonyl (else w3m)
-       startpage build                    regenerate the page only
-       startpage add TITLE URL [SECTION]  append a bookmark (default section: Links) and regenerate
-       startpage list                     print the bookmarks file
-       startpage edit                     open the bookmarks file in $EDITOR, then regenerate
+"""tetron-wm-startpage: render a bookmarks file to a static HTML start page for text browsers (carbonyl, w3m).
+Usage: tetron-wm-startpage                          regenerate the page, then open it in carbonyl (else w3m)
+       tetron-wm-startpage build                    regenerate the page only
+       tetron-wm-startpage add TITLE URL [SECTION]  append a bookmark (default section: Links) and regenerate
+       tetron-wm-startpage list                     print the bookmarks file
+       tetron-wm-startpage edit                     open the bookmarks file in $EDITOR, then regenerate
 Files: ~/.config/tetron-wm/bookmarks.txt (source), ~/.config/tetron-wm/start.html (output)
 Bookmarks format: a [Section] line starts a group, then one "Title | URL" per line. # starts a comment.
 """
@@ -12,7 +12,7 @@ import html, os, shutil, subprocess, sys
 
 DIR = os.path.expanduser("~/.config/tetron-wm")
 SRC, OUT = os.path.join(DIR, "bookmarks.txt"), os.path.join(DIR, "start.html")
-SEED = """# Edit by hand, or: startpage add TITLE URL [SECTION]
+SEED = """# Edit by hand, or: tetron-wm-startpage add TITLE URL [SECTION]
 [Search]
 DuckDuckGo Lite | https://lite.duckduckgo.com/lite
 Google AI Mode | https://www.google.com/search?udm=50
@@ -70,7 +70,7 @@ def main():
         subprocess.run([os.environ.get("EDITOR", "vim"), SRC])
     elif a[:1] == ["add"]:
         if len(a) < 3:
-            sys.exit("usage: startpage add TITLE URL [SECTION]")
+            sys.exit("usage: tetron-wm-startpage add TITLE URL [SECTION]")
         title, url, sec = a[1], a[2], (a[3] if len(a) > 3 else "Links")
         lines = open(SRC).read().rstrip("\n").split("\n")
         hdr = "[%s]" % sec

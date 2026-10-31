@@ -28,7 +28,7 @@
 #      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
 #                       btop, upower, alsa-utils, the DejaVu Sans Mono font, uv, catt
 #                       and casttui (Chromecast), w3m, Start Page and AI Mode
-#                       (startpage, aimode), and xclip / wl-clipboard on a desktop
+#                       (tetron-wm-startpage, tetron-aimode), and xclip / wl-clipboard on a desktop
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
 #                       machine manages sound, network and Bluetooth
@@ -358,7 +358,7 @@ cast_tools_missing() {
 # tetron-wm's own small apps from scripts/: Start Page (bookmarks start page,
 # opened in carbonyl or w3m) and AI Mode (Gemini Q&A). Single stdlib Python 3
 # files, fetched into ~/.local/bin; the launcher lists them once on PATH.
-OWN_APPS="startpage aimode"
+OWN_APPS="tetron-wm-startpage tetron-aimode"
 own_apps_missing() {
   local a out=""
   for a in $OWN_APPS; do have "$a" || [ -x "$HOME/.local/bin/$a" ] || out="${out:+$out }$a"; done
@@ -366,7 +366,7 @@ own_apps_missing() {
 }
 
 install_own_apps() {
-  have python3 || { warn "python3 is missing; startpage and aimode not installed"; return 0; }
+  have python3 || { warn "python3 is missing; tetron-wm-startpage and tetron-aimode not installed"; return 0; }
   local a d="$HOME/.local/bin"; mkdir -p "$d"
   for a in $(own_apps_missing); do
     log "installing $a into $d"
@@ -376,8 +376,8 @@ install_own_apps() {
       rm -f "$d/$a.tmp"; warn "could not download $a from $RAW/scripts/$a"
     fi
   done
-  [ -x "$d/aimode" ] && [ -z "${GEMINI_API_KEY:-}" ] && [ ! -s "$HOME/.config/aimode/key" ] &&
-    log "AI Mode needs a free Gemini API key: https://aistudio.google.com/apikey, its first run asks for it (aimode --key replaces it)"
+  [ -x "$d/tetron-aimode" ] && [ -z "${GEMINI_API_KEY:-}" ] && [ ! -s "$HOME/.config/aimode/key" ] &&
+    log "AI Mode needs a free Gemini API key: https://aistudio.google.com/apikey, its first run asks for it (tetron-aimode --key replaces it)"
   return 0
 }
 
