@@ -687,6 +687,8 @@ pub struct SessionCore {
     /// A suspend / reboot / power-off command chain running on a worker thread:
     /// the action and the slot its [`crate::powerctl::Report`] lands in.
     power_job: Option<(crate::powerctl::Kind, std::sync::Arc<std::sync::Mutex<Option<crate::powerctl::Report>>>)>,
+    /// Settings > Get more themes worker, read by [`Self::poll_themes`].
+    theme_job: Option<std::sync::mpsc::Receiver<crate::themefetch::Msg>>,
     /// Modal "are you sure?" shown when closing an app window (which kills it).
     confirm_close: ConfirmClose,
     /// Keyboard window picker (leader f): modal numbered window list.
@@ -808,6 +810,7 @@ impl SessionCore {
             launcher,
             power_menu: PowerMenu::new(),
             power_job: None,
+            theme_job: None,
             confirm_close: ConfirmClose::new(),
             win_picker: crate::winpicker::WinPicker::new(),
             move_mode: None,
@@ -1367,6 +1370,31 @@ impl SessionCore {
             Some(crate::settings::SettingsAction::RestartApphost) => {
                 self.restart_apphost();
             }
+            Some(crate::settings::SettingsAction::GetThemes) => {
+                if self.theme_job.is_none() {
+                    crate::dbg_log("themes: get more themes requested");
+                    self.theme_job = Some(crate::themefetch::spawn());
+                }
+            }
+            Some(crate::settings::SettingsAction::OpenConfigFile) => self.open_config_file(),
+            Some(crate::settings::SettingsAction::CreateConfigFile) => {
+                match crate::config::init() {
+                    Ok(o) => crate::dbg_log(&format!("config: create from example -> {o:?}")),
+                    Err(e) => crate::dbg_log(&format!("config: create from example failed: {e}")),
+                }
+                self.reload_to_general();
+            }
+            Some(crate::settings::SettingsAction::ResetConfigFile) => {
+                match crate::config::file_path().and_then(|p| crate::config::reset_at(&p)) {
+                    Ok(bak) => crate::dbg_log(&format!("config: reset to the example, old file kept as {bak:?}")),
+                    Err(e) => crate::dbg_log(&format!("config: reset failed: {e}")),
+                }
+                self.reload_to_general();
+            }
+            Some(crate::settings::SettingsAction::ReloadConfig) => {
+                crate::dbg_log("config: reload requested from Settings");
+                self.reload_to_general();
+            }
             Some(crate::settings::SettingsAction::InstallUpdate) => {
                 // Remember to reopen Settings on the Updates screen after the
                 // reload, so the user isn't dumped back on the bare desktop.
@@ -1381,6 +1409,59 @@ impl SessionCore {
                 self.launch("update tetron-wm".into(), "sh".into(), vec!["-lc".into(), cmd]);
             }
             None => {}
+        }
+    }
+
+    /// Reload the desktop (the config is read fresh) and reopen Settings on
+    /// General afterwards.
+    fn reload_to_general(&mut self) {
+        write_reopen_hint(Ui_SETTINGS_GENERAL);
+        self.reload = true;
+    }
+
+    /// Settings > General > Open in editor: the Default Apps `editor` with the
+    /// config path, `vi` when that is not a command.
+    fn open_config_file(&mut self) {
+        let Ok(path) = crate::config::file_path() else { return };
+        let editor = self.cfg.default_apps.get("editor").cloned().unwrap_or_default();
+        let (command, args) = match crate::openwith::open_with(&editor, &path) {
+            crate::openwith::OpenAction::RunApp { command, args } => (command, args),
+            _ => ("vi".to_string(), vec![path.to_string_lossy().into_owned()]),
+        };
+        crate::dbg_log(&format!("config: open {} with {command}", path.display()));
+        self.open_file_in("config.toml".into(), command, args, path.parent().map(|p| p.to_path_buf()));
+    }
+
+    /// Hand theme download progress to every open Settings panel (call once
+    /// per daemon tick).
+    pub fn poll_themes(&mut self) {
+        let Some(rx) = self.theme_job.as_ref() else { return };
+        let mut last = None;
+        let mut done = false;
+        loop {
+            match rx.try_recv() {
+                Ok(crate::themefetch::Msg::Progress(s)) => last = Some(s),
+                Ok(crate::themefetch::Msg::Done(s)) => {
+                    last = Some(s);
+                    done = true;
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    last.get_or_insert_with(|| "Download stopped".into());
+                    done = true;
+                    break;
+                }
+            }
+        }
+        if done {
+            self.theme_job = None;
+        }
+        let Some(msg) = last else { return };
+        for c in self.contents.values_mut() {
+            if let WinContent::Settings(s) = c {
+                s.set_themes_status(msg.clone(), done);
+            }
         }
     }
 
@@ -1543,10 +1624,15 @@ impl SessionCore {
     /// On startup (fresh or post-reload), honour a one-shot reopen hint left by
     /// the in-app updater so Settings comes back on the Updates screen.
     pub fn reopen_ui_from_hint(&mut self) {
-        if take_reopen_hint() == Some(Ui_SETTINGS_UPDATES) {
+        let hint = take_reopen_hint();
+        if hint == Some(Ui_SETTINGS_UPDATES) || hint == Some(Ui_SETTINGS_GENERAL) {
             self.open_settings();
             if let Some(s) = self.focused_settings_mut() {
-                s.show_updates_section();
+                if hint == Some(Ui_SETTINGS_GENERAL) {
+                    s.show_general_section();
+                } else {
+                    s.show_updates_section();
+                }
             }
             self.sync_settings();
         }
@@ -3801,7 +3887,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             }
         }
         let w = 84.min((self.w - 4).max(40));
-        let h = 20.min((self.h - 4).max(10));
+        let h = 23.min((self.h - 4).max(10)); // Appearance has rows and hints to y 20
         let rect = Rect::new((self.w - w) / 2, 3, w, h);
         let id = self.wm.add_window("Settings".into(), rect);
         self.app_keys.insert(id, "Settings".into());
@@ -6430,6 +6516,9 @@ fn sanitize_images(images: &mut Vec<crate::protocol::ImagePlacement>, w: i32, h:
 /// One-shot UI reopen hint codes, persisted across a frontend reload.
 #[allow(non_upper_case_globals)]
 const Ui_SETTINGS_UPDATES: u8 = 1;
+/// Reopen Settings on General (after a config reload, reset or create).
+#[allow(non_upper_case_globals)]
+const Ui_SETTINGS_GENERAL: u8 = 2;
 
 /// `dock_popup` key meaning "the taskbar's …+N overflow list" rather than a
 /// window group. Cannot collide with an app key (starts with a control char).

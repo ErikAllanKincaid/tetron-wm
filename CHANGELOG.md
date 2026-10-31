@@ -8,6 +8,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ### Added
 - `tetron-wm config init` writes the example config to `~/.config/tetron-wm/config.toml` when there is none, and never overwrites one; `tetron-wm config example` prints it. The example is built into the binary, so it no longer needs to be downloaded or shipped as a file.
+- Settings > Appearance > **Get more themes** downloads the theme files (`.toml` and their pictures) in the `themes/` directory on GitHub that are not yet in `~/.local/share/tetron-wm/themes/`, so a new theme can be picked without reinstalling. It runs in the background with progress in the row. GitHub allows 60 unauthenticated requests per hour and each click uses one; when they run out the row says "GitHub rate limit, try again later".
+- Settings > **General** > Config file: **Open in editor** (the Editor from Default Apps), **Create from example** when there is no file, **Reset to defaults** (press Enter twice; the old file is kept as `config.toml.bak`) and **Reload**.
 - Themes are also read from `~/.local/share/tetron-wm/themes/` and from `tetron-wm/themes/` under `/usr/local/share` and `/usr/share` (the XDG data directories), after your own `~/.config/tetron-wm/themes/`. A theme name found earlier wins and keeps its own picture. A relative `wallpaper` path is looked up in the same directories.
 - Right-click **Compress…** and **Encrypt…** on files and folders, in Files and on the desktop. Compress writes `.7z`, `.zip` or `.tar.gz` beside the entry. Encrypt writes a password-protected `.7z` (AES-256, file names hidden, opens on any OS; the default, first in the list), an AES `.zip`, `.tar.gz.age` or `.tar.gz.gpg` (Linux, keeps permissions), whichever tools are installed. The tool asks for the password in a window, so it never passes through the command line, disk or the debug log; gpg asks twice and checks the archive. A failed or cancelled run removes the partial file; the original is kept. Hidden for folders on a remote system.
 - **Extract here** decrypts `.gpg` and `.age` files (`.tar.gz.gpg` and `.tar.gz.age` straight into the folder) and opens AES zips with 7-Zip when installed. **List contents** of a `.7z`, `.zip` or encrypted archive runs in a window so the password prompt works.
@@ -22,6 +24,7 @@ carry user-visible feature work and the occasional breaking config change.
 - `tetron-wm launch @files [dir]`, `@settings`, `@store` and the other built-ins now open the built-in window, as the launcher does. Before, the name was run as a program and the window closed at once.
 
 ### Changed
+- Settings opens on **Appearance**, now the first section; Windows is second.
 - Installer: the kmscon console prompt now says what it does in plain terms ("Make kmscon the login screen on tty1 (Ctrl+Alt+F1)? It replaces the plain kernel text console, adding truecolor and mouse") instead of "Run kmscon on tty1 in place of the kernel login prompt?".
 
 ## [0.14.18] — 2026-10-26

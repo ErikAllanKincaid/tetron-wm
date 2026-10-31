@@ -193,6 +193,8 @@ tetron-wm theme --list
 tetron-wm theme nord
 ## Write a built-in theme to ~/.config/tetron-wm/themes/gruvbox.toml to edit, then keep theme = "gruvbox".
 tetron-wm theme --dump gruvbox
+## In the app, Settings > Appearance > Get more themes downloads every theme file on GitHub
+## that is not yet in ~/.local/share/tetron-wm/themes (one GitHub API request per click).
 ## More themes: nord, dracula, dawn, newmoon and contrast (white on black, no picture)
 ## come with the suite installer (--themes, on by default) and land in themes/.
 ## A theme X.toml shows X.jpg (or png, webp) from the same folder while

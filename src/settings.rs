@@ -20,10 +20,21 @@ fn red() -> Rgba { crate::theme::current().error }
 fn green() -> Rgba { crate::theme::current().success }
 
 const SIDEBAR_W: i32 = 18;
-const SECTIONS: &[&str] = &["Windows", "Appearance", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "Sound", "About"];
+const SECTIONS: &[&str] = &["Appearance", "Windows", "Updates", "Apps", "Default Apps", "Assistant", "Clipboard", "Terminal", "Sound", "General", "About"];
 
-/// Index of the Sound section in [`SECTIONS`].
+// Indices into [`SECTIONS`]; Settings opens on the first one. Code and tests
+// name a section by these, never by a bare number.
+const APPEARANCE: usize = 0;
+const WINDOWS: usize = 1;
+const UPDATES: usize = 2;
+const APPS: usize = 3;
+const DEFAULT_APPS: usize = 4;
+const ASSISTANT: usize = 5;
+const CLIPBOARD: usize = 6;
+const TERMINAL: usize = 7;
 const SOUND: usize = 8;
+const GENERAL: usize = 9;
+// About is last (index 10) and has no rows.
 
 /// Roles listed in the Default Apps section (config key, label).
 const DEFAULT_APP_ROLES: &[(&str, &str)] = &[
@@ -71,6 +82,17 @@ pub enum SettingsAction {
     /// Windows section: enable and start (`true`) or disable and stop the full
     /// screen waiter service. Runs `sudo systemctl` on the real terminal.
     WaiterService(bool),
+    /// General > Config file: open it in the Default Apps editor.
+    OpenConfigFile,
+    /// General > Config file: write the example (only when there is no file).
+    CreateConfigFile,
+    /// General > Config file: keep the file as `config.toml.bak` and write the
+    /// example (asked only after the row's second Enter).
+    ResetConfigFile,
+    /// General > Config file: reload the desktop so hand edits apply.
+    ReloadConfig,
+    /// Appearance > Get more themes: download missing theme files on a worker.
+    GetThemes,
 }
 
 /// Terminal color presets: (name, background, foreground). `None` = follow the
@@ -156,6 +178,20 @@ pub struct Settings {
     /// The waiter service as of open / the last section entry (a shell-out, so
     /// never per frame).
     waiter: crate::fullscreen::Service,
+    /// Whether `config.toml` exists, as of open / entering General.
+    cfg_exists: bool,
+    /// General > Reset was pressed once; the next Enter on it resets. Any other
+    /// key or move disarms it.
+    reset_armed: bool,
+    /// Appearance > Get more themes: progress or the last result.
+    themes_status: String,
+    /// A theme download is running (Enter on the row does nothing meanwhile).
+    themes_busy: bool,
+}
+
+/// Whether the config file is on disk.
+fn config_file_exists() -> bool {
+    crate::config::file_path().is_ok_and(|p| p.exists())
 }
 
 impl Settings {
@@ -166,7 +202,8 @@ impl Settings {
             apphost_outdated: false, cfg, section: 0, sel: 0, action: None, update_status: String::new(),
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
             sound: None, outputs: Vec::new(), in_sidebar: false, wallpaper_note: None,
-            waiter: crate::fullscreen::service_state(),
+            waiter: crate::fullscreen::service_state(), cfg_exists: config_file_exists(), reset_armed: false,
+            themes_status: String::new(), themes_busy: false,
         }.with_wallpaper_note()
     }
 
@@ -226,10 +263,13 @@ impl Settings {
     fn enter_section(&mut self, i: usize) {
         self.section = i;
         self.sel = 0;
+        self.reset_armed = false;
         if i == SOUND {
             self.action = Some(SettingsAction::RefreshSound);
-        } else if i == 0 {
+        } else if i == WINDOWS {
             self.waiter = crate::fullscreen::service_state();
+        } else if i == GENERAL {
+            self.cfg_exists = config_file_exists();
         }
     }
 
@@ -255,6 +295,23 @@ impl Settings {
         self.previewing
     }
 
+    /// Show a theme download's progress (`done` = it finished; the row takes
+    /// Enter again).
+    pub fn set_themes_status(&mut self, s: String, done: bool) {
+        self.themes_status = s;
+        self.themes_busy = !done;
+    }
+
+    /// Re-check whether the config file exists (after Create / Reset).
+    pub fn refresh_config_file(&mut self) {
+        self.cfg_exists = config_file_exists();
+    }
+
+    /// Jump to the General section (used to reopen there after a config reload).
+    pub fn show_general_section(&mut self) {
+        self.enter_section(GENERAL);
+    }
+
     /// Jump to the Updates section (used to reopen there after an update reload).
     pub fn show_updates_section(&mut self) {
         if let Some(i) = SECTIONS.iter().position(|s| *s == "Updates") {
@@ -277,15 +334,16 @@ impl Settings {
     /// Number of interactive rows in the current section.
     fn item_count(&self) -> usize {
         match self.section {
-            0 => 10,                           // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll, full screen, waiter service
-            1 => 9,                            // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label, colors
-            2 => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
-            3 => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
-            4 => DEFAULT_APP_ROLES.len(),
-            5 => 2,                            // assistant: open-as mode, agent
-            6 => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
-            7 => 6,                            // terminal: preset, background, foreground, preview, save, revert
+            WINDOWS => 10,                           // snapping, threshold, grid rows/cols, gap, auto-tile, launch-maximized, natural scroll, full screen, waiter service
+            APPEARANCE => 10,                           // shadows, theme, wallpaper toggle, wallpaper file, icon-scrim, icon style, desktop icons, launcher label, colors, get more themes
+            UPDATES => if self.apphost_outdated { 4 } else { 3 }, // check, install, branch [, restart apphost]
+            APPS => self.cfg.launcher.len() + 1,  // custom apps + "＋ Add app…"
+            DEFAULT_APPS => DEFAULT_APP_ROLES.len(),
+            ASSISTANT => 2,                            // assistant: open-as mode, agent
+            CLIPBOARD => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
+            TERMINAL => 6,                            // terminal: preset, background, foreground, preview, save, revert
             SOUND => 4,                        // sound: volume, mute, output, mixer
+            GENERAL => 3,                      // config file: open, create or reset, reload
             _ => 0,                            // About
         }
     }
@@ -304,6 +362,7 @@ impl Settings {
     }
 
     pub fn move_up(&mut self) {
+        self.reset_armed = false;
         if self.in_sidebar {
             if self.section > 0 {
                 self.enter_section(self.section - 1);
@@ -320,6 +379,7 @@ impl Settings {
         self.sel = self.sel.saturating_sub(1);
     }
     pub fn move_down(&mut self) {
+        self.reset_armed = false;
         if self.in_sidebar {
             if self.section + 1 < SECTIONS.len() {
                 self.enter_section(self.section + 1);
@@ -443,9 +503,11 @@ impl Settings {
             }
             return;
         }
+        // Reset needs two Enters in a row: anything else in between disarms it.
+        let armed = std::mem::take(&mut self.reset_armed);
         match (self.section, self.sel) {
-            (0, 0) => self.cfg.snapping_enabled = flip(self.cfg.snapping_enabled, dir),
-            (0, 1) => {
+            (WINDOWS, 0) => self.cfg.snapping_enabled = flip(self.cfg.snapping_enabled, dir),
+            (WINDOWS, 1) => {
                 self.cfg.snap_threshold = match dir {
                     -1 => (self.cfg.snap_threshold - 1).max(1),
                     1 => (self.cfg.snap_threshold + 1).min(10),
@@ -453,24 +515,24 @@ impl Settings {
                     _ => if self.cfg.snap_threshold >= 10 { 1 } else { self.cfg.snap_threshold + 1 },
                 };
             }
-            (0, 2) => self.cfg.grid_rows = step_u8(self.cfg.grid_rows, dir, 1, 6),
-            (0, 3) => self.cfg.grid_cols = step_u8(self.cfg.grid_cols, dir, 1, 6),
-            (0, 4) => {
+            (WINDOWS, 2) => self.cfg.grid_rows = step_u8(self.cfg.grid_rows, dir, 1, 6),
+            (WINDOWS, 3) => self.cfg.grid_cols = step_u8(self.cfg.grid_cols, dir, 1, 6),
+            (WINDOWS, 4) => {
                 self.cfg.tile_gap = match dir {
                     -1 => (self.cfg.tile_gap - 1).max(0),
                     1 => (self.cfg.tile_gap + 1).min(4),
                     _ => if self.cfg.tile_gap >= 4 { 0 } else { self.cfg.tile_gap + 1 },
                 };
             }
-            (0, 5) => self.cfg.auto_tile = flip(self.cfg.auto_tile, dir),
-            (0, 6) => self.cfg.launch_maximized = flip(self.cfg.launch_maximized, dir),
-            (0, 7) => self.cfg.natural_scroll = flip(self.cfg.natural_scroll, dir),
-            (0, 8) => self.cfg.fullscreen = flip(self.cfg.fullscreen, dir),
-            (0, 9) if self.waiter != crate::fullscreen::Service::Missing => {
+            (WINDOWS, 5) => self.cfg.auto_tile = flip(self.cfg.auto_tile, dir),
+            (WINDOWS, 6) => self.cfg.launch_maximized = flip(self.cfg.launch_maximized, dir),
+            (WINDOWS, 7) => self.cfg.natural_scroll = flip(self.cfg.natural_scroll, dir),
+            (WINDOWS, 8) => self.cfg.fullscreen = flip(self.cfg.fullscreen, dir),
+            (WINDOWS, 9) if self.waiter != crate::fullscreen::Service::Missing => {
                 self.action = Some(SettingsAction::WaiterService(self.waiter != crate::fullscreen::Service::Running));
             }
-            (1, 0) => self.cfg.window_shadows = flip(self.cfg.window_shadows, dir),
-            (1, 1) => {
+            (APPEARANCE, 0) => self.cfg.window_shadows = flip(self.cfg.window_shadows, dir),
+            (APPEARANCE, 1) => {
                 let presets = crate::theme::preset_names();
                 let cur_idx = presets.iter().position(|p| p == &self.cfg.theme).unwrap_or(0);
                 let next_idx = if dir == -1 {
@@ -480,10 +542,10 @@ impl Settings {
                 };
                 self.cfg.theme = presets[next_idx].clone();
             }
-            (1, 2) => self.cfg.wallpaper_enabled = flip(self.cfg.wallpaper_enabled, dir),
+            (APPEARANCE, 2) => self.cfg.wallpaper_enabled = flip(self.cfg.wallpaper_enabled, dir),
             // Wallpaper filename: Enter opens the text box (pre-filled with the
             // current value); ←/→ do nothing (it is free text, not a cycler).
-            (1, 3) if dir == 0 => {
+            (APPEARANCE, 3) if dir == 0 => {
                 let cur = self.cfg.wallpaper.as_deref().map(str::trim).unwrap_or_default();
                 let cur = if cur.is_empty() { crate::wallpaper::DEFAULT_NAME } else { cur };
                 let fresh = cur == crate::wallpaper::DEFAULT_NAME;
@@ -491,47 +553,52 @@ impl Settings {
             }
             // Icon label scrim on/off: "on" keeps the default (or a configured
             // color); "off" stores "none" so labels sit directly on the wallpaper.
-            (1, 4) => {
+            (APPEARANCE, 4) => {
                 self.cfg.desktop_scrim = if scrim_on(&self.cfg) { Some("none".into()) } else { None };
             }
-            (1, 5) => {
+            (APPEARANCE, 5) => {
                 use crate::iconset::IconStyle::*;
                 let all = [Auto, Ascii, Unicode, Nerd, Emoji];
                 let cur = all.iter().position(|x| *x == self.cfg.icon_style).unwrap_or(0);
                 let next = if dir == -1 { (cur + all.len() - 1) % all.len() } else { (cur + 1) % all.len() };
                 self.cfg.icon_style = all[next];
             }
-            (1, 6) => self.cfg.desktop_enabled = flip(self.cfg.desktop_enabled, dir),
+            (APPEARANCE, 6) => self.cfg.desktop_enabled = flip(self.cfg.desktop_enabled, dir),
             // Launcher label: Enter opens the text box (up to 6 characters, or
             // `@session`); ←/→ do nothing, it is free text.
-            (1, 7) if dir == 0 => {
+            (APPEARANCE, 7) if dir == 0 => {
                 self.text = Some(TextEdit { target: TextTarget::LauncherLabel, buf: self.cfg.launcher_label.clone(), error: false, fresh: false });
             }
-            (1, 8) => {
+            (APPEARANCE, 8) => {
                 let cur = COLOR_CHOICES.iter().position(|(v, _)| crate::display::ColorDepth::parse(v) == crate::display::ColorDepth::parse(&self.cfg.colors)).unwrap_or(0);
                 let n = COLOR_CHOICES.len();
                 let next = if dir == -1 { (cur + n - 1) % n } else { (cur + 1) % n };
                 self.cfg.colors = COLOR_CHOICES[next].0.to_string();
             }
+            (APPEARANCE, 9) if dir == 0 && !self.themes_busy => {
+                self.themes_busy = true;
+                self.themes_status = "Starting".into();
+                self.action = Some(SettingsAction::GetThemes);
+            }
             // Updates section: Enter/Space (dir 0) requests an action from the session.
-            (2, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
-            (2, 1) if dir == 0 => self.action = Some(SettingsAction::InstallUpdate),
-            (2, 3) if dir == 0 && self.apphost_outdated => {
+            (UPDATES, 0) if dir == 0 => self.action = Some(SettingsAction::CheckUpdates),
+            (UPDATES, 1) if dir == 0 => self.action = Some(SettingsAction::InstallUpdate),
+            (UPDATES, 3) if dir == 0 && self.apphost_outdated => {
                 self.action = Some(SettingsAction::RestartApphost)
             }
-            (2, 2) => {
+            (UPDATES, 2) => {
                 let b = crate::config::UPDATE_BRANCHES;
                 let cur = b.iter().position(|x| *x == self.cfg.update_branch).unwrap_or(0);
                 let next = match dir { -1 => (cur + b.len() - 1) % b.len(), _ => (cur + 1) % b.len() };
                 self.cfg.update_branch = b[next].to_string();
             }
             // Apps section.
-            (3, _) => self.adjust_apps(dir),
-            (5, 0) => {
+            (APPS, _) => self.adjust_apps(dir),
+            (ASSISTANT, 0) => {
                 self.cfg.assistant_mode =
                     if self.cfg.assistant_mode == "panel" { "window".into() } else { "panel".into() };
             }
-            (5, 1) => {
+            (ASSISTANT, 1) => {
                 // Switch the agent between the supported CLIs (opencode ⇄ hermes),
                 // stored in `assistant_command`.
                 let agents = crate::assistant::AGENTS;
@@ -548,35 +615,35 @@ impl Settings {
                 self.cfg.assistant_command = Some(agents[next].to_string());
             }
             // Clipboard section.
-            (6, 0) => self.cfg.clipboard_history = flip(self.cfg.clipboard_history, dir),
-            (6, 1) => self.cfg.clipboard_persist = flip(self.cfg.clipboard_persist, dir),
-            (6, 2) => self.cfg.clipboard_record_selection = flip(self.cfg.clipboard_record_selection, dir),
-            (6, 3) => {
+            (CLIPBOARD, 0) => self.cfg.clipboard_history = flip(self.cfg.clipboard_history, dir),
+            (CLIPBOARD, 1) => self.cfg.clipboard_persist = flip(self.cfg.clipboard_persist, dir),
+            (CLIPBOARD, 2) => self.cfg.clipboard_record_selection = flip(self.cfg.clipboard_record_selection, dir),
+            (CLIPBOARD, 3) => {
                 const SIZES: [usize; 7] = [10, 25, 50, 100, 250, 500, 1000];
                 let cur = SIZES.iter().position(|s| *s >= self.cfg.clipboard_history_size).unwrap_or(SIZES.len() - 1);
                 let next = match dir { -1 => cur.saturating_sub(1), _ => (cur + 1) % SIZES.len() };
                 self.cfg.clipboard_history_size = SIZES[next];
             }
-            (6, 4) => self.cfg.clipboard_shims = cycle(&["auto", "on", "off"], &self.cfg.clipboard_shims, dir),
-            (6, 5) => self.cfg.clipboard_osc52_read = cycle(&["focused", "always", "never"], &self.cfg.clipboard_osc52_read, dir),
-            (6, 6) => self.cfg.clipboard_fake_display = flip(self.cfg.clipboard_fake_display, dir),
-            (6, 7) => {
+            (CLIPBOARD, 4) => self.cfg.clipboard_shims = cycle(&["auto", "on", "off"], &self.cfg.clipboard_shims, dir),
+            (CLIPBOARD, 5) => self.cfg.clipboard_osc52_read = cycle(&["focused", "always", "never"], &self.cfg.clipboard_osc52_read, dir),
+            (CLIPBOARD, 6) => self.cfg.clipboard_fake_display = flip(self.cfg.clipboard_fake_display, dir),
+            (CLIPBOARD, 7) => {
                 // 0 = never expire; else drop unpinned entries older than this.
                 const TTLS: [u64; 5] = [0, 3_600, 86_400, 604_800, 2_592_000];
                 let cur = TTLS.iter().position(|t| *t == self.cfg.clipboard_ttl_secs).unwrap_or(0);
                 let next = if dir == -1 { (cur + TTLS.len() - 1) % TTLS.len() } else { (cur + 1) % TTLS.len() };
                 self.cfg.clipboard_ttl_secs = TTLS[next];
             }
-            (6, 8) => {
+            (CLIPBOARD, 8) => {
                 const KBS: [usize; 5] = [16, 64, 256, 1024, 4096];
                 let cur = KBS.iter().position(|k| *k >= self.cfg.clipboard_item_max_kb).unwrap_or(KBS.len() - 1);
                 let next = match dir { -1 => cur.saturating_sub(1), _ => (cur + 1) % KBS.len() };
                 self.cfg.clipboard_item_max_kb = KBS[next];
             }
-            (6, 9) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
+            (CLIPBOARD, 9) if dir == 0 => self.action = Some(SettingsAction::ClearClipboard),
             // Terminal section: staged colors; nothing reaches the apphost or disk
             // until Preview / Save.
-            (7, 0) => {
+            (TERMINAL, 0) => {
                 let same = |a: &Option<String>, b: &Option<&str>| a.as_deref().map(str::to_lowercase) == b.map(str::to_string);
                 let cur = TERM_PRESETS.iter().position(|(_, bg, fg)| same(&self.stage_bg, bg) && same(&self.stage_fg, fg));
                 let n = TERM_PRESETS.len();
@@ -590,22 +657,22 @@ impl Settings {
                 self.stage_bg = bg.map(String::from);
                 self.stage_fg = fg.map(String::from);
             }
-            (7, 1) if dir == 0 => {
+            (TERMINAL, 1) if dir == 0 => {
                 self.text = Some(TextEdit { target: TextTarget::TermBg, buf: self.stage_bg.clone().unwrap_or_default(), error: false, fresh: false });
             }
-            (7, 2) if dir == 0 => {
+            (TERMINAL, 2) if dir == 0 => {
                 self.text = Some(TextEdit { target: TextTarget::TermFg, buf: self.stage_fg.clone().unwrap_or_default(), error: false, fresh: false });
             }
-            (7, 3) if dir == 0 => {
+            (TERMINAL, 3) if dir == 0 => {
                 self.action = Some(SettingsAction::PreviewColors);
                 self.previewing = true;
             }
-            (7, 4) if dir == 0 => {
+            (TERMINAL, 4) if dir == 0 => {
                 self.cfg.terminal_bg = self.stage_bg.clone();
                 self.cfg.terminal_fg = self.stage_fg.clone();
                 self.previewing = false;
             }
-            (7, 5) if dir == 0 => {
+            (TERMINAL, 5) if dir == 0 => {
                 self.stage_bg = self.cfg.terminal_bg.clone();
                 self.stage_fg = self.cfg.terminal_fg.clone();
                 if self.previewing {
@@ -634,7 +701,12 @@ impl Settings {
                 self.action = Some(SettingsAction::SetOutput(self.outputs[next].id));
             }
             (SOUND, 3) if dir == 0 => self.action = Some(SettingsAction::OpenMixer),
-            (4, i) => {
+            (GENERAL, 0) if dir == 0 => self.action = Some(SettingsAction::OpenConfigFile),
+            (GENERAL, 1) if dir == 0 && !self.cfg_exists => self.action = Some(SettingsAction::CreateConfigFile),
+            (GENERAL, 1) if dir == 0 && armed => self.action = Some(SettingsAction::ResetConfigFile),
+            (GENERAL, 1) if dir == 0 => self.reset_armed = true,
+            (GENERAL, 2) if dir == 0 => self.action = Some(SettingsAction::ReloadConfig),
+            (DEFAULT_APPS, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
                     let cands = crate::openwith::candidates(role);
@@ -844,7 +916,7 @@ impl Settings {
         buf.write_str(cx, 1, SECTIONS[self.section], pal_accent(), pal_bg());
 
         match self.section {
-            0 => {
+            WINDOWS => {
                 self.row(&mut buf, cx, 3, 0, "Drag-to-cell snapping", toggle_val(self.cfg.snapping_enabled));
                 self.row(&mut buf, cx, 4, 1, "Snap threshold (cells)", format!("\u{25C2} {} \u{25B8}", self.cfg.snap_threshold));
                 self.row(&mut buf, cx, 5, 2, "Grid rows", format!("\u{25C2} {} \u{25B8}", self.cfg.grid_rows));
@@ -861,7 +933,7 @@ impl Settings {
                 };
                 self.row(&mut buf, cx, 12, 9, "Full screen helper service", waiter.into());
             }
-            1 => {
+            APPEARANCE => {
                 self.row(&mut buf, cx, 3, 0, "Window shadows", toggle_val(self.cfg.window_shadows));
                 self.row(&mut buf, cx, 4, 1, "Theme", self.cfg.theme.clone());
                 self.row(&mut buf, cx, 5, 2, "Wallpaper", toggle_val(self.cfg.wallpaper_enabled));
@@ -884,20 +956,23 @@ impl Settings {
                 };
                 self.row(&mut buf, cx, 10, 7, "Launcher label", label_val);
                 self.row(&mut buf, cx, 11, 8, "Colors", format!("\u{25C2} {} \u{25B8}", color_choice_name(&self.cfg.colors)));
+                let themes_val = if self.themes_status.is_empty() { "Enter (downloads from GitHub)".to_string() } else { self.themes_status.clone() };
+                self.row(&mut buf, cx, 12, 9, "Get more themes", themes_val);
                 // A wallpaper problem goes on the spacer line under the rows,
                 // in the accent colour so it is not mistaken for a hint.
                 let theme_note = (!crate::theme::known(&self.cfg.theme)).then(|| format!("Theme '{}' not found, using midnight.", self.cfg.theme));
                 if let Some(n) = self.wallpaper_note.as_ref().or(theme_note.as_ref()) {
-                    buf.write_str(cx, 12, n, pal_accent(), pal_bg());
+                    buf.write_str(cx, 13, n, pal_accent(), pal_bg());
                 }
-                buf.write_str(cx, 13, "Wallpaper: default (follows the theme), black, #rrggbb,", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "none, a file in ~/.config/tetron-wm/themes/, or a full path.", pal_dim(), pal_bg());
-                buf.write_str(cx, 15, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
-                buf.write_str(cx, 16, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
-                buf.write_str(cx, 17, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
-                buf.write_str(cx, 18, "Colors: auto follows the terminal; mono is no color; TETRON_WM_COLORS wins.", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "Wallpaper: default (follows the theme), black, #rrggbb,", pal_dim(), pal_bg());
+                buf.write_str(cx, 15, "none, a file in ~/.config/tetron-wm/themes/, or a full path.", pal_dim(), pal_bg());
+                buf.write_str(cx, 16, "Scrim: dark backing behind icon labels over a wallpaper.", pal_dim(), pal_bg());
+                buf.write_str(cx, 17, "Icon style: auto | ascii | unicode | nerd | emoji.", pal_dim(), pal_bg());
+                buf.write_str(cx, 18, "Launcher label: up to 6 characters, or @session for the session name.", pal_dim(), pal_bg());
+                buf.write_str(cx, 19, "Colors: auto follows the terminal; mono is no color; TETRON_WM_COLORS wins.", pal_dim(), pal_bg());
+                buf.write_str(cx, 20, "New themes are saved in ~/.local/share/tetron-wm/themes/.", pal_dim(), pal_bg());
             }
-            2 => {
+            UPDATES => {
                 self.row(&mut buf, cx, 3, 0, "Check for updates", String::new());
                 self.row(&mut buf, cx, 4, 1, "Update & Reload", String::new());
                 self.row(&mut buf, cx, 5, 2, "Channel", format!("\u{25C2} {} \u{25B8}", self.cfg.update_branch));
@@ -916,8 +991,8 @@ impl Settings {
                     buf.write_str(cx, 11, "won't work until it restarts (your apps will close).", pal_dim(), pal_bg());
                 }
             }
-            3 => self.render_apps(&mut buf, cx, w),
-            5 => {
+            APPS => self.render_apps(&mut buf, cx, w),
+            ASSISTANT => {
                 // Agent switches between opencode and hermes; a hand-edited
                 // assistant_command may name any binary, shown as-is.
                 let agent = self.cfg.assistant_command.as_deref().unwrap_or(crate::assistant::DEFAULT_AGENT);
@@ -928,14 +1003,14 @@ impl Settings {
                 buf.write_str(cx, 7, "Its briefing pack: ~/.local/share/tetron-wm/assistant", pal_dim(), pal_bg());
                 buf.write_str(cx, 8, "Extra args: assistant_args in config.toml.", pal_dim(), pal_bg());
             }
-            4 => {
+            DEFAULT_APPS => {
                 for (i, (key, label)) in DEFAULT_APP_ROLES.iter().enumerate() {
                     let val = self.cfg.default_apps.get(*key).cloned().unwrap_or_else(|| "(ask)".into());
                     let shown = match val.as_str() { "@image" => "image viewer".into(), "@navigate" => "open folder".into(), v => v.to_string() };
                     self.row(&mut buf, cx, 3 + i as i32, i, label, format!("\u{25C2} {} \u{25B8}", shown));
                 }
             }
-            6 => {
+            CLIPBOARD => {
                 let c = &self.cfg;
                 self.row(&mut buf, cx, 3, 0, "Keep history", toggle_val(c.clipboard_history));
                 self.row(&mut buf, cx, 4, 1, "Save to disk", toggle_val(c.clipboard_persist));
@@ -952,8 +1027,9 @@ impl Settings {
                 buf.write_str(cx, 16, "Shims apply to newly launched apps after an app server restart.", pal_dim(), pal_bg());
                 buf.write_str(cx, 17, "More: clipboard_ignore_apps in config.toml.", pal_dim(), pal_bg());
             }
-            7 => self.render_terminal(&mut buf, cx),
+            TERMINAL => self.render_terminal(&mut buf, cx),
             SOUND => self.render_sound(&mut buf, cx),
+            GENERAL => self.render_general(&mut buf, cx),
             _ => {
                 buf.write_str(cx, 3, "tetron-wm — a desktop environment for the terminal", pal_fg(), pal_bg());
                 let sha = &crate::GIT_SHA[..crate::GIT_SHA.len().min(7)];
@@ -973,6 +1049,25 @@ impl Settings {
             }
         }
         buf
+    }
+
+    /// Render the General section: the config file group.
+    fn render_general(&self, buf: &mut CellBuffer, cx: i32) {
+        let path = crate::config::file_path().map(|p| p.display().to_string()).unwrap_or_else(|_| "(no home directory)".into());
+        let state = if self.cfg_exists { "" } else { "  (not created yet, defaults in use)" };
+        // Rows start at y 3 like every section (clicks map y - 3 to the row).
+        self.row(buf, cx, 3, 0, "Open in editor", "Enter".into());
+        if self.cfg_exists {
+            let v = if self.reset_armed { "Enter again to reset" } else { "Enter (keeps config.toml.bak)" };
+            self.row(buf, cx, 4, 1, "Reset to defaults", v.into());
+        } else {
+            self.row(buf, cx, 4, 1, "Create from example", "Enter".into());
+        }
+        self.row(buf, cx, 5, 2, "Reload", "Enter (applies hand edits)".into());
+        buf.write_str(cx, 7, &format!("Config file: {path}{state}"), pal_fg(), pal_bg());
+        buf.write_str(cx, 9, "Open in editor uses the Editor in Default Apps.", pal_dim(), pal_bg());
+        buf.write_str(cx, 10, "Reset and Create write the example: every key at its default.", pal_dim(), pal_bg());
+        buf.write_str(cx, 11, "Same as: tetron-wm config init | config example | reload", pal_dim(), pal_bg());
     }
 
     /// Render the Terminal section: staged colors with swatches, the
@@ -1209,7 +1304,7 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
-    /// Advance the section selector to the Apps panel ("Windows" → … → "Apps").
+    /// Advance the section selector to the Apps panel ("Appearance" → … → "Apps").
     fn to_apps(s: &mut Settings) {
         while SECTIONS[s.section] != "Apps" {
             s.next_section();
@@ -1612,8 +1707,8 @@ mod tests {
     #[test]
     fn windows_section_steps_grid_dimensions() {
         let mut s = Settings::new(Config::default());
-        // Windows is section 0; row 2 = grid rows, row 3 = grid columns.
-        s.section = 0;
+        // Row 2 = grid rows, row 3 = grid columns.
+        s.section = WINDOWS;
         s.sel = 2;
         s.right();
         assert_eq!(s.config().grid_rows, 3);
@@ -1631,7 +1726,7 @@ mod tests {
     fn waiter_row_asks_for_the_opposite_state_and_is_inert_when_missing() {
         use crate::fullscreen::Service;
         let mut s = Settings::new(Config::default());
-        s.section = 0;
+        s.section = WINDOWS;
         s.sel = 9;
         s.set_waiter(Service::Missing);
         s.toggle();
@@ -1648,7 +1743,7 @@ mod tests {
     fn newly_surfaced_keys_edit_config() {
         use crate::iconset::IconStyle;
         let mut s = Settings::new(Config::default());
-        s.section = 0;
+        s.section = WINDOWS;
         assert_eq!(s.item_count(), 10);
         s.sel = 7;
         let before = s.config().natural_scroll;
@@ -1658,8 +1753,8 @@ mod tests {
         assert!(s.config().fullscreen);
         s.toggle();
         assert!(!s.config().fullscreen);
-        s.section = 1;
-        assert_eq!(s.item_count(), 9);
+        s.section = APPEARANCE;
+        assert_eq!(s.item_count(), 10);
         s.sel = 8;
         for want in ["mono", "16", "256", "truecolor", "auto"] {
             s.right();
@@ -1732,7 +1827,7 @@ mod tests {
     #[test]
     fn assistant_section_switches_agent_between_opencode_and_hermes() {
         let mut s = Settings::new(Config::default());
-        s.section = 5; // Assistant
+        s.section = ASSISTANT;
         assert_eq!(SECTIONS[s.section], "Assistant");
         s.sel = 1; // the Agent row
         assert!(s.config().assistant_command.is_none(), "unset defaults to opencode");
@@ -1821,7 +1916,7 @@ mod tests {
         s.move_down();
         assert_eq!(SECTIONS[s.section], "Updates", "Down in the list changes section");
         s.move_up();
-        assert_eq!(SECTIONS[s.section], "Appearance");
+        assert_eq!(SECTIONS[s.section], "Windows");
         s.left(); // nothing further left: stays in the list
         assert!(s.sidebar_focused());
         s.right(); // Right opens the section
@@ -1831,5 +1926,60 @@ mod tests {
         s.toggle_pane();
         s.toggle(); // Enter in the list also opens the section
         assert!(!s.sidebar_focused());
+    }
+
+    #[test]
+    fn opens_on_appearance_and_general_sits_before_about() {
+        let s = Settings::new(Config::default());
+        assert_eq!(SECTIONS[s.section], "Appearance");
+        assert_eq!(SECTIONS[GENERAL], "General");
+        assert_eq!(SECTIONS.last(), Some(&"About"));
+        for (i, name) in [(APPEARANCE, "Appearance"), (WINDOWS, "Windows"), (UPDATES, "Updates"), (APPS, "Apps"), (DEFAULT_APPS, "Default Apps"), (ASSISTANT, "Assistant"), (CLIPBOARD, "Clipboard"), (TERMINAL, "Terminal"), (SOUND, "Sound")] {
+            assert_eq!(SECTIONS[i], name);
+        }
+    }
+
+    #[test]
+    fn general_creates_when_absent_and_resets_only_on_a_second_enter() {
+        let mut s = Settings::new(Config::default());
+        s.enter_section(GENERAL);
+        s.cfg_exists = false;
+        s.sel = 1;
+        assert!(screen(&s).contains("Create from example"));
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::CreateConfigFile));
+        s.cfg_exists = true;
+        assert!(screen(&s).contains("Reset to defaults"));
+        s.toggle();
+        assert_eq!(s.take_action(), None, "the first Enter only arms");
+        assert!(screen(&s).contains("Enter again to reset"));
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::ResetConfigFile));
+        s.toggle();
+        s.move_up();
+        s.move_down();
+        s.toggle();
+        assert_eq!(s.take_action(), None, "a move in between disarms");
+        s.sel = 0;
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::OpenConfigFile));
+        s.sel = 2;
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::ReloadConfig));
+    }
+
+    #[test]
+    fn get_more_themes_asks_once_until_the_worker_is_done() {
+        let mut s = Settings::new(Config::default());
+        s.sel = 9;
+        assert!(screen(&s).contains("Get more themes"));
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::GetThemes));
+        s.toggle();
+        assert_eq!(s.take_action(), None, "busy: Enter does nothing");
+        s.set_themes_status("GitHub rate limit, try again later".into(), true);
+        assert!(screen(&s).contains("GitHub rate limit"));
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::GetThemes));
     }
 }

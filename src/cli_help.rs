@@ -116,11 +116,15 @@ COMMANDS:\n\
 \x20 screensaver [on|off|toggle|list] [effect]   cover the screen (default on); any key or mouse\n\
 \x20                       in the attached client wakes it. Effects: black, clock (see list)\n\
 \x20 config init           write the example config to ~/.config/tetron-wm/config.toml if no\n\
-\x20                       file is there (never overwrites); config example prints it\n\
+\x20                       file is there (never overwrites); config example prints it.\n\
+\x20                       In the app: Settings > General > Config file (open, create, reset\n\
+\x20                       keeping config.toml.bak, reload)\n\
 \x20 theme <name>          switch theme\n\
 \x20 theme --list          list built-in and file themes. Theme files are read from\n\
 \x20                       <config dir>/themes, ~/.local/share/tetron-wm/themes, then\n\
-\x20                       /usr/local/share and /usr/share (tetron-wm/themes); first wins\n\
+\x20                       /usr/local/share and /usr/share (tetron-wm/themes); first wins.\n\
+\x20                       Settings > Appearance > Get more themes downloads the ones new on\n\
+\x20                       GitHub into ~/.local/share/tetron-wm/themes\n\
 \x20 theme --dump <name>   write a built-in theme to <config dir>/themes/<name>.toml\n\
 \x20                       to edit (e.g. theme --dump gruvbox, then set theme = \"gruvbox\")\n\
 \x20                       A theme file X.toml shows the picture X.jpg (or png, webp) next to it,\n\

@@ -459,11 +459,37 @@ pub fn init_at(path: &std::path::Path) -> std::io::Result<InitOutcome> {
     }
 }
 
+/// The real config file path (`$XDG_CONFIG_HOME/tetron-wm/config.toml` or
+/// `~/.config/tetron-wm/config.toml`).
+pub fn file_path() -> std::io::Result<std::path::PathBuf> {
+    config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir())
+        .ok_or_else(|| std::io::Error::other("no home directory and no XDG_CONFIG_HOME"))
+}
+
 /// `tetron-wm config init` against the real config path.
 pub fn init() -> std::io::Result<InitOutcome> {
-    let path = config_file_path(std::env::var_os("XDG_CONFIG_HOME"), dirs::home_dir())
-        .ok_or_else(|| std::io::Error::other("no home directory and no XDG_CONFIG_HOME"))?;
-    init_at(&path)
+    init_at(&file_path()?)
+}
+
+/// `<path>.bak`, where [`reset_at`] keeps the old file.
+pub fn backup_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".bak");
+    std::path::PathBuf::from(s)
+}
+
+/// Settings > General > Reset to defaults: move the file at `path` to
+/// `<path>.bak` (replacing an older backup), then write [`EXAMPLE`]. Returns
+/// the backup path, or `None` when there was no file to keep.
+pub fn reset_at(path: &std::path::Path) -> std::io::Result<Option<std::path::PathBuf>> {
+    let bak = backup_path(path);
+    let kept = match std::fs::rename(path, &bak) {
+        Ok(()) => Some(bak),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    init_at(path)?;
+    Ok(kept)
 }
 
 /// The tetron-wm config directory (`$XDG_CONFIG_HOME/tetron-wm` or
@@ -531,6 +557,21 @@ mod tests {
         std::fs::write(&path, "theme = \"gruvbox\"\n").unwrap();
         assert_eq!(init_at(&path).unwrap(), InitOutcome::Exists(path.clone()));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "theme = \"gruvbox\"\n", "untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn reset_keeps_the_old_file_as_bak_and_writes_the_example() {
+        let dir = std::env::temp_dir().join(format!("tetron-wm-reset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("tetron-wm/config.toml");
+        assert_eq!(reset_at(&path).unwrap(), None, "nothing to keep, still writes");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), EXAMPLE);
+        std::fs::write(&path, "theme = \"gruvbox\"\n").unwrap();
+        let bak = reset_at(&path).unwrap().unwrap();
+        assert_eq!(bak, dir.join("tetron-wm/config.toml.bak"));
+        assert_eq!(std::fs::read_to_string(&bak).unwrap(), "theme = \"gruvbox\"\n");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), EXAMPLE);
         std::fs::remove_dir_all(&dir).ok();
     }
 

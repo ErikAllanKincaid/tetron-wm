@@ -7,6 +7,7 @@ pub mod cli_help;
 pub mod geometry;
 pub mod cell;
 pub mod theme;
+pub mod themefetch;
 pub mod display;
 pub mod buffer;
 pub mod wallpaper;

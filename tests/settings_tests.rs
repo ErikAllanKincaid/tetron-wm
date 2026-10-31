@@ -6,17 +6,18 @@ fn toggle_changes_config() {
     let mut s = Settings::new(Config::default());
     // Fork defaults are OFF for both (docs/CONFIG.md); toggling flips them ON.
     // (Upstream defaulted them on, which these asserts used to assume.)
-    assert!(!s.config().snapping_enabled);
-    s.toggle(); // Windows / snapping
-    assert!(s.config().snapping_enabled);
-    s.next_section(); // Appearance
-    s.toggle(); // window shadows
+    assert!(!s.config().window_shadows);
+    s.toggle(); // Appearance (first) / window shadows
     assert!(s.config().window_shadows);
+    s.next_section(); // Windows
+    s.toggle(); // snapping
+    assert!(s.config().snapping_enabled);
 }
 
 #[test]
 fn threshold_adjusts_within_bounds() {
     let mut s = Settings::new(Config::default());
+    s.next_section(); // Windows
     s.move_down(); // snap_threshold row
     let before = s.config().snap_threshold;
     s.right();
@@ -30,7 +31,7 @@ fn threshold_adjusts_within_bounds() {
 fn updates_section_requests_check_and_install() {
     use tetron_wm::settings::SettingsAction;
     let mut s = Settings::new(Config::default());
-    s.next_section(); // Appearance
+    s.next_section(); // Windows
     s.next_section(); // Updates
     s.toggle();       // row 0 -> Check
     assert_eq!(s.take_action(), Some(SettingsAction::CheckUpdates));
@@ -39,7 +40,7 @@ fn updates_section_requests_check_and_install() {
     assert_eq!(s.take_action(), Some(SettingsAction::InstallUpdate));
     // a plain settings toggle elsewhere requests nothing
     let mut w = Settings::new(Config::default());
-    w.toggle();
+    w.toggle(); // Appearance / window shadows
     assert_eq!(w.take_action(), None);
 }
 
