@@ -2,7 +2,7 @@
 //! overlays, and operation dispatch. All disk access goes through `FsOps`.
 
 use crate::fileops::{Entry, FsOps, StdFs};
-use crate::geometry::Point;
+use crate::geometry::{Point, Rect};
 use crate::openwith::{resolve, OpenAction};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -342,7 +342,7 @@ impl<F: FsOps> FileManager<F> {
     /// Move the cursor by (dx tiles, dy rows). In List view any nonzero delta is
     /// collapsed to a single ±1 step.
     pub fn move_cursor(&mut self, dx: i32, dy: i32) {
-        if self.tab().entries.is_empty() { return; }
+        if self.tab().entries.is_empty() || self.dialog_open() { return; }
         let n = self.tab().entries.len() as i32;
         let cur = self.tab().cursor as i32;
         let next = match self.tab().view {
@@ -438,6 +438,11 @@ impl<F: FsOps> FileManager<F> {
     /// Enter the focused entry: navigate into a directory, or request an open
     /// action for a file (via `openwith::resolve`).
     pub fn activate(&mut self) {
+        // Enter on a dialog answers it; it never opens the entry underneath.
+        if self.dialog_open() {
+            self.dialog_commit();
+            return;
+        }
         let cursor = self.tab().cursor;
         let Some(entry) = self.tab().entries.get(cursor) else { return; };
         let path = entry.path.clone();
@@ -463,6 +468,7 @@ impl<F: FsOps> FileManager<F> {
     }
 
     pub fn go_parent(&mut self) {
+        if self.dialog_open() { return; }
         if let Some(parent) = self.tab().cwd.parent() {
             self.navigate_to(parent.to_path_buf());
         }
@@ -734,6 +740,47 @@ impl<F: FsOps> FileManager<F> {
 
     // ---- delete ------------------------------------------------------------
 
+    /// A dialog without a text field is open (trash confirmation, error, info):
+    /// Enter and clicks answer it instead of reaching the listing.
+    pub fn dialog_open(&self) -> bool {
+        matches!(self.overlay, Some(Overlay::ConfirmDelete { .. }) | Some(Overlay::Error { .. }) | Some(Overlay::GetInfo { .. }))
+    }
+
+    /// Enter on a dialog: trash for the confirmation, close for the others.
+    pub fn dialog_commit(&mut self) {
+        if matches!(self.overlay, Some(Overlay::ConfirmDelete { .. })) {
+            self.confirm_delete();
+        } else {
+            self.overlay = None;
+        }
+    }
+
+    /// A click while a dialog is open: the trash confirmation's buttons act,
+    /// a click outside the box cancels; any click closes an error or info box.
+    /// Always consumed (the listing underneath never sees it).
+    pub fn dialog_click(&mut self, p: Point, w: i32, h: i32) -> bool {
+        if let Some(Overlay::ConfirmDelete { count }) = self.overlay {
+            let (trash, cancel) = confirm_buttons(w, h, count);
+            if trash.contains(p) {
+                self.confirm_delete();
+            } else if cancel.contains(p) || !confirm_box(w, h, count).contains(p) {
+                self.overlay = None;
+            }
+        } else {
+            self.overlay = None;
+        }
+        true
+    }
+
+    /// The trash confirmation's (Move to Trash, Cancel) buttons in content
+    /// coordinates, when it is open.
+    pub fn confirm_buttons(&self, w: i32, h: i32) -> Option<(Rect, Rect)> {
+        match self.overlay {
+            Some(Overlay::ConfirmDelete { count }) => Some(confirm_buttons(w, h, count)),
+            _ => None,
+        }
+    }
+
     pub fn confirm_delete(&mut self) {
         if !matches!(self.overlay, Some(Overlay::ConfirmDelete { .. })) { return; }
         self.overlay = None;
@@ -742,6 +789,42 @@ impl<F: FsOps> FileManager<F> {
         }
         self.reload();
     }
+}
+
+// ---- Dialog geometry: render and hit-test share these, so they can not drift.
+
+const TRASH_BUTTON: &str = "[ Move to Trash ]";
+const CANCEL_BUTTON: &str = "[ Cancel ]";
+
+/// A centred dialog box: the title row, a gap, then `lines`.
+fn box_rect(w: i32, h: i32, title: &str, lines: &[String]) -> Rect {
+    let widest = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0);
+    let bw = (title.chars().count().max(widest) as i32 + 4).min(w - 2).max(4);
+    let bh = lines.len() as i32 + 2;
+    Rect::new((w - bw) / 2, (h - bh) / 2, bw, bh)
+}
+
+/// The trash confirmation: the question, a blank row, the button row.
+fn confirm_text(count: usize) -> (&'static str, Vec<String>) {
+    let what = if count == 1 { "1 item".to_string() } else { format!("{count} items") };
+    let buttons = format!("{TRASH_BUTTON}  {CANCEL_BUTTON}");
+    ("Move to Trash", vec![format!("Move {what} to the Trash?"), String::new(), buttons])
+}
+
+fn confirm_box(w: i32, h: i32, count: usize) -> Rect {
+    let (title, lines) = confirm_text(count);
+    box_rect(w, h, title, &lines)
+}
+
+/// The (Move to Trash, Cancel) buttons on the confirmation's last line.
+fn confirm_buttons(w: i32, h: i32, count: usize) -> (Rect, Rect) {
+    let (title, lines) = confirm_text(count);
+    let b = box_rect(w, h, title, &lines);
+    let y = b.y + 2 + lines.len() as i32 - 1;
+    let tw = TRASH_BUTTON.chars().count() as i32;
+    let trash = Rect::new(b.x + 2, y, tw, 1);
+    let cancel = Rect::new(b.x + 2 + tw + 2, y, CANCEL_BUTTON.chars().count() as i32, 1);
+    (trash, cancel)
 }
 
 fn read_head(path: &std::path::Path, max: usize) -> Vec<String> {
@@ -1122,6 +1205,9 @@ impl<F: FsOps> FileManager<F> {
     /// Handle a content-local left click. `ctrl`/`shift` modify selection; a click
     /// on a toolbar/sidebar target navigates. Returns true if anything changed.
     pub fn handle_click(&mut self, p: Point, w: i32, h: i32, ctrl: bool, shift: bool) -> bool {
+        if self.dialog_open() {
+            return self.dialog_click(p, w, h);
+        }
         match self.hit_test(p, w, h) {
             Some(Target::Entry(i)) => { self.select_at(i, ctrl, shift); true }
             Some(Target::Back) => { self.go_back(); true }
@@ -1143,6 +1229,9 @@ impl<F: FsOps> FileManager<F> {
     /// back to single-click behaviour (toolbar / sidebar nav). Returns true if the
     /// caller should drain a resulting open action.
     pub fn double_click(&mut self, p: Point, w: i32, h: i32) -> bool {
+        if self.dialog_open() {
+            return self.dialog_click(p, w, h);
+        }
         match self.hit_test(p, w, h) {
             Some(Target::Entry(i)) => {
                 self.select_at(i, false, false);
@@ -1163,13 +1252,11 @@ impl<F: FsOps> FileManager<F> {
                 self.draw_box(buf, w, h, "Rename", &[format!("Name: {name}\u{2588}")]);
             }
             Overlay::ConfirmDelete { count } => {
-                self.draw_box(
-                    buf,
-                    w,
-                    h,
-                    "Move to Trash",
-                    &[format!("Trash {count} item(s)? [Enter] Yes  [Esc] No")],
-                );
+                let (title, lines) = confirm_text(*count);
+                self.draw_box(buf, w, h, title, &lines);
+                let (trash, cancel) = confirm_buttons(w, h, *count);
+                buf.write_str(trash.x, trash.y, TRASH_BUTTON, pal_bg(), pal_accent());
+                buf.write_str(cancel.x, cancel.y, CANCEL_BUTTON, pal_fg(), pal_bg());
             }
             Overlay::Context { menu, .. } => {
                 menu.render(buf, crate::geometry::Rect::new(0, 0, w, h));
@@ -1202,11 +1289,7 @@ impl<F: FsOps> FileManager<F> {
 
     /// Draw a centered modal box `lines.len()+2` rows tall with a title and body.
     fn draw_box(&self, buf: &mut CellBuffer, w: i32, h: i32, title: &str, lines: &[String]) {
-        let widest = lines.iter().map(|l| l.len()).max().unwrap_or(0);
-        let bw = (title.len().max(widest) as i32 + 4).min(w - 2).max(4);
-        let bh = lines.len() as i32 + 2;
-        let bx = (w - bw) / 2;
-        let by = (h - bh) / 2;
+        let Rect { x: bx, y: by, w: bw, h: bh } = box_rect(w, h, title, lines);
         for y in by..by + bh {
             for x in bx..bx + bw {
                 buf.set(x, y, Cell { ch: ' ', fg: pal_fg(), bg: pal_sel(), attrs: Default::default() });

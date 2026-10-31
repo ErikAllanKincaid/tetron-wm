@@ -438,3 +438,54 @@ fn context_menu_copy_path_and_terminal_here_become_session_actions() {
     }
     let _ = fs::remove_dir_all(&d);
 }
+
+/// Trash confirmation: Enter (the client sends Activate, the listing's Enter)
+/// and the Move to Trash button trash; Cancel, a click outside the box and the
+/// arrows never act on the listing underneath.
+#[test]
+fn trash_dialog_answers_enter_and_clicks_and_never_opens_the_file() {
+    let d = tmp("trashdlg");
+    let marker = format!("tetron-wm-fm-trashdlg-{}.txt", std::process::id());
+    fs::write(d.join(&marker), b"x").unwrap();
+    fs::write(d.join("zz.txt"), b"y").unwrap();
+    let mut fm = FileManager::new(d.clone(), BTreeMap::new());
+    let _ = fm.render(80, 24);
+    let open = |fm: &mut FileManager| {
+        fm.select_at(0, false, false);
+        fm.begin_delete();
+        assert!(fm.dialog_open());
+    };
+
+    // Cancel button, then a click outside the box: closed, nothing trashed.
+    open(&mut fm);
+    let (trash, cancel) = fm.confirm_buttons(80, 24).expect("buttons");
+    assert!(trash.y == cancel.y && trash.x + trash.w < cancel.x, "side by side");
+    assert!(fm.handle_click(Point::new(cancel.x + 1, cancel.y), 80, 24, false, false));
+    assert!(fm.overlay().is_none() && d.join(&marker).exists());
+    open(&mut fm);
+    assert!(fm.handle_click(Point::new(0, 0), 80, 24, false, false));
+    assert!(fm.overlay().is_none() && d.join(&marker).exists());
+
+    // Arrows and double-click are swallowed; Enter trashes instead of opening.
+    open(&mut fm);
+    fm.move_cursor(0, 1);
+    assert_eq!(fm.cursor(), 0, "the cursor stays on the item being trashed");
+    fm.activate();
+    assert_eq!(fm.take_action(), None, "Enter never opens the file");
+    assert!(fm.overlay().is_none());
+    assert!(!d.join(&marker).exists(), "Enter moved it to the Trash");
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
+        let _ = fs::remove_file(td.join(&marker));
+    }
+
+    // The Move to Trash button.
+    open(&mut fm);
+    let (trash, _) = fm.confirm_buttons(80, 24).unwrap();
+    assert!(fm.double_click(Point::new(trash.x + trash.w - 1, trash.y), 80, 24));
+    assert_eq!(fm.take_action(), None);
+    assert!(!d.join("zz.txt").exists());
+    if let Some(td) = tetron_wm::fileops::trash_dir() {
+        let _ = fs::remove_file(td.join("zz.txt"));
+    }
+    let _ = fs::remove_dir_all(&d);
+}
