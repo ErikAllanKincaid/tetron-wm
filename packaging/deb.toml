@@ -1,0 +1,70 @@
+# Package description for mkdeb (https://github.com/ErikAllanKincaid/tetron-packaging).
+# Built in release CI by the build-deb action. Spec: spec/packaging.py (WMDEB-006).
+# Paths are relative to this file.
+#
+# Minimal on purpose: no Recommends, because apt installs Recommends by default
+# and `apt install tetron-wm` must add only tetron-wm. A missing tool only turns
+# its feature off. The fuller set comes with tetron-wm-desktop (deb-desktop.toml).
+name = "tetron-wm"
+description = "Desktop environment for the terminal"
+long_description = """
+tetron-wm is a window manager and desktop that runs in a terminal or on the
+Linux console: windows, a launcher, a file manager, an image viewer, a
+clipboard history, settings and themes, with mouse support.
+
+It needs no other package to start. Features that use an outside tool (image
+wallpaper with chafa, video with mpv, PDF pages with poppler-utils, sound,
+network and Bluetooth controls) appear when that tool is installed. The
+tetron-wm-desktop package installs the recommended set."""
+section = "utils"
+license = "MIT"
+homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
+# Debian package names, checked against debian:trixie on 2026-10-31. Not listed
+# because trixie does not package them: kmscon, catt. tetron and tetron-tui are
+# our own .debs. tetron-wm versions independently of tetron, so no version pin.
+suggests = [
+  "python3",                    # tetron-wm-startpage, tetron-aimode
+  "curl",                       # Settings > Updates, Get more themes
+  "chafa", "mpv", "poppler-utils", "mupdf-tools", "w3m", "fbi",
+  "sshpass", "openssh-client", "unzip", "7zip", "age", "gpg",
+  "htop", "btop", "upower", "alsa-utils", "khal",
+  "xclip", "wl-clipboard", "gpm", "console-setup-linux", "fonts-dejavu-core",
+  "pipewire", "wireplumber", "network-manager", "bluez",
+  "tetron", "tetron-tui",
+]
+smoke = "tetron-wm --version"
+
+[[files]]
+src = "binary"
+dst = "usr/bin/tetron-wm"
+mode = "0755"
+
+[[files]]
+src = "../scripts/tetron-wm-startpage"
+dst = "usr/bin/tetron-wm-startpage"
+mode = "0755"
+
+[[files]]
+src = "../scripts/tetron-aimode"
+dst = "usr/bin/tetron-aimode"
+mode = "0755"
+
+[[files]]
+src = "../README.md"
+dst = "usr/share/doc/tetron-wm/README.md"
+mode = "0644"
+
+[[files]]
+src = "../CHANGELOG.md"
+dst = "usr/share/doc/tetron-wm/CHANGELOG.md"
+mode = "0644"
+
+[[files]]
+src = "../LICENSE"
+dst = "usr/share/doc/tetron-wm/LICENSE"
+mode = "0644"
+
+[[files]]
+src = "../THIRD-PARTY-LICENSES.md"
+dst = "usr/share/doc/tetron-wm/THIRD-PARTY-LICENSES.md"
+mode = "0644"

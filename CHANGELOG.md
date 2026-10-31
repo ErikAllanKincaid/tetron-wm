@@ -7,6 +7,7 @@ carry user-visible feature work and the occasional breaking config change.
 ## [Unreleased]
 
 ### Added
+- Releases include a `.deb` for Debian and Ubuntu (amd64 and arm64; Debian 12+, Ubuntu 22.04+), with `tetron-wm`, `tetron-wm-startpage`, `tetron-aimode` and the docs. It depends only on the C libraries the binary links, so installing it adds no other package; the tools that light up features (chafa, mpv, poppler-utils, python3, curl, ...) are listed as Suggests. Each `.deb` is tested by installing it in a clean Debian 13 container before it is attached to the release.
 - `tetron-wm config init` writes the example config to `~/.config/tetron-wm/config.toml` when there is none, and never overwrites one; `tetron-wm config example` prints it. The example is built into the binary, so it no longer needs to be downloaded or shipped as a file.
 - Settings > Appearance > **Get more themes** downloads the theme files (`.toml` and their pictures) in the `themes/` directory on GitHub that are not yet in `~/.local/share/tetron-wm/themes/`, so a new theme can be picked without reinstalling. It runs in the background with progress in the row. GitHub allows 60 unauthenticated requests per hour and each click uses one; when they run out the row says "GitHub rate limit, try again later".
 - Settings > **General** > Config file: **Open in editor** (the Editor from Default Apps), **Create from example** when there is no file, **Reset to defaults** (press Enter twice; the old file is kept as `config.toml.bak`) and **Reload**.

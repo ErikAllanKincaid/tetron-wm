@@ -25,7 +25,7 @@ Prebuilt binary for Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). No
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
-It installs to `/usr/local/bin` and uses `sudo` for that. To install into your home instead:
+It installs to `/usr/local/bin` and uses `sudo` for that. On Debian and Ubuntu, once a release carries a `.deb`, the same command installs the `tetron-wm` package with apt instead, so apt manages it from then on (it adds no other package). The `.deb` can also be downloaded from the [releases page](https://github.com/ErikAllanKincaid/tetron-wm/releases) and installed with `sudo apt install ./tetron-wm_<version>_<arch>.deb`. To install into your home instead:
 
 ```sh
 TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
