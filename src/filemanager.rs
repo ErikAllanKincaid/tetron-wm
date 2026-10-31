@@ -33,6 +33,8 @@ pub enum FileManagerAction {
     SendTo { system: String, path: PathBuf },
     /// Cast the file to a Chromecast with catt, in a window.
     Cast(PathBuf),
+    /// Compress or encrypt the entry beside it, in a window.
+    Pack { path: PathBuf, pack: crate::contextmenu::Pack },
 }
 
 /// Modal overlays drawn on top of the listing.
@@ -529,10 +531,11 @@ impl<F: FsOps> FileManager<F> {
 
     fn open_menu(&mut self, idx: usize, at: Point) {
         let (is_dir, role) = self.tab().entries.get(idx).map_or((false, crate::openwith::Role::Other), |e| (e.is_dir, e.role));
+        let can = crate::contextmenu::Abilities::current();
         let items = crate::contextmenu::actions_for(
             crate::contextmenu::Surface::Files,
             crate::contextmenu::Target::Entry { is_dir, pinned: false, role },
-            crate::contextmenu::Abilities::current(),
+            if self.fs.is_local() { can } else { can.remote() },
         );
         self.overlay = Some(Overlay::Context { idx, menu: crate::contextmenu::ContextMenu::new(at, items) });
     }
@@ -651,6 +654,14 @@ impl<F: FsOps> FileManager<F> {
                 }
             }
             A::SendToSystem(system) => self.action = path.map(|path| FileManagerAction::SendTo { system, path }),
+            A::Compress | A::Encrypt => {
+                let items = crate::contextmenu::pack_actions(action == A::Encrypt);
+                if !items.is_empty() {
+                    menu.replace(items);
+                    self.overlay = Some(Overlay::Context { idx, menu });
+                }
+            }
+            A::PackAs(pack) => self.action = path.map(|path| FileManagerAction::Pack { path, pack }),
             A::CastTo => self.action = path.map(FileManagerAction::Cast),
             A::Unpin | A::NewFolder | A::CleanUp => {}
             A::Minimize | A::Maximize | A::MoveWindow | A::RenameWindow | A::CloseWindow => {}

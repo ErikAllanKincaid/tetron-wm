@@ -152,7 +152,10 @@ RIGHT-CLICK MENU (desktop icons and Files; leader . from the keyboard):\n\
 \x20 type, fresh and other editors for text), Set as wallpaper, Extract here / List\n\
 \x20 contents (archives), Cast to Chromecast (video, audio and images; needs catt, picks\n\
 \x20 `cast_device`, runs in a window and closing it stops the cast), Copy path, Open\n\
-\x20 terminal here, Get Info, Send to... (scp to a saved system), Rename, Move to Trash. On a plain Linux console (not kmscon, ssh or a\n\
+\x20 terminal here, Get Info, Send to... (scp to a saved system), Rename, Compress...\n\
+\x20 (.7z, .zip, .tar.gz), Encrypt... (.7z AES-256 with hidden names, AES .zip,\n\
+\x20 .tar.gz.age, .tar.gz.gpg; the tool asks for the password in a window; needs 7z,\n\
+\x20 age or gpg), Move to Trash. Extract here also decrypts .gpg and .age. On a plain Linux console (not kmscon, ssh or a\n\
 \x20 GUI terminal) View full screen shows images with fbi and Play full screen plays\n\
 \x20 video with mpv; q returns, apps keep running. Under kmscon both work once the\n\
 \x20 full screen helper is installed (install-tetron-wm-suite.sh --fullscreen): it switches\n\

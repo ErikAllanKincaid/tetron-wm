@@ -92,7 +92,7 @@ fn role_for_ext(ext: &str) -> Option<Role> {
         "mp3" | "flac" | "wav" | "ogg" | "m4a" | "opus" => Role::Audio,
         "md" | "txt" | "log" | "json" | "toml" | "yaml" | "yml" | "csv" | "ini" | "conf" => Role::Text,
         "rs" | "py" | "js" | "ts" | "go" | "c" | "h" | "cpp" | "hpp" | "java" | "rb" | "sh" | "lua" | "html" | "css" => Role::Code,
-        "zip" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "7z" | "rar" | "zst" => Role::Archive,
+        "zip" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "gpg" | "pgp" | "age" => Role::Archive,
         "pdf" => Role::Pdf,
         _ => return None,
     })

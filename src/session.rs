@@ -2177,12 +2177,26 @@ impl SessionCore {
         let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
         let Some(cmd) = crate::contextmenu::archive_command(path, &dir, list) else { return };
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        if list {
+        if list && !crate::contextmenu::archive_prompts(path) {
             crate::dbg_log(&format!("archive list: {cmd}"));
             self.launch_in(name, "sh".into(), vec!["-c".into(), format!("{cmd} 2>&1 | less")], Some(dir));
         } else {
-            self.run_in_window(format!("extract {name}"), cmd, dir);
+            // A password prompt needs the tty to itself (no `less` reading it too);
+            // the window keeps the listing in its scrollback.
+            self.run_in_window(format!("{} {name}", if list { "list" } else { "extract" }), cmd, dir);
         }
+    }
+
+    /// Right-click "Compress…" / "Encrypt…" > a format: pack the entry into a
+    /// new archive beside it, in a window so the tool can ask for the password.
+    fn pack(&mut self, path: &std::path::Path, pack: crate::contextmenu::Pack) {
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else { return };
+        let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        let out = crate::contextmenu::unique_with_ext(&dir, &name, pack.ext());
+        let out = out.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let cmd = crate::contextmenu::PackTools::current().command(pack, &name, &out);
+        crate::dbg_log(&format!("pack {pack:?}: in {} run {cmd}", dir.display()));
+        self.run_in_window(format!("{} {name}", if pack.encrypted() { "encrypt" } else { "compress" }), cmd, dir);
     }
 
     /// Right-click "Send to…" a Systems entry: scp to its home directory, in a
@@ -4586,6 +4600,7 @@ or a remote-side error — its authorized_keys was left untouched)",
             Some(crate::filemanager::FileManagerAction::Archive { path, list }) => self.archive(&path, list),
             Some(crate::filemanager::FileManagerAction::SendTo { system, path }) => self.send_to(&system, &path),
             Some(crate::filemanager::FileManagerAction::Cast(path)) => self.cast_file(&path),
+            Some(crate::filemanager::FileManagerAction::Pack { path, pack }) => self.pack(&path, pack),
             None => {}
         }
     }
@@ -5408,7 +5423,7 @@ or a remote-side error — its authorized_keys was left untouched)",
                     _ => self.terminal_at(&target),
                 }
             }
-            A::PlayFullscreen | A::ExtractHere | A::ListContents | A::SendToSystem(_) | A::CastTo | A::GetInfo => {
+            A::PlayFullscreen | A::ExtractHere | A::ListContents | A::SendToSystem(_) | A::CastTo | A::GetInfo | A::PackAs(_) => {
                 self.desktop.cancel_overlay();
                 if let Some(p) = path {
                     match action {
@@ -5417,12 +5432,16 @@ or a remote-side error — its authorized_keys was left untouched)",
                         A::ExtractHere => self.archive(&p, false),
                         A::ListContents => self.archive(&p, true),
                         A::SendToSystem(name) => self.send_to(&name, &p),
+                        A::PackAs(pack) => self.pack(&p, pack),
                         _ => self.desktop_get_info(&p),
                     }
                 }
             }
-            A::SendTo => {
-                let items = crate::contextmenu::send_to_actions();
+            A::SendTo | A::Compress | A::Encrypt => {
+                let items = match action {
+                    A::SendTo => crate::contextmenu::send_to_actions(),
+                    _ => crate::contextmenu::pack_actions(action == A::Encrypt),
+                };
                 if items.is_empty() {
                     self.desktop.cancel_overlay();
                 } else {
