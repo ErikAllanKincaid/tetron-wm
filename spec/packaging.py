@@ -79,10 +79,16 @@ class DpkgAwareUpdater(Requirement):
 class LeanDeb(Requirement):
     """REQUIREMENT-ID: WMDEB-006
 
-    `packaging/deb.toml`: the binary, the helpers in usr/lib/tetron-wm and
-    the docs; Depends computed from the ELF; no Recommends (python3 and curl
-    are Suggests); no maintainer scripts. `apt install` of the deb on a fresh
-    Debian 13 adds exactly one package.
+    `packaging/deb.toml`: the binary, the helpers `tetron-wm-startpage` and
+    `tetron-aimode` in usr/bin (WMDEB-004), and the docs in
+    usr/share/doc/tetron-wm; Depends computed from the ELF only; no declared
+    Depends or Recommends (python3, curl and the feature tools are
+    Suggests, by their Debian names); no maintainer scripts. `apt install`
+    of the deb on a fresh Debian 13 adds exactly one package. Release CI
+    builds it from the released Linux binaries with the build-deb action
+    pinned by commit SHA, tests the install in a clean container, and
+    attaches the .deb and its .sha256 to the release, named
+    `tetron-wm_<version>-<rev>_<arch>.deb` as install.sh expects (WMDEB-005).
     """
 
 
