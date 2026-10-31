@@ -2896,6 +2896,15 @@ or a remote-side error — its authorized_keys was left untouched)",
                 // help-then-shell wrapper as the launcher menu. Explicit args mean
                 // an intentional invocation (`tetron-wm launch gum choose a b`) —
                 // run those as given.
+                // A built-in (`@files`, `@settings`, …) opens like the launcher
+                // entry; spawned as a program it was a window that died at once.
+                if command.starts_with('@') {
+                    match (command.as_str(), args.first()) {
+                        ("@files", Some(dir)) => self.open_filemanager_root(std::path::PathBuf::from(dir)),
+                        _ => self.launch_entry(AppEntry { name, command, args, ..Default::default() }),
+                    }
+                    return;
+                }
                 let (command, args) = if args.is_empty()
                     && (crate::catalog::is_cli(&command) || crate::catalog::is_cli(&name))
                 {

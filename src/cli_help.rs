@@ -109,7 +109,8 @@ COMMANDS:\n\
 \x20 kill                  stop the session's daemon and app host (closes all windows)\n\
 \x20 kill-app <id|all>     close app <id> (see ps); all reaps only exited apps\n\
 \x20 ps                    list running apps\n\
-\x20 launch <cmd> [args]   open an app window in the running desktop\n\
+\x20 launch <cmd> [args]   open an app window in the running desktop; a built-in by name:\n\
+\x20                       @files [dir], @settings, @store, @activity, @logs, @image <file>\n\
 \x20 tile                  tile all windows into the grid\n\
 \x20 screenshot [file.png] save a PNG of the whole screen (needs an attached client)\n\
 \x20 screensaver [on|off|toggle|list] [effect]   cover the screen (default on); any key or mouse\n\

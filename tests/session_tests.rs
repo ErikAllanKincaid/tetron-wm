@@ -1393,3 +1393,15 @@ fn colors_setting_overrides_detection_unless_the_env_forced_it() {
     assert_eq!(core.colors_override(), None);
     tetron_wm::display::set(before);
 }
+
+#[test]
+fn cli_launch_of_a_builtin_opens_the_builtin_window() {
+    // `tetron-wm launch @settings` used to spawn "@settings" as a program.
+    let mut core = SessionCore::new(100, 30, Config::default());
+    core.apply(ClientMsg::Launch { name: "@settings".into(), command: "@settings".into(), args: vec![] });
+    assert_eq!(core.window_count(), 1, "Settings window");
+    let dir = std::env::temp_dir();
+    core.apply(ClientMsg::Launch { name: "@files".into(), command: "@files".into(), args: vec![dir.display().to_string()] });
+    assert_eq!(core.window_count(), 2, "Files window");
+    core.shutdown();
+}
