@@ -175,7 +175,12 @@ pub fn render(buf: &CellBuffer, font: &Psf) -> image::RgbImage {
 }
 
 /// Write a PNG of `buf` to `path`. Errors are returned as text for the log.
+/// Why a screenshot fails on a host with no console fonts. Debian and Ubuntu ship
+/// the PSF fonts in console-setup-linux; fonts-terminus there has none.
+pub const NO_FONT: &str = "no PSF console font found in /usr/share/consolefonts \
+(Debian and Ubuntu: sudo apt install console-setup-linux; Fedora: kbd; Arch: terminus-font)";
+
 pub fn save_png(buf: &CellBuffer, path: &std::path::Path) -> Result<(), String> {
-    let font = Psf::load_system().ok_or("no PSF console font found in /usr/share/consolefonts (install fonts-terminus)")?;
+    let font = Psf::load_system().ok_or(NO_FONT)?;
     render(buf, &font).save(path).map_err(|e| e.to_string())
 }

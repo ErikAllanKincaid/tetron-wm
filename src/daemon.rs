@@ -471,7 +471,10 @@ fn serve_client_inner(
             if let Some(path) = shot {
                 match crate::screenshot::save_png(composed, std::path::Path::new(&path)) {
                     Ok(()) => crate::dbg_log(&format!("screenshot: wrote {path}")),
-                    Err(e) => crate::dbg_log(&format!("screenshot: {path}: {e}")),
+                    Err(e) => {
+                        crate::dbg_log(&format!("screenshot: {path}: {e}"));
+                        core.report_screenshot_failure(&path, &e);
+                    }
                 }
             }
             comp.diff()

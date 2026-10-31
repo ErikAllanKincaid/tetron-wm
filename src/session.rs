@@ -2339,6 +2339,14 @@ impl SessionCore {
         }
     }
 
+    /// A screenshot that could not be written opens a window saying why, so
+    /// leader s never fails silently (the reason used to reach only the log).
+    pub fn report_screenshot_failure(&mut self, path: &str, err: &str) {
+        let text = format!("Screenshot not saved.\n\n  {path}\n    {err}\n");
+        let script = format!("printf '%s' {}; printf '\nPress Enter to close. '; read _k", crate::systems::sh_quote(&text));
+        self.launch_in("Screenshot".into(), "sh".into(), vec!["-c".into(), script], None);
+    }
+
     fn apply_power_outcome(&mut self, outcome: PowerOutcome) {
         match outcome {
             PowerOutcome::Detach => self.quit = true,
