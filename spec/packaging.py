@@ -46,12 +46,15 @@ class SettingsRework(Requirement):
     """
 
 
-class GitStyleHelpers(Requirement):
+class PrefixedHelperNames(Requirement):
     """REQUIREMENT-ID: WMDEB-004
 
-    `startpage` and `aimode` live in `<prefix>/lib/tetron-wm/` and run as
-    `tetron-wm startpage|aimode`; nothing new on PATH. Without python3 the
-    subcommand prints one line saying so.
+    The bundled helper scripts carry a tetron prefix so no generic name lands
+    on PATH: `tetron-wm-startpage` (part of the desktop, its data lives in
+    `~/.config/tetron-wm`) and `tetron-aimode` (an independent terminal app).
+    They install on PATH like any app (`/usr/bin` from the deb, `~/.local/bin`
+    from the suite installer) and the launcher finds them there. No
+    compatibility for the old bare names `startpage` and `aimode`.
     """
 
 
