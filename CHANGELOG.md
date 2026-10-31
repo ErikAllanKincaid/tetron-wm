@@ -15,6 +15,7 @@ carry user-visible feature work and the occasional breaking config change.
 ### Fixed
 - Files: Enter on the **Move to Trash** confirmation opened the file instead of trashing it, Esc closed the whole Files window, and the dialog could not be answered with the mouse. The dialog now has **Move to Trash** and **Cancel** buttons; Enter trashes, Esc or a click outside cancels, and the arrows and clicks no longer reach the listing underneath. Error and Get Info boxes close on Enter, Esc or a click.
 - Files: the preview pane no longer freezes the desktop on a PDF. It ran `pdftotext` on the whole document, with no time limit, on every redraw; it now reads the first page with a 3 second limit, once per file. A text preview reads only the first 64 KB, so a multi-gigabyte log previews instantly.
+- Status readers that print more than 64 KB (a long `khal` agenda, many Bluetooth devices or Wi-Fi networks, a dense PDF page) no longer stall until their time limit and come back empty: tetron-wm now reads their output while they run.
 
 ### Changed
 - Installer: the kmscon console prompt now says what it does in plain terms ("Make kmscon the login screen on tty1 (Ctrl+Alt+F1)? It replaces the plain kernel text console, adding truecolor and mouse") instead of "Run kmscon on tty1 in place of the kernel login prompt?".

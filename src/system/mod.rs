@@ -377,6 +377,7 @@ pub fn kill_and_reap(mut child: std::process::Child) {
 /// **only** sanctioned way to shell out — it keeps a hung tool from freezing
 /// any caller (the poller or a control dispatch).
 pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
+    use std::io::Read;
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
     let mut child = Command::new(program)
@@ -386,15 +387,25 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
+    // Drain stdout on a thread: a child writing more than the pipe buffer (64 KB
+    // on Linux) blocks until someone reads, so reading only after exit stalled it
+    // until the cap and lost the output.
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let ok = stdout.read_to_end(&mut buf).is_ok();
+        let _ = tx.send(ok.then_some(buf));
+    });
     let deadline = Instant::now() + Duration::from_secs(secs);
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let out = child.wait_with_output().ok()?;
-                if !status.success() {
-                    return None;
-                }
-                return String::from_utf8(out.stdout).ok();
+                // A background grandchild can hold the pipe open after the child
+                // exits; wait for EOF only until the cap.
+                let left = deadline.saturating_duration_since(Instant::now());
+                let out = rx.recv_timeout(left).ok().flatten()?;
+                return status.success().then(|| String::from_utf8(out).ok()).flatten();
             }
             Ok(None) => {
                 if Instant::now() >= deadline {
@@ -403,7 +414,10 @@ pub fn run_capped(program: &str, args: &[&str], secs: u64) -> Option<String> {
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
-            Err(_) => return None,
+            Err(_) => {
+                kill_and_reap(child);
+                return None;
+            }
         }
     }
 }
@@ -491,6 +505,17 @@ mod tests {
             })
             .count();
         assert_eq!(zombies, 0);
+    }
+
+    #[test]
+    fn capped_returns_output_larger_than_the_pipe_buffer() {
+        // 200 KB, three times a Linux pipe buffer: must arrive whole, well inside the cap.
+        let t = std::time::Instant::now();
+        let out = run_capped("sh", &["-c", "head -c 200000 /dev/zero | tr '\\0' x"], 5).expect("output");
+        assert_eq!(out.len(), 200_000);
+        assert!(t.elapsed() < std::time::Duration::from_secs(3), "took {:?}", t.elapsed());
+        assert_eq!(run_capped("sh", &["-c", "echo hi; exit 1"], 5), None, "non-zero exit is None");
+        assert_eq!(run_capped("tetron-wm-no-such-program", &[], 1), None);
     }
 
     #[test]
