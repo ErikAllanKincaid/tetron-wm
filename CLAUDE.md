@@ -16,6 +16,8 @@ cargo clippy --all-targets   # warning-clean; keep it that way
 There is no rustfmt enforcement; match the style of the file you're editing.
 Clippy is currently warning-clean — keep it that way.
 
+Packaging requirements are specs in `spec/` (libspec, pinned in `pyproject.toml` as a development-only dependency). Edit the spec first and review it with `uv run libspec diff` (`uv run libspec diff A B` between commits, `uv run libspec log` for history), then implement; `python3 reconcile.py` must exit 0 before a commit.
+
 ## Versioning & release channels
 
 `Cargo.toml` carries the semver version (currently 0.14.18); update `CHANGELOG.md`

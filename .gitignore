@@ -3,3 +3,4 @@
 **/.DS_Store
 DO-NOT-COMMIT/
 __pycache__/
+.venv/
