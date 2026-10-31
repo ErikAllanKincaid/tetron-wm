@@ -66,6 +66,13 @@ class DpkgAwareUpdater(Requirement):
     binary: Settings > Updates installs the new release .deb with apt in a
     terminal window, and the dev channel refuses. The update check runs off
     the render loop.
+
+    install.sh on a dpkg host: package installed -> the release .deb upgrades
+    it through apt, or, with no .deb in the release, nothing changes and it
+    exits 3; a raw copy -> upgraded in place with a note; neither -> the
+    .deb when the release has one, else the raw binary. The .deb is checked
+    against its .sha256 first. Callers (Settings > Updates, Systems > Add
+    Remote) never fall back to a source build after exit 3.
     """
 
 
