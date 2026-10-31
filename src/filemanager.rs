@@ -110,7 +110,14 @@ pub struct FileManager<F: FsOps = StdFs> {
     /// list/columns = text rows, icon = tile rows). `move_cursor` uses it to keep
     /// the cursor on screen by updating the active tab's `scroll` offset.
     vis_rows: std::cell::Cell<i32>,
+    /// The last preview body, keyed by (path, size, mtime, line budget) from the listing. Render asks for
+    /// it every frame; the cache keeps a PDF preview from running pdftotext (and
+    /// a text preview from reading the file) once per frame.
+    preview_cache: std::cell::RefCell<Option<Box<PreviewKey>>>,
 }
+
+/// A cached preview: path, size, mtime, line budget, body.
+type PreviewKey = (PathBuf, u64, Option<std::time::SystemTime>, usize, Vec<String>);
 
 impl FileManager<StdFs> {
     /// Open a file manager rooted at `cwd` with the given `[default_apps]` map.
@@ -150,6 +157,7 @@ impl<F: FsOps> FileManager<F> {
             action: None,
             cols_per_row: std::cell::Cell::new(1),
             vis_rows: std::cell::Cell::new(1),
+            preview_cache: std::cell::RefCell::new(None),
         };
         me.reload();
         me
@@ -253,9 +261,17 @@ impl<F: FsOps> FileManager<F> {
         let t = self.tab();
         let Some(e) = t.entries.get(t.cursor) else { return vec![]; };
         use crate::openwith::Role::*;
+        if matches!(e.role, Text | Code | Pdf) {
+            if let Some((p, size, modified, m, lines)) = self.preview_cache.borrow().as_deref() {
+                if *p == e.path && *size == e.size && *modified == e.modified && *m == max {
+                    return lines.clone();
+                }
+            }
+            let lines = if e.role == Pdf { pdf_preview(&e.path, max) } else { read_head(&e.path, max) };
+            *self.preview_cache.borrow_mut() = Some(Box::new((e.path.clone(), e.size, e.modified, max, lines.clone())));
+            return lines;
+        }
         match e.role {
-            Text | Code => read_head(&e.path, max),
-            Pdf => pdf_preview(&e.path, max),
             Directory => vec![format!("{} \u{2014} folder", e.name)],
             _ => {
                 let mut v = vec![
@@ -839,28 +855,37 @@ fn confirm_buttons(w: i32, h: i32, count: usize) -> (Rect, Rect) {
 }
 
 fn read_head(path: &std::path::Path, max: usize) -> Vec<String> {
-    match std::fs::read_to_string(path) {
-        Ok(s) => s.lines().take(max).map(|l| l.chars().take(200).collect()).collect(),
-        Err(_) => vec!["(binary or unreadable)".into()],
+    use std::io::Read;
+    // Read only the head: a multi-gigabyte log must not be loaded to show a page.
+    let mut head = Vec::new();
+    let ok = std::fs::File::open(path).and_then(|f| f.take(PREVIEW_BYTES).read_to_end(&mut head)).is_ok();
+    match ok.then(|| String::from_utf8_lossy(&head).into_owned()).filter(|s| !s.contains('\0')) {
+        Some(s) => s.lines().take(max).map(|l| l.chars().take(200).collect()).collect(),
+        None => vec!["(binary or unreadable)".into()],
     }
 }
 
+/// Bytes of a file the preview pane reads.
+const PREVIEW_BYTES: u64 = 64 * 1024;
+
+/// Text of the first page of a PDF, for the preview pane. Capped like every
+/// other spawn: a broken or huge PDF must not stall the desktop.
 fn pdf_preview(path: &std::path::Path, max: usize) -> Vec<String> {
+    let file = path.to_string_lossy();
     for tool in ["pdftotext", "mutool"] {
-        if crate::catalog::is_installed(tool) {
-            let args: Vec<String> = if tool == "pdftotext" {
-                vec![path.to_string_lossy().into(), "-".into()]
-            } else {
-                vec!["draw".into(), "-F".into(), "txt".into(), path.to_string_lossy().into()]
-            };
-            if let Ok(out) = std::process::Command::new(tool).args(&args).output() {
-                let text = String::from_utf8_lossy(&out.stdout);
-                let lines: Vec<String> =
-                    text.lines().take(max).map(|l| l.chars().take(200).collect()).collect();
+        if !crate::catalog::is_installed(tool) {
+            continue;
+        }
+        let args: Vec<&str> =
+            if tool == "pdftotext" { vec!["-l", "1", &file, "-"] } else { vec!["draw", "-F", "txt", &file, "1"] };
+        match crate::system::run_capped(tool, &args, 3) {
+            Some(text) => {
+                let lines: Vec<String> = text.lines().take(max).map(|l| l.chars().take(200).collect()).collect();
                 if !lines.is_empty() {
                     return lines;
                 }
             }
+            None => crate::dbg_log(&format!("preview: {tool} failed or timed out on {file}")),
         }
     }
     vec!["PDF (install pdftotext or mutool for a text preview)".into()]
@@ -1324,6 +1349,31 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn read_head_reads_only_the_head_and_flags_binary() {
+        let d = tmp("head");
+        let big = d.join("big.log");
+        fs::write(&big, "line\n".repeat(200_000)).unwrap(); // 1 MB
+        let lines = read_head(&big, 5);
+        assert_eq!(lines, vec!["line"; 5]);
+        fs::write(d.join("bin"), [0u8, 1, 2, 0]).unwrap();
+        assert_eq!(read_head(&d.join("bin"), 5), vec!["(binary or unreadable)"]);
+        assert_eq!(read_head(&d.join("missing"), 5), vec!["(binary or unreadable)"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn preview_is_cached_per_file_and_size() {
+        let d = tmp("pcache");
+        fs::write(d.join("a.txt"), "one\n").unwrap();
+        let fm = FileManager::new(d.clone(), BTreeMap::new());
+        assert_eq!(fm.preview_lines(5), vec!["one"]);
+        // Same listing (size and mtime): served from the cache, the file is not read again.
+        fs::write(d.join("a.txt"), "two\n").unwrap();
+        assert_eq!(fm.preview_lines(5), vec!["one"]);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
