@@ -1395,7 +1395,8 @@ impl SessionCore {
                 crate::dbg_log(&format!("apps: install the {} size with the suite installer", size.name()));
                 let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
                 let cmd = crate::packaging::apps_install_command(raw, size);
-                self.launch(format!("install {} apps", size.name()), "sh".into(), vec!["-lc".into(), cmd]);
+                // "install:" titles rescan $PATH when the window closes (reap_dead).
+                self.launch(format!("install: {} apps", size.name()), "sh".into(), vec!["-lc".into(), cmd]);
             }
             Some(crate::settings::SettingsAction::OpenConfigFile) => self.open_config_file(),
             Some(crate::settings::SettingsAction::CreateConfigFile) => {
@@ -6401,6 +6402,12 @@ or a remote-side error — its authorized_keys was left untouched)",
         }
         if install_finished {
             self.refresh_installed_apps();
+            // Settings > General > Apps shows the size that is now installed.
+            for c in self.contents.values_mut() {
+                if let WinContent::Settings(s) = c {
+                    s.refresh_apps();
+                }
+            }
         }
     }
 

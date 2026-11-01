@@ -287,9 +287,7 @@ impl Settings {
             self.waiter = crate::fullscreen::service_state();
         } else if i == GENERAL {
             self.cfg_exists = config_file_exists();
-            self.apps_size = crate::packaging::installed_size();
-            self.apps_pick = 0;
-            self.have_curl = crate::catalog::is_installed("curl");
+            self.refresh_apps();
         } else if i == SECTIONS.len() - 1 {
             self.install_info = install_info();
         }
@@ -322,6 +320,14 @@ impl Settings {
     pub fn set_themes_status(&mut self, s: String, done: bool) {
         self.themes_status = s;
         self.themes_busy = !done;
+    }
+
+    /// Re-read the installed size and curl (after an install window closed).
+    pub fn refresh_apps(&mut self) {
+        self.apps_size = crate::packaging::installed_size();
+        self.apps_pick = 0;
+        self.have_curl = crate::catalog::is_installed("curl");
+        self.install_info = install_info();
     }
 
     /// Re-check whether the config file exists (after Create / Reset).
