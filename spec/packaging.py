@@ -191,6 +191,11 @@ class SuiteScriptSizes(Requirement):
     - Downloads the themes listed in `themes/` on the branch (GitHub
       contents API) into `~/.local/share/tetron-wm/themes`, falling back to
       the built-in list when the listing fails; never overwrites a file.
+    - Skips gpm on a Linux machine without a mouse device
+      (/dev/input/mice): Debian's gpm fails to configure there and leaves a
+      broken package (USER 2026-10-31: gpm stays a desktop Recommends, the
+      suite installer guards it). One by one it is left out; through the
+      metapackage it is excluded with `gpm-` in the same apt command.
     - Records `size` and `method` (deb or raw) in `suite-state`.
     - `--dry-run` prints the size, method and every package it would
       install. Release URL and tag can be overridden (tests).
