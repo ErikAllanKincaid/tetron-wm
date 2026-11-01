@@ -133,7 +133,7 @@ class SuiteScriptOnDpkgHost(Requirement):
 
     The suite script installs the deb on a dpkg host, converts a raw install,
     downloads themes through the same directory listing, and ends with one
-    tetron-wm on the host.
+    tetron-wm on the host. Carried out by WMINST-002 (install matrix plan).
     """
 
 
@@ -156,4 +156,42 @@ class AppListSingleSource(Requirement):
     and `size:script:name` per script-only app. Every Recommends of both
     tomls appears in it, and each entry of the suite script's former lists
     is either in it or in the generator's written drop list with a reason.
+    """
+
+
+class SuiteScriptSizes(Requirement):
+    """REQUIREMENT-ID: WMINST-002
+
+    Depends on WMINST-001 and WMDEB-005; carries out WMDEB-008 and the plan's
+    WMINST-003 (other systems), since both replace the same hand-written
+    lists. `install-tetron-wm-suite.sh`:
+
+    - Asks every user the size: minimal (tetron-wm only), desktop (the
+      default, preselected) or extras; `--size` answers it, `-y` takes
+      desktop, `--no-extras` means minimal, `--extras` keeps the default.
+    - Reads the apps from `assets/suite-apps.txt` (the checkout's copy when
+      run from one, else fetched from the branch), never from lists of its
+      own. A size installs its lines and the smaller sizes' lines; gui
+      lines only with a desktop session; services lines only after their
+      own question (default no).
+    - On a Debian or Ubuntu host where tetron-wm is the apt package and the
+      release has the size's metapackage, installs that metapackage from the
+      release (checked against its .sha256) with apt, so apt tracks the set.
+      Otherwise (tetron-wm not from the package, or no metapackage in the
+      release) it installs the same apps one by one with the package
+      manager. A metapackage is never installed next to a raw tetron-wm,
+      since it would add a second copy.
+    - On a dpkg host where tetron-wm is a raw copy and the release has the
+      tetron-wm .deb, offers to convert it (default no; `--convert` answers
+      yes): removes the raw copy, then installs the package.
+    - Installs the script-only apps of the size (fresh, uv where not
+      packaged, catt, casttui, the symbols Nerd Font, and the helper scripts
+      when tetron-wm is not the deb), and calls install.sh with its own
+      dependency step skipped.
+    - Downloads the themes listed in `themes/` on the branch (GitHub
+      contents API) into `~/.local/share/tetron-wm/themes`, falling back to
+      the built-in list when the listing fails; never overwrites a file.
+    - Records `size` and `method` (deb or raw) in `suite-state`.
+    - `--dry-run` prints the size, method and every package it would
+      install. Release URL and tag can be overridden (tests).
     """
