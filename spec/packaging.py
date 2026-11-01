@@ -135,3 +135,25 @@ class SuiteScriptOnDpkgHost(Requirement):
     downloads themes through the same directory listing, and ends with one
     tetron-wm on the host.
     """
+
+
+class AppListSingleSource(Requirement):
+    """REQUIREMENT-ID: WMINST-001
+
+    The app sets are defined once (plan: PLAN_tetron-wm_install_methods_
+    sizes_console_matrix.md). `packaging/desktop.toml` and
+    `packaging/extras.toml` define the desktop and extras sizes by Debian
+    name. `packaging/os-names.toml` gives, per Debian name, the check that
+    tells it is present (a command, `font=NAME`, or `consolefonts`) and the
+    Fedora, Arch and Homebrew names where they differ (an empty name: not
+    on that OS), each verified in a container or against Homebrew; it also
+    holds packages that are on some OSes but in no deb (uv, blueutil), and
+    the services the suite script offers separately. `packaging/
+    script-only.toml` lists apps no distro packages (catt, casttui, fresh,
+    the Nerd Font, the helper scripts on a raw install) with their size.
+    `scripts/gen_suite_lists.py` (stdlib) writes `assets/suite-apps.txt`
+    from them, one `size:group:check:apt:dnf:pacman:brew` line per package
+    and `size:script:name` per script-only app. Every Recommends of both
+    tomls appears in it, and each entry of the suite script's former lists
+    is either in it or in the generator's written drop list with a reason.
+    """

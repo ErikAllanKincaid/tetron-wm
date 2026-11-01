@@ -50,3 +50,15 @@ class DesktopIsAMetapackageOnTetronWm(Constraint):
     """
     constraint_id = "CON-WD04"
     enforcement_logic = "{{ desktop_deb.ok }}"
+
+
+class SuiteAppListGenerated(Constraint):
+    """CONSTRAINT-ID: CON-WD05
+
+    `assets/suite-apps.txt` equals what `scripts/gen_suite_lists.py`
+    generates from the package tomls (WMINST-001), so a toml edit without
+    regenerating fails the gate.
+    ENFORCEMENT (reconcile.py): suite_apps.current is true.
+    """
+    constraint_id = "CON-WD05"
+    enforcement_logic = "{{ suite_apps.current }}"
