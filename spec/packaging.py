@@ -242,3 +242,15 @@ class SettingsAppsRow(Requirement):
     for Enter. The row re-reads the size when General is entered. Without
     curl the row says it is needed and Enter does nothing.
     """
+
+
+class InstallGuide(Requirement):
+    """REQUIREMENT-ID: WMINST-006
+
+    `docs/INSTALL_tetron-wm_methods_and_sizes.md` is the user-facing guide:
+    the ways to install (suite script, install.sh, debs, source), the three
+    sizes and what each brings, the setups (console levels), the matrix of
+    method by size, how each is updated and removed, and how to grow the
+    size later (suite script `--size`, Settings > General > Apps). The
+    README's Install section links to it.
+    """
