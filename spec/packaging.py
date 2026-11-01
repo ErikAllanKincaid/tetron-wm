@@ -195,7 +195,9 @@ class SuiteScriptSizes(Requirement):
       (/dev/input/mice): Debian's gpm fails to configure there and leaves a
       broken package (USER 2026-10-31: gpm stays a desktop Recommends, the
       suite installer guards it). One by one it is left out; through the
-      metapackage it is excluded with `gpm-` in the same apt command.
+      metapackage it is excluded with `gpm-` in the same apt command. Systems > Add Remote
+      installs gpm on a remote only when it has a mouse device too (over
+      ssh the mouse comes from the local terminal, not gpm).
     - Records `size` and `method` (deb or raw) in `suite-state`.
     - `--dry-run` prints the size, method and every package it would
       install. Release URL and tag can be overridden (tests).

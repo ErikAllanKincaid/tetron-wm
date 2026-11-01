@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/ins
 sudo apt install ./tetron-wm_<version>_amd64.deb ./tetron-wm-desktop_<version>_all.deb
 ```
 
-This gives the same packages as the suite installer, without the apps no distribution packages (fresh, uv, catt, casttui, the Nerd Font) and without the console setup.
+This gives the same packages as the suite installer, without the apps no distribution packages (fresh, uv, catt, casttui, the Nerd Font) and without the console setup. On a machine with no mouse device (`/dev/input/mice` missing: headless servers, many VMs), add `gpm-` to that command: Debian's gpm, the console mouse, fails to install there. The suite installer does this for you, and Systems > Add Remote installs gpm on a remote only when it has a mouse device. Over ssh the mouse comes from your own terminal, so a remote never needs gpm for that.
 
 **From source**, with a [Rust toolchain](https://rustup.rs) 1.95 or newer: `cargo install --git https://github.com/ErikAllanKincaid/tetron-wm`. tetron-wm only.
 

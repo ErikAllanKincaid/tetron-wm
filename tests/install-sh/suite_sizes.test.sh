@@ -32,10 +32,15 @@ assets() { printf "%s\n" "$@" > /rel/expanded_assets/v9.9.9; }
 assets tetron-wm_9.9.9-1_$A.deb tetron-wm-desktop_9.9.9-1_all.deb tetron-wm-extras_9.9.9-1_all.deb
 out="$(plan)"; ok "debian fresh, default size: desktop through the metapackage" "echo \"\$out\" | grep -q \"size=desktop method=deb\" && echo \"\$out\" | grep -q \"apt install tetron-wm-desktop \""
 out="$(plan --size extras)"; ok "debian --size extras: both metapackages" "echo \"\$out\" | grep -q \"apt install tetron-wm-desktop tetron-wm-extras\""
+out="$(plan)"; ok "no mouse device: the metapackage without gpm" "echo \"\$out\" | grep -q \"without gpm (no mouse device)\""
 out="$(plan --size minimal)"; ok "debian --size minimal: no apps" "echo \"\$out\" | grep -q \"size=minimal\" && echo \"\$out\" | grep -q \"apps: none\""
 out="$(plan --no-extras)"; ok "--no-extras means minimal" "echo \"\$out\" | grep -q \"size=minimal\""
 printf "#!/bin/sh\necho raw\n" > /usr/local/bin/tetron-wm; chmod +x /usr/local/bin/tetron-wm
 out="$(plan)"; ok "raw copy: not converted under -y, apps one by one with apt names" "echo \"\$out\" | grep -q \"method=raw wm=y convert=n\" && echo \"\$out\" | grep -q \"apps: .*poppler-utils\" && ! echo \"\$out\" | grep -q \"apt install tetron-wm-desktop\""
+ok "no mouse device: gpm left out of the one-by-one list" "! echo \"\$out\" | grep -q \" gpm \""
+mkdir -p /dev/input && touch /dev/input/mice
+out="$(plan)"; ok "with a mouse device: gpm stays in" "echo \"\$out\" | grep -q \" gpm \""
+rm -f /dev/input/mice
 out="$(plan --convert)"; ok "raw copy with --convert: becomes the deb" "echo \"\$out\" | grep -q \"method=deb wm=y convert=y\""
 rm /usr/local/bin/tetron-wm
 assets tetron-wm_9.9.9-1_$A.deb

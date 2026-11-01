@@ -167,7 +167,10 @@ pub fn switch_script(spec: &SwitchSpec) -> String {
             repo_raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm",
         ));
         let gpm = sh_quote(
-            "if [ \"$(uname -s)\" = Linux ] && ! command -v gpm >/dev/null 2>&1; then \
+            // Only with a mouse device: gpm serves the remote's own text console
+            // (over ssh the mouse comes from the local terminal), and without
+            // /dev/input/mice Debian's gpm fails to configure and leaves a broken package.
+            "if [ \"$(uname -s)\" = Linux ] && [ -e /dev/input/mice ] && ! command -v gpm >/dev/null 2>&1; then \
 echo 'tetron-wm: installing gpm (console mouse)…'; \
 sudo apt-get install -y gpm 2>/dev/null || sudo dnf install -y gpm 2>/dev/null || \
 sudo pacman -S --noconfirm gpm 2>/dev/null || echo 'tetron-wm: could not install gpm automatically'; \
@@ -352,6 +355,7 @@ mod tests {
         assert!(key < copy && copy < terminfo && terminfo < install && install < gpm && gpm < sync && sync < attach);
         assert!(s.contains("infocmp -x"), "terminfo export uses the extended format");
         assert!(s.contains("[ \"$rc\" = 3 ]"), "install.sh refusing on an apt host skips the source build");
+        assert!(s.contains("[ -e /dev/input/mice ]"), "gpm only where there is a mouse device");
         assert!(!s.contains("hunter2"), "the password must never be embedded in the script");
         assert!(s.contains("sshpass -e"), "password flows via the SSHPASS env var");
         assert!(!s.contains("TETRON_WM_THEME"), "no theme env when the system has none");

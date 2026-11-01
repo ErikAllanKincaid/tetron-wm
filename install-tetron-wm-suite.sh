@@ -263,9 +263,11 @@ install_size_debs() {
   done
   [ -n "$files" ] || { rm -rf "$tmp"; return 0; }
   apt_update_once
-  log "installing$files with apt"
+  # "gpm-" keeps apt from installing that Recommends (no mouse device).
+  local skip=""; no_mouse && ! dpkg -s gpm >/dev/null 2>&1 && skip="gpm-"
+  log "installing$files with apt${skip:+ (without gpm: no mouse device)}"
   # shellcheck disable=SC2086
-  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y $files || { rm -rf "$tmp"; warn "apt could not install the $SIZE packages"; return 1; }
+  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y $files $skip || { rm -rf "$tmp"; warn "apt could not install the $SIZE packages"; return 1; }
   rm -rf "$tmp"
 }
 # Remove a raw tetron-wm so install.sh installs the package in its place.
@@ -425,9 +427,16 @@ pm_install() {  # $1 = space-separated packages
   esac || warn "some packages did not install: $1 (see docs/DEPENDENCIES_tetron-wm_recommended_installs.md)"
 }
 
-# Missing packages of the chosen size (gui ones only with a desktop session).
+# gpm needs a mouse device: without one (headless servers, many VMs) Debian's
+# gpm fails to configure and leaves a broken package. USER 2026-10-31: gpm
+# stays in the desktop size; the installer skips it on such a machine.
+no_mouse() { [ "$IS_LINUX" = 1 ] && [ ! -e /dev/input/mice ]; }
+
+# Missing packages of the chosen size (gui ones only with a desktop session;
+# gpm only with a mouse device).
 size_list() {
   local l; l="$(apps_for "$SIZE" apps)"
+  no_mouse && l="$(printf '%s\n' "$l" | grep -v '^gpm:' || true)"
   is_graphical && l="$l
 $(apps_for "$SIZE" gui)"
   missing_pkgs "$l"
@@ -954,7 +963,7 @@ main() {
   local method=raw; [ "$will_be_deb" = 1 ] && method=deb
   if [ "$DRY_RUN" = 1 ]; then
     log "plan (dry run, nothing changed): size=$SIZE method=$method wm=$WANT_WM convert=${CONVERT:-n} config=$WANT_CONFIG themes=$WANT_THEMES services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
-    if [ "$use_debs" = 1 ]; then log "apps: apt install $(size_debs) (from release $(release_tag))${shown:+; missing now: $shown}"
+    if [ "$use_debs" = 1 ]; then log "apps: apt install $(size_debs) (from release $(release_tag))$(no_mouse && echo ', without gpm (no mouse device)')${shown:+; missing now: $shown}"
     else log "apps: ${shown:-none}"; fi
     return 0
   fi
