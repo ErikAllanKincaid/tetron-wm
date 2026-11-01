@@ -6,6 +6,8 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-10-31
+
 ### Added
 - `docs/INSTALL_tetron-wm_methods_and_sizes.md`: every way to install tetron-wm, what each size brings, the console setups, and how each is updated and removed; linked from the README.
 - Settings > General > **Apps** shows the installed size and installs a larger one: from minimal, desktop or extras (Left and Right choose); at extras it checks for apps a release added. It runs the suite installer for apps only in a terminal window, so the sudo prompt is visible. When that window closes, the row shows the new size and the launcher lists the new apps.
