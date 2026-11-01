@@ -23,12 +23,19 @@
 # The pieces (all idempotent: safe to re-run, it converges, never duplicates):
 #   1. tetron-wm      — the latest prebuilt binary (this is install.sh)         [all OSes]
 #   2. config dir     — ~/.config/tetron-wm/{config.toml,themes/}               [all OSes]
-#      themes         — the extra themes (nord, dracula, dawn, newmoon, contrast)
-#                       with their pictures, into themes/; never overwrites
-#      extras         — recommended tools: chafa, mpv, poppler, fresh, sshpass, [Linux, macOS]
-#                       btop, upower, alsa-utils, the DejaVu Sans Mono font, uv, catt
-#                       and casttui (Chromecast), w3m, Start Page and AI Mode
-#                       (tetron-wm-startpage, tetron-aimode), and xclip / wl-clipboard on a desktop
+#      themes         — every theme in the repository's themes/ with its picture,
+#                       into ~/.local/share/tetron-wm/themes/; never overwrites
+#      size           — which apps come with it (asked of everyone):           [Linux, macOS]
+#                         minimal  tetron-wm only
+#                         desktop  plus the tools its features use (default): chafa,
+#                                  mpv, poppler, w3m, htop, sshfs, mc, vim, ... and
+#                                  fresh, uv, catt, casttui, a Nerd Font
+#                         extras   plus extra apps (fbi, git)
+#                       The list is assets/suite-apps.txt, generated from
+#                       packaging/*.toml (the same sets as the tetron-wm-desktop
+#                       and tetron-wm-extras debs). On Debian and Ubuntu, when
+#                       tetron-wm is the apt package, those debs are installed so
+#                       apt tracks the set; otherwise the apps one by one.
 #      services       — PipeWire audio (volume, outputs), NetworkManager (Wi-Fi),
 #                       BlueZ (Bluetooth). Default NO: they change how the
 #                       machine manages sound, network and Bluetooth
@@ -51,7 +58,10 @@
 #   --wm / --no-wm             force the tetron-wm step on/off
 #   --config / --no-config     force the config-dir step on/off
 #   --themes / --no-themes     force the extra-themes download on/off (default yes)
-#   --extras / --no-extras     force the recommended-tools step on/off
+#   --size S                   minimal | desktop | extras (default desktop; asked when not given)
+#   --no-extras                same as --size minimal (older flag)
+#   --convert / --no-convert   Debian and Ubuntu: replace a tetron-wm that is not from a
+#                              package with the apt package (asked, default no)
 #   --services / --no-services force the system-services step on/off
 #   --kmscon / --no-kmscon     force the kmscon step on/off
 #   --console / --no-console   run kmscon on a VT (replaces getty there)
@@ -76,6 +86,12 @@ set -euo pipefail
 REPO="${REPO:-ErikAllanKincaid/tetron-wm}"
 BRANCH="${BRANCH:-main}"
 RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
+# Release downloads and the tag can be overridden (tests serve a local release);
+# install.sh reads the same two variables.
+RELEASES="${TETRON_WM_RELEASES_URL:-https://github.com/$REPO/releases}"
+# Run from a checkout (not piped): use its files instead of downloading them.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+[ -n "$HERE" ] && [ -f "$HERE/install-tetron-wm-suite.sh" ] && [ -f "$HERE/assets/suite-apps.txt" ] || HERE=""
 
 # ── Output helpers (match install-kmscon.sh) ────────────────────────────────────
 if [ -t 1 ]; then B=$'\033[1m'; Y=$'\033[33m'; R=$'\033[31m'; G=$'\033[32m'; N=$'\033[0m'; else B= Y= R= G= N=; fi
@@ -83,6 +99,13 @@ log()  { printf '%s==>%s %s\n'  "$G" "$N" "$*"; }
 warn() { printf '%sWARN:%s %s\n' "$Y" "$N" "$*" >&2; }
 die()  { printf '%sERROR:%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+# A terminal to ask on. Not `[ -r /dev/tty ]`: in a container or CI job the
+# node exists and is readable but opening it fails, which would abort a
+# redirect from it before the command runs.
+tty_ok() { { : </dev/tty; } 2>/dev/null; }
+# A user tool: on PATH, or in ~/.local/bin, where uv and the upstream
+# installers put it even when that directory is not on PATH yet.
+have_tool() { have "$1" || [ -x "$HOME/.local/bin/$1" ]; }
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//; s/^#$//' | sed '$d'; exit "${1:-0}"; }
 
@@ -96,6 +119,7 @@ fetch() {
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 ASSUME_YES=0
+SIZE=""; CONVERT=""
 WANT_WM=""; WANT_CONFIG=""; WANT_THEMES=""; WANT_EXTRAS=""; WANT_SERVICES=""; WANT_KMSCON=""; WANT_CONSOLE=""; WANT_AUTOLOGIN=""; WANT_AUTOSTART=""; WANT_FULLSCREEN=""
 FSVT=9; VT=""; PROFILE=""; UNINSTALL=0; PURGE=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
@@ -106,7 +130,9 @@ while [ $# -gt 0 ]; do
     --wm)         WANT_WM=y ;;     --no-wm)     WANT_WM=n ;;
     --config)     WANT_CONFIG=y ;; --no-config) WANT_CONFIG=n ;;
     --themes)     WANT_THEMES=y ;; --no-themes) WANT_THEMES=n ;;
-    --extras)     WANT_EXTRAS=y ;; --no-extras) WANT_EXTRAS=n ;;
+    --extras)     WANT_EXTRAS=y ;; --no-extras) WANT_EXTRAS=n; SIZE=minimal ;;
+    --size)       shift; SIZE="${1:-}" ;;
+    --convert)    CONVERT=y ;; --no-convert) CONVERT=n ;;
     --services)   WANT_SERVICES=y ;; --no-services) WANT_SERVICES=n ;;
     --kmscon)     WANT_KMSCON=y ;; --no-kmscon) WANT_KMSCON=n ;;
     --console)    WANT_CONSOLE=y ;;   --no-console)   WANT_CONSOLE=n ;;
@@ -126,6 +152,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 case "$PROFILE" in ""|gui|console|login|appliance) ;; *) die "--profile must be gui, console, login or appliance" ;; esac
+case "$SIZE" in ""|minimal|desktop|extras) ;; *) die "--size must be minimal, desktop or extras" ;; esac
 case "$VT" in ""|[1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--vt must be a VT number 1-63" ;; esac
 case "$FSVT" in [1-9]|[1-5][0-9]|6[0-3]) ;; *) die "--fullscreen-vt must be a VT number 1-63" ;; esac
 
@@ -141,7 +168,7 @@ fi
 # $1 = question, $2 = default (y|n). Honors -y (take default) and no-tty (default).
 confirm() {
   local q="$1" def="$2" ans
-  if [ "$ASSUME_YES" = 1 ] || [ ! -r /dev/tty ]; then
+  if [ "$ASSUME_YES" = 1 ] || ! tty_ok; then
     [ "$def" = y ]; return
   fi
   if [ "$def" = y ]; then printf '%s%s [Y/n] %s' "$B" "$q" "$N" >&2
@@ -163,12 +190,90 @@ resolve() {
 install_wm() {
   log "installing tetron-wm (latest prebuilt release)…"
   local tmp; tmp="$(mktemp)"
-  fetch "$RAW/install.sh" > "$tmp" || die "could not download install.sh"
-  # Under -y we are non-interactive, so opt into install.sh's optional deps
-  # (gpm/sshpass/chafa/Nerd Font) explicitly; otherwise let it prompt on /dev/tty.
-  [ "$ASSUME_YES" = 1 ] && export TETRON_WM_INSTALL_DEPS=1
-  if [ -r /dev/tty ]; then sh "$tmp" </dev/tty; else sh "$tmp"; fi
+  if [ -n "$HERE" ]; then cp "$HERE/install.sh" "$tmp"
+  else fetch "$RAW/install.sh" > "$tmp" || die "could not download install.sh"; fi
+  # The apps come from the size chosen here (WMINST-002), so install.sh only
+  # installs tetron-wm itself. It picks the deb or the raw binary (WMDEB-005).
+  export TETRON_WM_SKIP_DEPS=1
+  local rc=0
+  if tty_ok; then sh "$tmp" </dev/tty || rc=$?; else sh "$tmp" </dev/null || rc=$?; fi
   rm -f "$tmp"
+  case "$rc" in
+    0) ;;
+    3) warn "install.sh changed nothing: tetron-wm is the apt package and the latest release has no .deb" ;;
+    *) warn "install.sh failed (status $rc); tetron-wm was not installed or updated" ;;
+  esac
+}
+
+# ── Debian and Ubuntu: the release debs (WMINST-002) ───────────────────────────
+deb_host() { [ "$IS_LINUX" = 1 ] && have dpkg && have apt-get; }
+# tetron-wm is the apt package (dpkg owns it).
+wm_packaged() { dpkg-query -W -f='${db:Status-Status}' tetron-wm 2>/dev/null | grep -qx installed; }
+# A tetron-wm on PATH that no package owns, or nothing.
+wm_raw_copy() {
+  local p; p="$(command -v tetron-wm 2>/dev/null)" || return 1
+  have dpkg && dpkg -S "$(readlink -f "$p")" >/dev/null 2>&1 && return 1
+  printf '%s\n' "$p"
+}
+RELEASE_TAG=""; RELEASE_ASSETS=""
+# The latest release tag, through the web redirect (not the rate-limited API).
+release_tag() {
+  if [ -z "$RELEASE_TAG" ]; then
+    RELEASE_TAG="${TETRON_WM_TAG:-}"
+    [ -n "$RELEASE_TAG" ] || RELEASE_TAG="$(curl -fsSI "https://github.com/$REPO/releases/latest" 2>/dev/null \
+      | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -1 | sed 's|.*/releases/tag/||')"
+  fi
+  printf '%s' "$RELEASE_TAG"
+}
+# asset_for PACKAGE ARCH: the release's PACKAGE_<version>-<rev>_ARCH.deb, or nothing.
+asset_for() {
+  local tag; tag="$(release_tag)"; [ -n "$tag" ] || return 0
+  [ -n "$RELEASE_ASSETS" ] || RELEASE_ASSETS="$(fetch "$RELEASES/expanded_assets/$tag" 2>/dev/null || true)"
+  printf '%s' "$RELEASE_ASSETS" | grep -o "${1}_[^\"/<> ]*_${2}\.deb" | head -1 || true
+}
+# The size's metapackages: desktop needs tetron-wm-desktop, extras both.
+size_debs() { case "$SIZE" in desktop) echo tetron-wm-desktop ;; extras) echo "tetron-wm-desktop tetron-wm-extras" ;; esac; }
+# Every metapackage of the size is in the release (Architecture all).
+release_has_size_debs() {
+  local p; [ -n "$(size_debs)" ] || return 1
+  for p in $(size_debs); do [ -n "$(asset_for "$p" all)" ] || return 1; done
+}
+APT_UPDATED=0
+apt_update_once() { [ "$APT_UPDATED" = 1 ] || { $SUDO apt-get update -qq || true; APT_UPDATED=1; }; }
+# Download the size's metapackages, check each against its .sha256, install them
+# with apt (Recommends included, so apt tracks the whole set). One already
+# installed at the release's version is skipped, so a rerun converges.
+install_size_debs() {
+  local tag p a v tmp files="" want got; tag="$(release_tag)"; tmp="$(mktemp -d)"
+  for p in $(size_debs); do
+    a="$(asset_for "$p" all)"
+    v="${a#"${p}_"}"; v="${v%_all.deb}"
+    if [ "$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null || true)" = "$v" ]; then
+      log "$p $v is already installed"; continue
+    fi
+    log "downloading $a ($tag)"
+    if ! fetch "$RELEASES/download/$tag/$a" > "$tmp/$a" || ! fetch "$RELEASES/download/$tag/$a.sha256" > "$tmp/$a.sha256"; then
+      warn "could not download $a; installing the apps one by one instead"; rm -rf "$tmp"; return 1
+    fi
+    want="$(cut -d' ' -f1 < "$tmp/$a.sha256")"; got="$(sha256sum "$tmp/$a" | cut -d' ' -f1)"
+    if [ -z "$want" ] || [ "$want" != "$got" ]; then
+      warn "checksum mismatch for $a; installing the apps one by one instead"; rm -rf "$tmp"; return 1
+    fi
+    files="$files $tmp/$a"
+  done
+  [ -n "$files" ] || { rm -rf "$tmp"; return 0; }
+  apt_update_once
+  log "installing$files with apt"
+  # shellcheck disable=SC2086
+  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y $files || { rm -rf "$tmp"; warn "apt could not install the $SIZE packages"; return 1; }
+  rm -rf "$tmp"
+}
+# Remove a raw tetron-wm so install.sh installs the package in its place.
+remove_raw_copy() {
+  local p="$1" s=""
+  [ -w "$(dirname "$p")" ] || s="$SUDO"
+  log "removing the raw copy $p (the apt package replaces it)"
+  $s rm -f "$p"
 }
 
 # Where the binary landed, for later steps (install.sh default: ~/.local/bin).
@@ -182,8 +287,11 @@ seed_config() {
   if [ -f "$cfg/config.toml" ]; then
     log "config.toml already exists — leaving it untouched"
   else
-    # The example is every option at its default, commented out: a safe starter.
-    if fetch "$RAW/config.example.toml" > "$cfg/config.toml" 2>/dev/null && [ -s "$cfg/config.toml" ]; then
+    # The example is every option at its default: a safe starter. tetron-wm
+    # carries it (`tetron-wm config init`, WMDEB-002); older binaries do not.
+    if "$(wm_bin)" config init >/dev/null 2>&1 && [ -s "$cfg/config.toml" ]; then
+      log "wrote $cfg/config.toml (tetron-wm config init: every option at its default)"
+    elif fetch "$RAW/config.example.toml" > "$cfg/config.toml" 2>/dev/null && [ -s "$cfg/config.toml" ]; then
       log "wrote $cfg/config.toml (all defaults, commented — edit to taste)"
     else
       rm -f "$cfg/config.toml"
@@ -194,16 +302,26 @@ seed_config() {
 }
 
 # ── Step 2a: the extra themes ──────────────────────────────────────────────────
-# Not built into the binary. Each is a theme file plus (for most) its picture,
-# fetched from this repo into themes/. A file that is already there is kept, so
-# your edits and your own themes of the same name are never overwritten.
+# The themes/ directory on the branch is the list (as Settings > Appearance >
+# Get more themes): one GitHub contents API request, then each .toml and picture
+# not already here. Into ~/.local/share/tetron-wm/themes, tetron-wm's download
+# directory; your own ~/.config/tetron-wm/themes is left to you. A file that
+# exists in either is kept. If the listing fails (GitHub allows 60 requests an
+# hour), the built-in list below is used.
 THEME_PACK="nord.toml nord.jpg dracula.toml dracula.jpg dawn.toml dawn.jpg newmoon.toml contrast.toml"
+theme_files() {
+  local names
+  names="$(fetch "https://api.github.com/repos/$REPO/contents/themes?ref=$BRANCH" 2>/dev/null \
+    | grep -o '"name": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' \
+    | grep -iE '^[^./][^/]*\.(toml|jpg|jpeg|png|webp)$' || true)"
+  if [ -n "$names" ]; then printf '%s\n' "$names"; else printf '%s\n' $THEME_PACK; fi
+}
 install_themes() {
-  local dir="$HOME/.config/tetron-wm/themes" f got=0 kept=0
+  local dir="${XDG_DATA_HOME:-$HOME/.local/share}/tetron-wm/themes" own="$HOME/.config/tetron-wm/themes" f got=0 kept=0
   mkdir -p "$dir"
-  log "downloading the extra themes into $dir…"
-  for f in $THEME_PACK; do
-    if [ -e "$dir/$f" ]; then kept=$((kept + 1)); continue; fi
+  log "downloading the themes into $dir…"
+  for f in $(theme_files); do
+    if [ -e "$dir/$f" ] || [ -e "$own/$f" ]; then kept=$((kept + 1)); continue; fi
     if fetch "$RAW/themes/$f" > "$dir/$f.part" 2>/dev/null && [ -s "$dir/$f.part" ]; then
       mv "$dir/$f.part" "$dir/$f"; got=$((got + 1))
     else
@@ -228,35 +346,34 @@ ensure_truecolor() {
     && mv "$tmp" "$f" && log "set truecolor = true in config.toml (kmscon supports it; no COLORTERM)"
 }
 
-# ── Step 2b: recommended extras and system services ────────────────────────────
-# Each entry is "command:debian-pkg:fedora-pkg:arch-pkg:brew-pkg" (an empty
-# field = not offered there). Only entries whose command is missing install,
-# so re-running converges. What each one is for: the DEPENDENCIES doc.
-# A "font=NAME" command field means "is this font installed" instead (see
-# present); DejaVu Sans Mono backs the default icon tier and kmscon. mpv has
-# no Fedora entry: it lives in RPM Fusion there, and one unknown package makes
-# dnf refuse the whole batch. fresh (the editor) is in Homebrew only; on Linux
-# its own installer adds it (see fresh_via_script). uv (installs catt and
-# casttui) has no Debian package; its own installer adds it there (uv_via_script).
-EXTRAS="chafa:chafa:chafa:chafa:chafa
-uv::uv:uv:uv
-mpv:mpv::mpv:mpv
-pdftoppm:poppler-utils:poppler-utils:poppler:poppler
-w3m:w3m:w3m:w3m:w3m
-fresh::::fresh-editor
-sshpass:sshpass:sshpass:sshpass:
-htop:htop:htop:htop:htop
-btop:btop:btop:btop:btop
-upower:upower:upower:upower:
-alsamixer:alsa-utils:alsa-utils:alsa-utils:
-font=DejaVu Sans Mono:fonts-dejavu-core:dejavu-sans-mono-fonts:ttf-dejavu:
-blueutil::::blueutil"
-# Desktop clipboard sync, only on a machine with a desktop session.
-EXTRAS_GUI="xclip:xclip:xclip:xclip:
-wl-copy:wl-clipboard:wl-clipboard:wl-clipboard:"
-SERVICES="wpctl:wireplumber:wireplumber:wireplumber:
-nmcli:network-manager:NetworkManager:networkmanager:
-bluetoothctl:bluez:bluez:bluez-utils:"
+# ── Step 2b: the apps of the chosen size, and system services ─────────────────
+# The apps are defined once, in packaging/*.toml, and generated into
+# assets/suite-apps.txt (WMINST-001): one "size:group:check:apt:dnf:pacman:brew"
+# line per package (an empty name = not on that system) and "size:script:name"
+# per app no distro packages. A size installs its lines and the smaller sizes'.
+# Only packages whose check fails install, so re-running converges.
+APPS=""
+load_apps() {
+  if [ -n "$HERE" ]; then APPS="$(cat "$HERE/assets/suite-apps.txt")"
+  else APPS="$(fetch "$RAW/assets/suite-apps.txt" 2>/dev/null)" || APPS=""; fi
+  [ -n "$APPS" ] || warn "could not read the app list (assets/suite-apps.txt); no apps will be installed"
+}
+size_rank() { case "$1" in minimal) echo 0 ;; desktop) echo 1 ;; extras) echo 2 ;; *) echo 9 ;; esac; }
+# apps_for SIZE GROUP: the "check:apt:dnf:pacman:brew" lines (or script names)
+# of GROUP for SIZE and the smaller sizes.
+apps_for() {
+  local max size group rest; max="$(size_rank "$1")"
+  while IFS=: read -r size group rest; do
+    case "$size" in ""|\#*) continue ;; esac
+    [ "$group" = "$2" ] && [ "$(size_rank "$size")" -le "$max" ] && printf '%s\n' "$rest"
+  done <<EOF_APPS
+$APPS
+EOF_APPS
+  return 0
+}
+# Not `| grep -q`: it stops reading at the first match and, under pipefail,
+# the writer's SIGPIPE would turn a match into a failure.
+want_script() { local l; l="$(apps_for "$SIZE" script)"; printf '%s\n' "$l" | grep -x "$1" >/dev/null; }
 
 # The package manager column to read: 2 apt, 3 dnf, 4 pacman, 5 brew.
 pm_col() {
@@ -268,7 +385,13 @@ pm_col() {
 # that font. fontconfig answers when present; without it (a minimal box),
 # look for the DejaVu file in the usual distro font dirs.
 present() {
+  local alt
+  case "$1" in *"|"*)
+    for alt in $(printf '%s' "$1" | tr '|' ' '); do present "$alt" && return 0; done
+    return 1 ;;
+  esac
   case "$1" in
+    consolefonts) ls /usr/share/consolefonts/* /usr/lib/kbd/consolefonts/* >/dev/null 2>&1 ;;
     font=*)
       if have fc-list; then fc-list "${1#font=}" 2>/dev/null | grep -q .
       else ls /usr/share/fonts/*/*/DejaVuSansMono.ttf /usr/share/fonts/*/DejaVuSansMono.ttf >/dev/null 2>&1; fi ;;
@@ -302,17 +425,20 @@ pm_install() {  # $1 = space-separated packages
   esac || warn "some packages did not install: $1 (see docs/DEPENDENCIES_tetron-wm_recommended_installs.md)"
 }
 
-extras_list() {
-  local l="$EXTRAS"
+# Missing packages of the chosen size (gui ones only with a desktop session).
+size_list() {
+  local l; l="$(apps_for "$SIZE" apps)"
   is_graphical && l="$l
-$EXTRAS_GUI"
+$(apps_for "$SIZE" gui)"
   missing_pkgs "$l"
 }
+services_list() { missing_pkgs "$(apps_for desktop services)"; }
 
 # fresh is in no Linux distro repository; its official installer picks the
 # right method itself (.deb, .rpm, AUR, …). Offered with the extras when missing.
 FRESH_INSTALLER="https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh"
-fresh_via_script() { [ "$IS_LINUX" = 1 ] && ! have fresh; }
+fresh_via_script() { [ "$IS_LINUX" = 1 ] && ! have_tool fresh; }
+fresh_via_brew() { [ "$IS_LINUX" = 0 ] && have brew && ! have_tool fresh; }
 
 install_fresh() {
   log "installing fresh with its official installer ($FRESH_INSTALLER)"
@@ -347,11 +473,12 @@ install_uv() {
 # Chromecast casting: catt (right-click Cast to Chromecast) and casttui (Open
 # with… casttui). Python tools in no distro repository, installed with
 # `uv tool install` into ~/.local/bin. Offered with the extras when missing.
-CASTTUI_SRC="git+https://github.com/ErikAllanKincaid/casttui"
+# The archive, not git+https: that needs git, which a minimal host lacks.
+CASTTUI_SRC="https://github.com/ErikAllanKincaid/casttui/archive/refs/heads/main.tar.gz"
 cast_tools_missing() {
   local out=""
-  have catt || out="catt"
-  have casttui || out="${out:+$out }casttui"
+  have_tool catt || out="catt"
+  have_tool casttui || out="${out:+$out }casttui"
   printf '%s' "$out"
 }
 
@@ -384,14 +511,39 @@ install_own_apps() {
 install_cast_tools() {
   local uv; uv="$(uv_bin)"
   [ -n "$uv" ] || { warn "uv is missing; catt and casttui not installed"; return 0; }
-  if ! have catt; then
+  if ! have_tool catt; then
     log "installing catt: $uv tool install catt"
     "$uv" tool install catt || warn "catt did not install; see https://github.com/skorokithakis/catt"
   fi
-  if ! have casttui; then
+  if ! have_tool casttui; then
     log "installing casttui: $uv tool install $CASTTUI_SRC"
     "$uv" tool install "$CASTTUI_SRC" || warn "casttui did not install; see https://github.com/ErikAllanKincaid/casttui"
   fi
+}
+
+# The symbols-only Nerd Font: the glyphs tetron-wm draws for icon_style = "nerd".
+# No distro packages it; tiny, and fontconfig uses it only as a fallback.
+# fontconfig answers when present; without it, look for the font file.
+nerd_font_missing() {
+  if have fc-list; then ! fc-list 2>/dev/null | grep -i "nerd font" >/dev/null
+  else ! ls "$HOME/.local/share/fonts"/SymbolsNerdFont* >/dev/null 2>&1; fi
+}
+install_nerd_font() {
+  if [ "$IS_LINUX" = 0 ]; then
+    have brew && { brew install --cask font-symbols-only-nerd-font || warn "the Nerd Font did not install"; }
+    return 0
+  fi
+  have unzip || { warn "unzip is missing; Symbols Nerd Font not installed"; return 0; }
+  local fdir="$HOME/.local/share/fonts" tmp
+  tmp="$(mktemp -d)"
+  log "installing Symbols Nerd Font into $fdir"
+  if fetch "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip" > "$tmp/nf.zip" \
+    && mkdir -p "$fdir" && unzip -o -q "$tmp/nf.zip" '*.ttf' -d "$fdir"; then
+    have fc-cache && fc-cache -f "$fdir" >/dev/null 2>&1
+  else
+    warn "the Nerd Font download failed (icon_style = nerd needs one)"
+  fi
+  rm -rf "$tmp"
 }
 
 # ── Step 3: kmscon ─────────────────────────────────────────────────────────────
@@ -645,7 +797,7 @@ do_uninstall() {
 }
 
 # ── Interactive choices (the same options as the flags) ─────────────────────────
-HAVE_TTY=0; [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ] && HAVE_TTY=1
+HAVE_TTY=0; [ "$ASSUME_YES" != 1 ] && tty_ok && HAVE_TTY=1
 
 # Pick from a numbered menu; default on Enter. $1=question, $2=default number,
 # rest = options. Sets CHOICE to the chosen number.
@@ -711,25 +863,57 @@ main() {
     PROFILE=gui; apply_profile gui
   fi
 
-  resolve WANT_WM     "Install tetron-wm (latest release)?" y
-  resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/)?" y
-  resolve WANT_THEMES "Download the extra themes (nord, dracula, dawn, newmoon, contrast) into ~/.config/tetron-wm/themes/? Files you already have are kept." y
-  # Only ask about packages that are actually missing; nothing to ask = skip.
-  local extras services=""
-  extras="$(extras_list)"
-  local shown="$extras"
-  fresh_via_script && shown="${shown:+$shown }fresh"
-  uv_via_script && shown="${shown:+$shown }uv"
-  local cast; cast="$(cast_tools_missing)"
-  [ -n "$cast" ] && shown="${shown:+$shown }$cast"
-  local own; own="$(own_apps_missing)"
-  [ -n "$own" ] && shown="${shown:+$shown }$own"
-  [ "$IS_LINUX" = 1 ] && services="$(missing_pkgs "$SERVICES")"
-  if [ -n "$shown" ]; then
-    resolve WANT_EXTRAS "Install recommended tools ($shown)?" y
-  else
-    WANT_EXTRAS=n
+  # Size: every user chooses (USER 2026-10-31); desktop is the default.
+  if [ -z "$SIZE" ]; then
+    SIZE=desktop
+    if [ "$HAVE_TTY" = 1 ]; then
+      choose "How much do you want installed?" 2 \
+        "minimal: tetron-wm only" \
+        "desktop: tetron-wm and the tools its features use (recommended)" \
+        "extras: desktop plus extra apps (fbi, git)"
+      case "$CHOICE" in 1) SIZE=minimal ;; 3) SIZE=extras ;; esac
+    fi
   fi
+  load_apps
+
+  resolve WANT_WM     "Install tetron-wm (latest release)?" y
+  # Debian and Ubuntu: a raw tetron-wm can become the apt package (default no:
+  # it changes how this machine updates tetron-wm).
+  local raw="" debarch=""
+  if deb_host; then
+    debarch="$(dpkg --print-architecture)"
+    raw="$(wm_raw_copy || true)"
+    if [ -n "$raw" ] && [ -n "$(asset_for tetron-wm "$debarch")" ]; then
+      resolve CONVERT "tetron-wm at $raw is not from a package. Replace it with the apt package (updates then go through apt)?" n
+    else
+      CONVERT=n
+    fi
+  fi
+  [ "$CONVERT" = y ] && WANT_WM=y
+  resolve WANT_CONFIG "Set up ~/.config/tetron-wm/ (config.toml, themes/)?" y
+  resolve WANT_THEMES "Download the extra themes into ~/.local/share/tetron-wm/themes/? Files you already have are kept." y
+
+  # How the apps arrive: the release metapackages through apt when tetron-wm is
+  # (or is about to be) the apt package, else one by one. Never a metapackage
+  # beside a raw tetron-wm: it depends on the package and would add a copy.
+  local will_be_deb=0 use_debs=0
+  if deb_host; then
+    if wm_packaged || { [ "$WANT_WM" = y ] && { [ "$CONVERT" = y ] || [ -z "$raw" ]; } && [ -n "$(asset_for tetron-wm "$debarch")" ]; }; then
+      will_be_deb=1
+    fi
+    [ "$will_be_deb" = 1 ] && release_has_size_debs && use_debs=1
+  fi
+  local apps="" shown="" services=""
+  if [ "$SIZE" != minimal ]; then
+    apps="$(size_list)"
+    shown="$apps"
+    { fresh_via_script || fresh_via_brew; } && want_script fresh && shown="${shown:+$shown }fresh"
+    uv_via_script && shown="${shown:+$shown }uv"
+    local cast; cast="$(cast_tools_missing)"
+    { want_script catt || want_script casttui; } && [ -n "$cast" ] && shown="${shown:+$shown }$cast"
+    want_script nerd-font && nerd_font_missing && shown="${shown:+$shown }nerd-font"
+  fi
+  [ "$IS_LINUX" = 1 ] && services="$(services_list)"
   if [ -n "$services" ]; then
     resolve WANT_SERVICES "Install system services for the tray ($services)? They change how this machine manages sound, network or Bluetooth" n
   else
@@ -759,23 +943,37 @@ main() {
   [ -n "$VT" ] || VT=1
 
   echo
+  local method=raw; [ "$will_be_deb" = 1 ] && method=deb
   if [ "$DRY_RUN" = 1 ]; then
-    log "plan (dry run, nothing changed): wm=$WANT_WM config=$WANT_CONFIG themes=$WANT_THEMES extras=$WANT_EXTRAS${shown:+ ($shown)} services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
+    log "plan (dry run, nothing changed): size=$SIZE method=$method wm=$WANT_WM convert=${CONVERT:-n} config=$WANT_CONFIG themes=$WANT_THEMES services=$WANT_SERVICES${services:+ ($services)} kmscon=$WANT_KMSCON console=$WANT_CONSOLE vt=$VT autologin=$WANT_AUTOLOGIN autostart=$WANT_AUTOSTART fullscreen=$WANT_FULLSCREEN$([ "$WANT_FULLSCREEN" = y ] && echo " (tty$FSVT)")"
+    if [ "$use_debs" = 1 ]; then log "apps: apt install $(size_debs) (from release $(release_tag))${shown:+; missing now: $shown}"
+    else log "apps: ${shown:-none}"; fi
     return 0
   fi
+  [ "$CONVERT" = y ] && [ -n "$raw" ] && remove_raw_copy "$raw"
   [ "$WANT_WM" = y ]        && install_wm
   [ "$WANT_CONFIG" = y ]    && seed_config
   [ "$WANT_THEMES" = y ]    && install_themes
-  [ "$WANT_EXTRAS" = y ]    && pm_install "$extras"
-  [ "$WANT_EXTRAS" = y ]    && fresh_via_script && install_fresh
-  [ "$WANT_EXTRAS" = y ]    && uv_via_script && install_uv
-  [ "$WANT_EXTRAS" = y ]    && [ -n "$cast" ] && install_cast_tools
-  [ "$WANT_EXTRAS" = y ]    && [ -n "$own" ] && install_own_apps
+  if [ "$SIZE" != minimal ]; then
+    if [ "$use_debs" = 1 ] && wm_packaged && install_size_debs; then :
+    else
+      [ "$(pm_col)" = 2 ] && [ -n "$apps" ] && apt_update_once
+      pm_install "$apps"
+    fi
+    want_script fresh && { fresh_via_script && install_fresh; fresh_via_brew && { brew install fresh-editor || warn "fresh did not install"; }; }
+    uv_via_script && install_uv
+    { want_script catt || want_script casttui; } && [ -n "$(cast_tools_missing)" ] && install_cast_tools
+    want_script nerd-font && nerd_font_missing && install_nerd_font
+    # The deb ships the helper scripts; a raw install gets them here.
+    want_script helpers && ! { deb_host && wm_packaged; } && [ -n "$(own_apps_missing)" ] && install_own_apps
+  fi
   [ "$WANT_SERVICES" = y ]  && pm_install "$services"
   [ "$WANT_KMSCON" = y ]    && install_kmscon
   [ "$WANT_CONSOLE" = y ]   && setup_console "$VT" "$WANT_AUTOLOGIN"
   [ "$WANT_AUTOSTART" = y ] && setup_autostart "$VT"
   [ "$WANT_FULLSCREEN" = y ] && setup_fullscreen "$FSVT"
+  method=raw; deb_host && wm_packaged && method=deb
+  state_set size "$SIZE"; state_set method "$method"
 
   echo
   log "done."
