@@ -212,3 +212,17 @@ class InstallShBinaryOnly(Requirement):
     2026-10-31). Systems > Add Remote no longer sets
     TETRON_WM_INSTALL_DEPS.
     """
+
+
+class InstallMethodAndSize(Requirement):
+    """REQUIREMENT-ID: WMINST-005
+
+    tetron-wm knows how it was installed and which size is present, without
+    a shell-out: the method is "apt package" when dpkg owns the running
+    binary, "cargo" when it runs from a cargo bin directory, else "binary";
+    the size is extras or desktop when dpkg has the tetron-wm-extras or
+    tetron-wm-desktop package, else the `size` in the suite script's
+    `~/.config/tetron-wm/suite-state`, else minimal. Settings > About shows
+    both. `packaging/desktop.toml` suggests `kmscon (>= 9.1)`, since Debian
+    12 ships kmscon 9.0.0 without truecolor and mouse passthrough.
+    """
