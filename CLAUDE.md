@@ -16,7 +16,7 @@ cargo clippy --all-targets   # warning-clean; keep it that way
 There is no rustfmt enforcement; match the style of the file you're editing.
 Clippy is currently warning-clean — keep it that way.
 
-Packaging requirements are specs in `spec/` (libspec, pinned in `pyproject.toml` as a development-only dependency). Edit the spec first and review it with `uv run libspec diff` (`uv run libspec diff A B` between commits, `uv run libspec log` for history), then implement; `python3 reconcile.py` must exit 0 before a commit.
+Packaging requirements are specs in `spec/` (libspec, pinned in `pyproject.toml` as a development-only dependency). Edit the spec first and review it with `uv run libspec diff` (`uv run libspec diff A B` between commits, `uv run libspec log` for history), then implement; `python3 reconcile.py` must exit 0 before a commit. The app sets live in `packaging/desktop.toml`, `packaging/extras.toml`, `packaging/os-names.toml` and `packaging/script-only.toml`; after editing any of them run `python3 scripts/gen_suite_lists.py` to regenerate `assets/suite-apps.txt` (reconcile fails until you do).
 
 ## Versioning & release channels
 

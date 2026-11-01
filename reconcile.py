@@ -54,12 +54,22 @@ def check_desktop_deb() -> dict:
     return {"ok": not problems, "problems": problems}
 
 
+def check_suite_apps() -> dict:
+    """CON-WD05: assets/suite-apps.txt is what the generator makes, and its tests pass."""
+    import subprocess
+    gen = subprocess.run([sys.executable, "scripts/gen_suite_lists.py", "--check"], capture_output=True, text=True)
+    tests = subprocess.run([sys.executable, "-m", "unittest", "scripts/test_gen_suite_lists.py"],
+                           capture_output=True, text=True)
+    return {"current": gen.returncode == 0 and tests.returncode == 0,
+            "generator": gen.stderr.strip(), "tests": tests.stderr.strip().splitlines()[-1:]}
+
+
 def check_example_config() -> dict:
     hits = [str(p) for p in Path("src").rglob("*.rs") if 'include_str!("../config.example.toml")' in p.read_text()]
     return {"compiled_in": bool(hits), "files": hits}
 
 
 if __name__ == "__main__":
-    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "desktop_deb": check_desktop_deb(), "example_config": check_example_config()}
+    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "desktop_deb": check_desktop_deb(), "suite_apps": check_suite_apps(), "example_config": check_example_config()}
     print(json.dumps(ctx, indent=2))
-    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["desktop_deb"]["ok"] and ctx["example_config"]["compiled_in"] else 1)
+    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["desktop_deb"]["ok"] and ctx["suite_apps"]["current"] and ctx["example_config"]["compiled_in"] else 1)
