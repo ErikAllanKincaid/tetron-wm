@@ -195,3 +195,20 @@ class SuiteScriptSizes(Requirement):
     - `--dry-run` prints the size, method and every package it would
       install. Release URL and tag can be overridden (tests).
     """
+
+
+class InstallShBinaryOnly(Requirement):
+    """REQUIREMENT-ID: WMINST-004
+
+    `install.sh` installs only tetron-wm: the deb or the raw binary per
+    WMDEB-005. Its optional-dependency step is removed (the apps belong to
+    the suite script's sizes); at the end it prints the suite script
+    command for the apps, unless the suite script called it
+    (TETRON_WM_SKIP_DEPS=1). TETRON_WM_INSTALL_DEPS is no longer read.
+    When it installs or upgrades the tetron-wm deb and tetron-wm-desktop or
+    tetron-wm-extras is installed, the release's matching metapackage debs
+    are checked against their .sha256 and installed in the same apt
+    command, so a release's new Recommends reach existing machines (USER
+    2026-10-31). Systems > Add Remote no longer sets
+    TETRON_WM_INSTALL_DEPS.
+    """
