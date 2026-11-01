@@ -21,7 +21,8 @@ license = "MIT"
 homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
 # Debian package names, checked against debian:trixie on 2026-10-31. Not listed
 # because trixie does not package them: kmscon, catt. tetron and tetron-tui are
-# our own .debs. tetron-wm versions independently of tetron, so no version pin.
+# our own .debs. No version pin while tetron-wm (0.15) is a minor ahead of
+# tetron core (0.14); once the suite is on one minor, this can be (>= {minor}).
 suggests = [
   "python3",                    # tetron-wm-startpage, tetron-aimode
   "curl",                       # Settings > Updates, Get more themes
