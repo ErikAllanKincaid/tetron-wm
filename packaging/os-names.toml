@@ -10,7 +10,7 @@
 #   dnf, pacman, brew   the name there; missing = the Debian name; "" = not
 #           on that system. One unknown name makes dnf refuse the whole batch,
 #           so every name here was checked: Fedora and Arch in containers,
-#           Homebrew against formulae.brew.sh (2026-10-31).
+#           Homebrew against formulae.brew.sh.
 #   group   "gui": only on a machine with a desktop session; "services": the
 #           suite script's separate, default-no services question.
 #   size, apt   only for an entry in no deb: its size, and apt = "".

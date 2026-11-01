@@ -108,7 +108,7 @@ impl Theme {
             accent_fg: rgb(255, 255, 255),
             icon_fg: rgb(255, 255, 255),
             ansi: DEFAULT_ANSI,
-            // USER choice 2026-10-21: warm brown desktop.
+            // On a 16-colour console: a warm brown desktop.
             vt16: Vt16 { desktop_bg: Some(3), ..Vt16::NONE },
         }
     }
@@ -143,7 +143,7 @@ impl Theme {
             accent_fg: rgb(255, 255, 255),
             icon_fg: rgb(255, 255, 255),
             ansi: DEFAULT_ANSI,
-            // USER choice 2026-10-21: grey desktop (a whole green screen is too
+            // On a 16-colour console: a grey desktop (a whole green screen is too
             // intense; a green wallpaper is the way to get one), green focused
             // title and selection.
             vt16: Vt16 { desktop_bg: Some(7), title_focus: Some(2), active_bg: Some(2), ..Vt16::NONE },
@@ -1403,7 +1403,7 @@ mod depth_tests {
         assert_eq!((idx(a.window_bg), idx(a.active_bg)), (7, 4));
         // Dark themes keep black windows whatever their tint.
         assert_eq!(idx(adapt(Theme::midnight(), ColorDepth::Ansi16).window_bg), 0);
-        // Built-in overrides (USER choices).
+        // Built-in 16-colour overrides.
         let p = adapt(Theme::pastoral(), ColorDepth::Ansi16);
         assert_eq!((idx(p.desktop_bg), idx(p.title_focus), idx(p.active_bg)), (7, 2, 2));
         assert_eq!(idx(adapt(Theme::gruvbox(), ColorDepth::Ansi16).desktop_bg), 3);

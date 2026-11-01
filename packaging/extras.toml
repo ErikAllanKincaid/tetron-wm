@@ -3,8 +3,6 @@
 #
 # The third size: tetron-wm (nothing else), tetron-wm-desktop (every feature),
 # tetron-wm-extras (every feature plus apps tetron-wm itself does not need).
-# The list follows USER's review (`X` rows in
-# DO-NOT-COMMIT/LIST_tetron-wm_deb_default_packages_review.md, 2026-10-31).
 name = "tetron-wm-extras"
 description = "tetron-wm desktop with extra terminal apps"
 long_description = """

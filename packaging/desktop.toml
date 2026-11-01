@@ -2,9 +2,8 @@
 # Built once per release by the build-deb action. Spec: spec/packaging.py (WMDEB-007).
 #
 # `apt install tetron-wm-desktop` installs tetron-wm plus the tools its
-# features use, because apt installs Recommends by default. The lists follow
-# USER's review (DO-NOT-COMMIT/LIST_tetron-wm_deb_default_packages_review.md,
-# 2026-10-31). Each name exists in Debian 12 and 13 and Ubuntu 22.04 and 24.04.
+# features use, because apt installs Recommends by default. Each name exists
+# in Debian 12 and 13 and Ubuntu 22.04 and 24.04.
 # Tools Debian does not package (carbonyl, fresh, casttui, catt, uv, opencode,
 # a symbols Nerd Font) stay with install-tetron-wm-suite.sh.
 name = "tetron-wm-desktop"
@@ -36,7 +35,7 @@ recommends = [
   "htop", "sshfs", "mc", "vim",
 ]
 # kmscon (>= 9.1): Debian 12 ships 9.0.0, without truecolor and mouse passthrough.
-# openssh-server stays a Suggests (USER review): Debian starts the SSH server
+# openssh-server is only a Suggests: Debian starts the SSH server
 # on install, which must never happen just because this package was installed.
 suggests = [
   "btop", "age",

@@ -251,7 +251,7 @@ fn blend_with(src: Cell, src_bg: Rgba, dst: Cell) -> Cell {
 /// colours are close, on block or shade glyphs (swapping the halves of `▀`
 /// draws the same picture: chafa wallpaper, carbonyl, image art), and on a
 /// kernel VT, which has no bright backgrounds, so inverted bright text became
-/// black on black (USER tests on a bare VT, 16 colours). An explicit
+/// black on black (seen on a bare VT with 16 colours). An explicit
 /// black/white cell shows at every colour depth, mono included.
 pub fn cursor_cell(c: Cell) -> Cell {
     use crate::theme::luminance;

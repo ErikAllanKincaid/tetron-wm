@@ -15,12 +15,12 @@
 use crate::iconset::{self, IconStyle};
 
 /// Non-ASCII characters every console font tested can draw (plus all of ASCII).
-/// `≡` was added 2026-10-21 after checking all five PSFs with `psfgettable`.
+/// `≡` is included: all five console fonts have it (checked with `psfgettable`).
 pub const CONSOLE_SAFE: &str =
     "§±²³µ·¹×–—“”•…←↑→↓−≤≥⊙─│╭╮╯╰█■▮▲▶▸▼▾◂●☐✗¶≈¤¦¬°«»‹›░▒╱╲┌┐└┘├┤┬┴┼═║♦‰†‡∞≠≡";
 
 /// [`CONSOLE_SAFE`] plus the extra single-cell symbols the `unicode` tier uses,
-/// each checked present in DejaVu Sans Mono (fontTools cmap, 2026-10-21).
+/// each checked present in DejaVu Sans Mono (fontTools cmap).
 /// Absent there, so never used by `unicode`: ⓘ ℹ ⏻ ⎘ ⍾ ☰ ᛒ.
 pub const UNICODE_SAFE: &str = concat!(
     "§±²³µ·¹×–—“”•…←↑→↓−≤≥⊙─│╭╮╯╰█■▮▲▶▸▼▾◂●☐✗¶≈¤¦¬°«»‹›░▒╱╲┌┐└┘├┤┬┴┼═║♦‰†‡∞≠≡",

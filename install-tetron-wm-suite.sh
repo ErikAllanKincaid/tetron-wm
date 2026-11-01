@@ -428,8 +428,8 @@ pm_install() {  # $1 = space-separated packages
 }
 
 # gpm needs a mouse device: without one (headless servers, many VMs) Debian's
-# gpm fails to configure and leaves a broken package. USER 2026-10-31: gpm
-# stays in the desktop size; the installer skips it on such a machine.
+# gpm fails to configure and leaves a broken package, so the installer skips
+# it there. gpm is the mouse for the machine's own text console only.
 no_mouse() { [ "$IS_LINUX" = 1 ] && [ ! -e /dev/input/mice ]; }
 
 # Missing packages of the chosen size (gui ones only with a desktop session;
@@ -880,7 +880,7 @@ main() {
     PROFILE=gui; apply_profile gui
   fi
 
-  # Size: every user chooses (USER 2026-10-31); desktop is the default.
+  # Size: every user chooses; desktop is the default.
   if [ -z "$SIZE" ]; then
     SIZE=desktop
     if [ "$HAVE_TTY" = 1 ]; then

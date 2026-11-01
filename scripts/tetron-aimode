@@ -17,7 +17,7 @@ try:
 except ImportError:
     pass
 
-MODEL = os.environ.get("AIMODE_MODEL", "gemini-3.6-flash")  # 3.8-flash went 100s+ before its first byte (2026-10-29)
+MODEL = os.environ.get("AIMODE_MODEL", "gemini-3.6-flash")  # 3.8-flash often sends nothing for 100s+ before its first byte
 STRONG = "--strong" in sys.argv
 URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse"
 SEARCH = "--search" in sys.argv  # grounding needs a billed key; free tier is training data only

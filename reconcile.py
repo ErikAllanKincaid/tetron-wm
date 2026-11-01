@@ -3,6 +3,7 @@
 # Checks the automatable packaging constraints (CON-WD*) in spec/constraints.py.
 # Requirements (WMDEB-*) are verified by cargo test, review and the VM passes.
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -64,12 +65,43 @@ def check_suite_apps() -> dict:
             "generator": gen.stderr.strip(), "tests": tests.stderr.strip().splitlines()[-1:]}
 
 
+# CON-WD06. Files where these words are expected: the changelog (dates), lock
+# files and generated data, license text, .gitignore and the agent guide.
+NOTES_ALLOWED = {"CHANGELOG.md", "Cargo.lock", "uv.lock", "assets/catalog.json", "assets/recipes.json",
+                 "THIRD-PARTY-LICENSES.md", ".gitignore", "CLAUDE.md"}
+# Built from parts so this file does not match itself.
+OWNER = re.compile(r"(?<![$\w\"{])" + "US" + r"ER(?![\w])")
+PRIVATE_DIR = "DO-NOT-" + "COMMIT"
+DATE = r"\b20\d\d-[01]\d-[0-3]\d\b"
+DATE_IN_COMMENT = re.compile(r"(#|//|/\*|<!--).*" + DATE)
+DATE_ANY = re.compile(DATE)
+
+
+def check_planning_notes() -> dict:
+    """CON-WD06: no owner placeholder, private paths or comment dates in committed files."""
+    import subprocess
+    hits = []
+    files = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split()
+    for f in files:
+        if f in NOTES_ALLOWED or not Path(f).is_file():
+            continue
+        try:
+            lines = Path(f).read_text().splitlines()
+        except UnicodeDecodeError:
+            continue
+        for n, line in enumerate(lines, 1):
+            if (OWNER.search(line) and "autologin " + "US" + "ER" not in line) or PRIVATE_DIR in line \
+                    or DATE_IN_COMMENT.search(line) or (f.startswith("spec/") and DATE_ANY.search(line)):
+                hits.append(f"{f}:{n}: {line.strip()[:100]}")
+    return {"count": len(hits), "hits": hits[:20]}
+
+
 def check_example_config() -> dict:
     hits = [str(p) for p in Path("src").rglob("*.rs") if 'include_str!("../config.example.toml")' in p.read_text()]
     return {"compiled_in": bool(hits), "files": hits}
 
 
 if __name__ == "__main__":
-    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "desktop_deb": check_desktop_deb(), "suite_apps": check_suite_apps(), "example_config": check_example_config()}
+    ctx = {"packaging": check_packaging(), "lean_deb": check_lean_deb(), "desktop_deb": check_desktop_deb(), "suite_apps": check_suite_apps(), "planning_notes": check_planning_notes(), "example_config": check_example_config()}
     print(json.dumps(ctx, indent=2))
-    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["desktop_deb"]["ok"] and ctx["suite_apps"]["current"] and ctx["example_config"]["compiled_in"] else 1)
+    sys.exit(0 if ctx["packaging"]["valid"] and ctx["lean_deb"]["ok"] and ctx["desktop_deb"]["ok"] and ctx["suite_apps"]["current"] and ctx["planning_notes"]["count"] == 0 and ctx["example_config"]["compiled_in"] else 1)
