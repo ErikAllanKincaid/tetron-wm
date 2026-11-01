@@ -51,18 +51,16 @@ it then asks "Do you want to log in automatically?", default no, and
 `--autologin` answers yes; `--dry-run` to preview, `--uninstall` to undo). The
 steps below are what it automates.
 
-### A1. Install tetron-wm (+ optional deps)
+### A1. Install tetron-wm
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
 ```
 
-Downloads the prebuilt binary to `/usr/local/bin` (using `sudo`). The optional helpers (chafa,
-gpm, sshpass, the Nerd Font) are installed after a prompt in an interactive run;
-in a piped `curl | sh` they are skipped unless you opt in:
+Installs tetron-wm only: the apt package on Debian and Ubuntu once releases carry a `.deb`, otherwise the prebuilt binary in `/usr/local/bin` (using `sudo`). The tools its features use (chafa, gpm, sshpass, the Nerd Font and the rest) come with the suite script's desktop size; `install.sh` prints that command when it finishes:
 
 ```sh
-curl -fsSL .../install.sh | TETRON_WM_INSTALL_DEPS=1 sh
+curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 For a no-sudo install set `TETRON_WM_BIN_DIR="$HOME/.local/bin"`, and put

@@ -125,31 +125,50 @@ raw_copy() {
 # Name of the release's tetron-wm_<version>-<rev>_<arch>.deb, or nothing. Read
 # from the release page's asset list (not the rate-limited REST API), so a
 # packaging-only revision (-2) is found without guessing.
-deb_asset() {
-  fetch "$RELEASES/expanded_assets/$tag" 2>/dev/null \
-    | grep -o "${PKG}_[^\"/<> ]*_$1\.deb" | head -1 || true
+ASSETS=""
+# asset_of NAME ARCH: the release's NAME_<version>-<rev>_ARCH.deb, or nothing.
+asset_of() {
+  [ -n "$ASSETS" ] || ASSETS="$(fetch "$RELEASES/expanded_assets/$tag" 2>/dev/null || true)"
+  printf '%s' "$ASSETS" | grep -o "${1}_[^\"/<> ]*_$2\.deb" | head -1 || true
 }
-# Download the .deb and its .sha256, check it, install it with apt-get.
+deb_asset() { asset_of "$PKG" "$1"; }
+# The tetron-wm-desktop / tetron-wm-extras debs of this release for the ones
+# installed here, so they move to the release with tetron-wm (a new Recommends
+# then arrives with the update).
+meta_assets() {
+  for m in tetron-wm-desktop tetron-wm-extras; do
+    dpkg-query -W -f='${db:Status-Status}' "$m" 2>/dev/null | grep -qx installed || continue
+    a="$(asset_of "$m" all)"
+    [ -n "$a" ] && printf '%s ' "$a"
+  done
+  return 0
+}
+# Download each .deb and its .sha256, check them all, then install them in one
+# apt-get command. Any failure changes nothing.
 install_deb() {
-  asset="$1"
   tmp="$(mktemp -d)"
-  echo "tetron-wm: downloading $asset ($tag)…"
-  if ! fetch "$RELEASES/download/$tag/$asset" > "$tmp/$asset" \
-    || ! fetch "$RELEASES/download/$tag/$asset.sha256" > "$tmp/$asset.sha256"; then
-    echo "tetron-wm: download of $asset failed; nothing changed." >&2
-    rm -rf "$tmp"; exit 1
-  fi
-  want="$(cut -d' ' -f1 < "$tmp/$asset.sha256")"
-  got="$(sha256sum "$tmp/$asset" | cut -d' ' -f1)"
-  if [ -z "$want" ] || [ "$want" != "$got" ]; then
-    echo "tetron-wm: checksum mismatch for $asset; nothing changed." >&2
-    rm -rf "$tmp"; exit 1
-  fi
+  files=""
+  for asset in "$@"; do
+    echo "tetron-wm: downloading $asset ($tag)…"
+    if ! fetch "$RELEASES/download/$tag/$asset" > "$tmp/$asset" \
+      || ! fetch "$RELEASES/download/$tag/$asset.sha256" > "$tmp/$asset.sha256"; then
+      echo "tetron-wm: download of $asset failed; nothing changed." >&2
+      rm -rf "$tmp"; exit 1
+    fi
+    want="$(cut -d' ' -f1 < "$tmp/$asset.sha256")"
+    got="$(sha256sum "$tmp/$asset" | cut -d' ' -f1)"
+    if [ -z "$want" ] || [ "$want" != "$got" ]; then
+      echo "tetron-wm: checksum mismatch for $asset; nothing changed." >&2
+      rm -rf "$tmp"; exit 1
+    fi
+    files="$files $tmp/$asset"
+  done
   apt_sudo=""
   [ "$(id -u)" -eq 0 ] || apt_sudo="sudo"
-  echo "tetron-wm: installing $asset with apt-get…"
-  if ! $apt_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$tmp/$asset"; then
-    echo "tetron-wm: apt-get could not install $asset." >&2
+  echo "tetron-wm: installing$(for a in "$@"; do printf ' %s' "$a"; done) with apt-get…"
+  # shellcheck disable=SC2086
+  if ! $apt_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y $files; then
+    echo "tetron-wm: apt-get could not install them." >&2
     rm -rf "$tmp"; exit 1
   fi
   rm -rf "$tmp"
@@ -178,7 +197,8 @@ if deb_host; then
 fi
 
 if [ "$method" = deb ]; then
-  install_deb "$asset"
+  # shellcheck disable=SC2046
+  install_deb "$asset" $(meta_assets)
 else
   raw_sudo
   url="$RELEASES/download/$tag/tetron-wm-$target.tar.gz"
@@ -194,105 +214,15 @@ else
   [ -z "$note" ] || echo "$note"
 fi
 
-# Optional, OS-aware dependency step. Installs helpers some features need:
-#   blueutil (macOS)  — Bluetooth tray control
-#   gpm (Linux)       — mouse on a bare console / VT
-#   sshpass           — automates the one-time password for Systems → Add Remote
-#   chafa             — render an image wallpaper to cells (works on kmscon too)
-#   Symbols Nerd Font — the glyphs used by `icon_style = "nerd"`
-# Transparent and skippable: it prints what it runs, skips silently with no
-# package manager, honours TETRON_WM_SKIP_DEPS, and in a non-interactive
-# `curl | sh` requires explicit TETRON_WM_INSTALL_DEPS=1 so piping the installer
-# never surprises you with package installs.
-# A Nerd Font supplies the Private-Use-Area glyphs tetron-wm draws for
-# `icon_style = "nerd"`. "Symbols Only" is tiny and has no Latin letters, so
-# fontconfig uses it purely as a fallback for those glyphs (in kmscon and most
-# terminals) without changing your normal text font. No sudo on Linux (user
-# fonts dir); a brew cask on macOS.
-install_nerd_font() {
-  # Already have one? fontconfig is the arbiter on both platforms.
-  if command -v fc-list >/dev/null 2>&1 && fc-list 2>/dev/null | grep -qi "nerd font"; then
-    return 0
-  fi
-  case "$(uname -s)" in
-    Darwin)
-      if command -v brew >/dev/null 2>&1; then
-        echo "tetron-wm: installing optional dependency Symbols Nerd Font (icon_style=nerd)…"
-        brew install --cask font-symbols-only-nerd-font 2>/dev/null \
-          || echo "tetron-wm: Nerd Font skipped (run 'brew install --cask font-symbols-only-nerd-font' later for icon_style=nerd)"
-      fi ;;
-    Linux)
-      if ! command -v unzip >/dev/null 2>&1; then
-        echo "tetron-wm: Nerd Font skipped (needs 'unzip'; install it + a Nerd Font for icon_style=nerd)"
-        return 0
-      fi
-      fdir="$HOME/.local/share/fonts"
-      url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip"
-      tmp="$(mktemp -d)" || return 0
-      echo "tetron-wm: installing optional dependency Symbols Nerd Font (icon_style=nerd)…"
-      if fetch "$url" > "$tmp/nf.zip" 2>/dev/null && [ -s "$tmp/nf.zip" ]; then
-        mkdir -p "$fdir"
-        if unzip -o -q "$tmp/nf.zip" '*.ttf' -d "$fdir" 2>/dev/null; then
-          command -v fc-cache >/dev/null 2>&1 && fc-cache -f "$fdir" >/dev/null 2>&1
-          echo "tetron-wm: Symbols Nerd Font installed to $fdir"
-        else
-          echo "tetron-wm: Nerd Font extract failed (install a Nerd Font manually for icon_style=nerd)"
-        fi
-      else
-        echo "tetron-wm: Nerd Font download skipped (install a Nerd Font manually for icon_style=nerd)"
-      fi
-      rm -rf "$tmp" ;;
-  esac
-}
-
-install_optional_deps() {
-  [ "${TETRON_WM_SKIP_DEPS:-0}" = "1" ] && return 0
-  if [ ! -t 0 ] && [ "${TETRON_WM_INSTALL_DEPS:-0}" != "1" ]; then return 0; fi
-  case "$(uname -s)" in
-    Darwin)
-      if command -v brew >/dev/null 2>&1; then
-        if ! command -v blueutil >/dev/null 2>&1; then
-          echo "tetron-wm: installing optional dependency blueutil (Bluetooth control)…"
-          brew install blueutil || echo "tetron-wm: blueutil install skipped (run 'brew install blueutil' later for Bluetooth control)"
-        fi
-        if ! command -v sshpass >/dev/null 2>&1; then
-          # sshpass is not in homebrew-core; use the common tap, skip on failure.
-          echo "tetron-wm: installing optional dependency sshpass (remote-system setup)…"
-          brew install sshpass 2>/dev/null \
-            || brew install esolitos/ipa/sshpass 2>/dev/null \
-            || echo "tetron-wm: sshpass install skipped (Add Remote will prompt for the password interactively instead)"
-        fi
-        if ! command -v chafa >/dev/null 2>&1; then
-          echo "tetron-wm: installing optional dependency chafa (image wallpaper)…"
-          brew install chafa || echo "tetron-wm: chafa install skipped (run 'brew install chafa' later for image wallpaper)"
-        fi
-      fi ;;
-    Linux)
-      # bluetoothctl/rfkill ship with the distro; gpm gives a bare-console
-      # mouse, sshpass automates Systems → Add Remote key transfers, and chafa
-      # renders image wallpapers to cells (works on a kmscon console too).
-      pkgs=""
-      command -v gpm >/dev/null 2>&1 || pkgs="gpm"
-      command -v sshpass >/dev/null 2>&1 || pkgs="$pkgs sshpass"
-      command -v chafa >/dev/null 2>&1 || pkgs="$pkgs chafa"
-      command -v unzip >/dev/null 2>&1 || pkgs="$pkgs unzip"   # for the Nerd Font below
-      pkgs="$(echo "$pkgs" | sed 's/^ *//')"
-      if [ -n "$pkgs" ]; then
-        echo "tetron-wm: installing optional dependencies: $pkgs …"
-        sudo apt-get install -y $pkgs 2>/dev/null \
-          || sudo dnf install -y $pkgs 2>/dev/null \
-          || sudo pacman -S --noconfirm $pkgs 2>/dev/null \
-          || sudo zypper install -y $pkgs 2>/dev/null \
-          || echo "tetron-wm: optional deps skipped (install '$pkgs' with your package manager later)"
-        # Start gpm now (and on boot) where systemd manages it.
-        if command -v gpm >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
-          sudo systemctl enable --now gpm 2>/dev/null || true
-        fi
-      fi ;;
-  esac
-  install_nerd_font
-}
-install_optional_deps
+# tetron-wm only: the apps its features use come with the suite script's sizes
+# (minimal, desktop, extras), the same sets as the tetron-wm-desktop and
+# tetron-wm-extras debs. The suite script calls this with TETRON_WM_SKIP_DEPS=1
+# and installs them itself, so the pointer is only for a direct run.
+if [ "${TETRON_WM_SKIP_DEPS:-0}" != "1" ]; then
+  echo "tetron-wm: for the apps its features use (the desktop size), run:"
+  echo "  curl -fsSL https://raw.githubusercontent.com/$REPO/main/install-tetron-wm-suite.sh | bash"
+  echo "  It finds tetron-wm already installed and only adds what is missing."
+fi
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) echo "Run it with:  tetron-wm" ;;

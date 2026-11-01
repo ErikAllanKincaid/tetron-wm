@@ -80,7 +80,7 @@
 #   -h, --help       show this help
 #
 # Env overrides: REPO (default ErikAllanKincaid/tetron-wm), BRANCH (default main),
-# and anything install.sh honours (TETRON_WM_BIN_DIR, TETRON_WM_INSTALL_DEPS, …).
+# and anything install.sh honours (TETRON_WM_BIN_DIR, TETRON_WM_RELEASES_URL, TETRON_WM_TAG).
 set -euo pipefail
 
 REPO="${REPO:-ErikAllanKincaid/tetron-wm}"

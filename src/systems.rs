@@ -161,7 +161,7 @@ pub fn switch_script(spec: &SwitchSpec) -> String {
     if spec.setup {
         let name = sh_quote(&spec.name);
         let install = sh_quote(&format!(
-            "curl -fsSL {repo_raw}/main/install.sh | TETRON_WM_INSTALL_DEPS=1 sh; rc=$?; \
+            "curl -fsSL {repo_raw}/main/install.sh | sh; rc=$?; \
 [ \"$rc\" = 0 ] || [ \"$rc\" = 3 ] || {{ command -v cargo >/dev/null 2>&1 && cargo install --git {repo}; }}",
             repo = crate::REPO_URL,
             repo_raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm",

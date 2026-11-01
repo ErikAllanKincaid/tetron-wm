@@ -78,7 +78,6 @@ pub const ENV_VARS: &[(&str, &str)] = &[
     ("TETRON_WM_DEBUG", "set to print the exact system-switch script that will run"),
     ("TETRON_WM_SESSION", "session name (same as -s); set inside app windows so tetron-wm commands there reach their own session"),
     ("TETRON_WM_BIN_DIR", "install.sh/updater install dir (default /usr/local/bin)"),
-    ("TETRON_WM_INSTALL_DEPS", "1 lets a piped install.sh install dependencies"),
     ("XDG_CONFIG_HOME", "config root (default ~/.config)"),
     ("XDG_DATA_HOME", "data root (default ~/.local/share)"),
     ("XDG_RUNTIME_DIR", "socket directory"),

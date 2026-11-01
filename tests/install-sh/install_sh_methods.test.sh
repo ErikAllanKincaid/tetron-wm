@@ -28,6 +28,13 @@ mkdeb() { # mkdeb <version> <tag dir>
   (cd "$2" && sha256sum "$f" > "$f.sha256")
   printf '<a href="/o/r/releases/download/x/%s">%s</a>\n' "$f" "$f" >> "$2/assets.html"
 }
+mkmeta() { # mkmeta <name> <version> <tag dir>: an Architecture all metapackage on tetron-wm
+  d="$(mktemp -d)"; mkdir -p "$d/DEBIAN"
+  printf 'Package: %s\nVersion: %s\nArchitecture: all\nMaintainer: test <t@t>\nDepends: tetron-wm\nDescription: test\n' "$1" "$2" > "$d/DEBIAN/control"
+  f="${1}_${2}_all.deb"; dpkg-deb -b --root-owner-group "$d" "$3/$f" >/dev/null
+  (cd "$3" && sha256sum "$f" > "$f.sha256")
+  printf '<a href="/o/r/releases/download/x/%s">%s</a>\n' "$f" "$f" >> "$3/assets.html"
+}
 mkraw() { # mkraw <version> <tag dir>
   d="$(mktemp -d)"; printf '#!/bin/sh\necho raw-%s\n' "$1" > "$d/tetron-wm"; chmod 755 "$d/tetron-wm"
   tar -czf "$2/tetron-wm-$target.tar.gz" -C "$d" tetron-wm
@@ -39,13 +46,15 @@ mkdeb 9.9.8-1 $R/download/v9.9.8; mkraw 9.9.8 $R/download/v9.9.8
 # must never take it for tetron-wm.
 printf '<a href="/o/r/releases/download/x/tetron-wm-desktop_9.9.9-1_all.deb">tetron-wm-desktop_9.9.9-1_all.deb</a>\n' >> $R/download/v9.9.9/assets.html
 mkdeb 9.9.9-1 $R/download/v9.9.9; mkraw 9.9.9 $R/download/v9.9.9
+mkmeta tetron-wm-desktop 9.9.8-1 $R/download/v9.9.8; mkmeta tetron-wm-desktop 9.9.9-1 $R/download/v9.9.9
 mkraw 9.9.7 $R/download/v9.9.7                       # v9.9.7: no .deb
 mkdeb 9.9.6-1 $R/download/v9.9.6; mkraw 9.9.6 $R/download/v9.9.6
 echo 0000 > $R/download/v9.9.6/tetron-wm_9.9.6-1_$arch.deb.sha256   # v9.9.6: bad checksum
 for t in v9.9.6 v9.9.7 v9.9.8 v9.9.9; do cp $R/download/$t/assets.html $R/expanded_assets/$t; done
 
 run() { TETRON_WM_TAG="$1" TETRON_WM_RELEASES_URL=file://$R TETRON_WM_SKIP_DEPS=1 sh /src/install.sh </dev/null > /tmp/out 2>&1; }
-reset() { dpkg -P tetron-wm >/dev/null 2>&1 || true; rm -f /usr/local/bin/tetron-wm; }
+reset() { dpkg -P tetron-wm-desktop tetron-wm >/dev/null 2>&1 || true; rm -f /usr/local/bin/tetron-wm; }
+mver() { dpkg-query -W -f='${Version}' tetron-wm-desktop 2>/dev/null || true; }
 ver() { dpkg-query -W -f='${Version}' tetron-wm 2>/dev/null || true; }
 fail=0
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1 (rc=$rc ver=$(ver) usrbin=$(/usr/bin/tetron-wm 2>&1) local=$(ls /usr/local/bin/tetron-wm 2>&1))"; sed 's/^/    /' /tmp/out; fail=1; fi; }
@@ -67,6 +76,17 @@ check "fresh host, release without a .deb: raw binary" '[ $rc = 0 ] && [ "$(/usr
 
 reset; rc=0; run v9.9.6 || rc=$?
 check "bad checksum: refused, nothing installed" '[ $rc = 1 ] && [ -z "$(ver)" ] && [ ! -e /usr/local/bin/tetron-wm ] && grep -q "checksum mismatch" /tmp/out'
+
+reset; dpkg -i $R/download/v9.9.8/tetron-wm_9.9.8-1_$arch.deb $R/download/v9.9.8/tetron-wm-desktop_9.9.8-1_all.deb >/dev/null; run v9.9.9; rc=$?
+check "installed tetron-wm-desktop moves to the release with tetron-wm" '[ $rc = 0 ] && [ "$(ver)" = 9.9.9-1 ] && [ "$(mver)" = 9.9.9-1 ]'
+
+reset; dpkg -i $R/download/v9.9.8/tetron-wm_9.9.8-1_$arch.deb >/dev/null; run v9.9.9; rc=$?
+check "metapackage not installed: not added by an update" '[ $rc = 0 ] && [ "$(ver)" = 9.9.9-1 ] && [ -z "$(mver)" ]'
+
+reset; rc=0; TETRON_WM_TAG=v9.9.7 TETRON_WM_RELEASES_URL=file://$R sh /src/install.sh </dev/null > /tmp/out 2>&1 || rc=$?
+check "direct run: tetron-wm only, then points to the suite script" '[ $rc = 0 ] && grep -q "install-tetron-wm-suite.sh" /tmp/out && ! grep -qi "installing optional" /tmp/out'
+run v9.9.7
+check "called by the suite (TETRON_WM_SKIP_DEPS=1): no pointer" '! grep -q "install-tetron-wm-suite.sh" /tmp/out'
 
 exit $fail
 IN
