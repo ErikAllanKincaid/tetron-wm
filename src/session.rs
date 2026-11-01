@@ -1389,6 +1389,14 @@ impl SessionCore {
                     self.theme_job = Some(crate::themefetch::spawn());
                 }
             }
+            Some(crate::settings::SettingsAction::InstallApps(size)) => {
+                // Settings > General > Apps (WMINST-007): the suite installer for
+                // that size in a window, so sudo asks where the user can answer.
+                crate::dbg_log(&format!("apps: install the {} size with the suite installer", size.name()));
+                let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
+                let cmd = crate::packaging::apps_install_command(raw, size);
+                self.launch(format!("install {} apps", size.name()), "sh".into(), vec!["-lc".into(), cmd]);
+            }
             Some(crate::settings::SettingsAction::OpenConfigFile) => self.open_config_file(),
             Some(crate::settings::SettingsAction::CreateConfigFile) => {
                 match crate::config::init() {

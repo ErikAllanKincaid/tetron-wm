@@ -93,6 +93,9 @@ pub enum SettingsAction {
     ReloadConfig,
     /// Appearance > Get more themes: download missing theme files on a worker.
     GetThemes,
+    /// General > Apps: install the apps of this size with the suite script in
+    /// a terminal window (WMINST-007).
+    InstallApps(crate::packaging::Size),
 }
 
 /// Terminal color presets: (name, background, foreground). `None` = follow the
@@ -190,6 +193,11 @@ pub struct Settings {
     /// About: how tetron-wm was installed and the size (WMINST-005), read on
     /// open and on entering About, never per frame.
     install_info: String,
+    /// General > Apps: the installed size and the chosen target, read on
+    /// open and on entering General.
+    apps_size: crate::packaging::Size,
+    apps_pick: usize,
+    have_curl: bool,
 }
 
 /// "apt package, size desktop" for Settings > About.
@@ -212,6 +220,7 @@ impl Settings {
             sound: None, outputs: Vec::new(), in_sidebar: false, wallpaper_note: None,
             waiter: crate::fullscreen::service_state(), cfg_exists: config_file_exists(), reset_armed: false,
             themes_status: String::new(), themes_busy: false, install_info: install_info(),
+            apps_size: crate::packaging::installed_size(), apps_pick: 0, have_curl: crate::catalog::is_installed("curl"),
         }.with_wallpaper_note()
     }
 
@@ -278,6 +287,9 @@ impl Settings {
             self.waiter = crate::fullscreen::service_state();
         } else if i == GENERAL {
             self.cfg_exists = config_file_exists();
+            self.apps_size = crate::packaging::installed_size();
+            self.apps_pick = 0;
+            self.have_curl = crate::catalog::is_installed("curl");
         } else if i == SECTIONS.len() - 1 {
             self.install_info = install_info();
         }
@@ -353,7 +365,7 @@ impl Settings {
             CLIPBOARD => 10,                           // clipboard: history, disk, selections, size, shims, osc52 read, fake display, expiry, max item, clear
             TERMINAL => 6,                            // terminal: preset, background, foreground, preview, save, revert
             SOUND => 4,                        // sound: volume, mute, output, mixer
-            GENERAL => 3,                      // config file: open, create or reset, reload
+            GENERAL => 4,                      // config file: open, create or reset, reload; apps
             _ => 0,                            // About
         }
     }
@@ -716,6 +728,16 @@ impl Settings {
             (GENERAL, 1) if dir == 0 && armed => self.action = Some(SettingsAction::ResetConfigFile),
             (GENERAL, 1) if dir == 0 => self.reset_armed = true,
             (GENERAL, 2) if dir == 0 => self.action = Some(SettingsAction::ReloadConfig),
+            (GENERAL, 3) => {
+                let choices = crate::packaging::size_choices(self.apps_size);
+                let n = choices.len();
+                match dir {
+                    -1 => self.apps_pick = (self.apps_pick + n - 1) % n,
+                    1 => self.apps_pick = (self.apps_pick + 1) % n,
+                    _ if self.have_curl => self.action = Some(SettingsAction::InstallApps(choices[self.apps_pick % n])),
+                    _ => {}
+                }
+            }
             (DEFAULT_APPS, i) => {
                 if let Some((key, _)) = DEFAULT_APP_ROLES.get(i) {
                     let role = role_from_key(key);
@@ -1058,11 +1080,24 @@ impl Settings {
                 for (i, (k, v)) in facts.iter().enumerate() {
                     buf.write_str(cx, 5 + i as i32, &format!("{k:<12}{v}"), pal_fg(), pal_bg());
                 }
-                buf.write_str(cx, 12, "Shortcuts: leader ?   Info menu: leader i", pal_dim(), pal_bg());
-                buf.write_str(cx, 13, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
+                buf.write_str(cx, 13, "Shortcuts: leader ?   Info menu: leader i", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
             }
         }
         buf
+    }
+
+    /// General > Apps value: the installed size and the chosen action.
+    fn apps_value(&self) -> String {
+        use crate::packaging::Size;
+        let have = self.apps_size.name();
+        if !self.have_curl {
+            return format!("{have} (needs curl)");
+        }
+        let choices = crate::packaging::size_choices(self.apps_size);
+        let pick = choices[self.apps_pick % choices.len()];
+        let what = if self.apps_size == Size::Extras { "check for new".to_string() } else { format!("install {}", pick.name()) };
+        if choices.len() > 1 { format!("{have}: \u{25C2} {what} \u{25B8}") } else { format!("{have}: Enter to {what}") }
     }
 
     /// Render the General section: the config file group.
@@ -1078,10 +1113,13 @@ impl Settings {
             self.row(buf, cx, 4, 1, "Create from example", "Enter".into());
         }
         self.row(buf, cx, 5, 2, "Reload", "Enter (applies hand edits)".into());
-        buf.write_str(cx, 7, &format!("Config file: {path}{state}"), pal_fg(), pal_bg());
-        buf.write_str(cx, 9, "Open in editor uses the Editor in Default Apps.", pal_dim(), pal_bg());
-        buf.write_str(cx, 10, "Reset and Create write the example: every key at its default.", pal_dim(), pal_bg());
-        buf.write_str(cx, 11, "Same as: tetron-wm config init | config example | reload", pal_dim(), pal_bg());
+        self.row(buf, cx, 6, 3, "Apps", self.apps_value());
+        buf.write_str(cx, 8, &format!("Config file: {path}{state}"), pal_fg(), pal_bg());
+        buf.write_str(cx, 10, "Open in editor uses the Editor in Default Apps.", pal_dim(), pal_bg());
+        buf.write_str(cx, 11, "Reset and Create write the example: every key at its default.", pal_dim(), pal_bg());
+        buf.write_str(cx, 12, "Same as: tetron-wm config init | config example | reload", pal_dim(), pal_bg());
+        buf.write_str(cx, 13, "Apps: desktop adds the tools tetron-wm uses; extras", pal_dim(), pal_bg());
+        buf.write_str(cx, 14, "adds fbi and git. Installs in a window (sudo asks).", pal_dim(), pal_bg());
     }
 
     /// Render the Terminal section: staged colors with swatches, the
@@ -2004,5 +2042,27 @@ mod tests {
         let text = screen(&s);
         assert!(text.contains("Installed"), "{text}");
         assert!(text.contains(", size "), "{text}");
+    }
+
+    #[test]
+    fn general_apps_row_picks_a_larger_size_and_asks_to_install_it() {
+        use crate::packaging::Size;
+        let mut s = Settings::new(Config::default());
+        s.enter_section(GENERAL);
+        s.apps_size = Size::Minimal;
+        s.have_curl = true;
+        s.sel = 3;
+        assert!(screen(&s).contains("install desktop"));
+        s.right();
+        assert!(screen(&s).contains("install extras"));
+        s.toggle();
+        assert_eq!(s.take_action(), Some(SettingsAction::InstallApps(Size::Extras)));
+        s.apps_size = Size::Extras;
+        s.apps_pick = 0;
+        assert!(screen(&s).contains("check for new"));
+        s.have_curl = false;
+        s.toggle();
+        assert_eq!(s.take_action(), None, "no curl: nothing to run");
+        assert!(screen(&s).contains("needs curl"));
     }
 }

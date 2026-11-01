@@ -140,6 +140,31 @@ pub fn install_method() -> &'static str {
     method_name(running_is_packaged(), &exe)
 }
 
+/// The sizes Settings > General > Apps offers from `current`: the larger
+/// ones, or at extras only extras itself (a check that adds anything a
+/// release added).
+pub fn size_choices(current: Size) -> Vec<Size> {
+    match current {
+        Size::Minimal => vec![Size::Desktop, Size::Extras],
+        Size::Desktop => vec![Size::Extras],
+        Size::Extras => vec![Size::Extras],
+    }
+}
+
+/// The terminal command that installs the apps of `size` with the suite
+/// script from `raw` (the branch's raw URL): apps only, no tetron-wm,
+/// config, themes, conversion or console steps; waits for Enter at the end.
+pub fn apps_install_command(raw: &str, size: Size) -> String {
+    let s = size.name();
+    format!(
+        "clear; echo 'Installing the {s} apps for tetron-wm (the suite installer)…'; echo; \
+curl -fsSL {raw}/main/install-tetron-wm-suite.sh | bash -s -- --size {s} --no-wm --no-config --no-themes \
+--no-convert --no-kmscon --no-console --no-autologin --no-autostart --no-fullscreen; \
+echo \"apps: suite installer for {s} exited with status $?\" >> \"$HOME/tetron-wm-debug.log\"; \
+echo; printf 'Press Enter to close. '; read _"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,5 +236,21 @@ mod tests {
         assert_eq!(method_name(false, Path::new("/home/u/.cargo/bin/tetron-wm")), "cargo");
         assert_eq!(method_name(false, Path::new("/usr/local/bin/tetron-wm")), "binary");
         assert_eq!(method_name(false, Path::new("tetron-wm")), "binary");
+    }
+
+    #[test]
+    fn apps_row_offers_only_larger_sizes() {
+        assert_eq!(size_choices(Size::Minimal), [Size::Desktop, Size::Extras]);
+        assert_eq!(size_choices(Size::Desktop), [Size::Extras]);
+        assert_eq!(size_choices(Size::Extras), [Size::Extras], "a check, not a downgrade");
+    }
+
+    #[test]
+    fn apps_command_is_valid_sh_and_installs_apps_only() {
+        let cmd = apps_install_command("https://raw.githubusercontent.com/o/r", Size::Extras);
+        assert!(std::process::Command::new("sh").args(["-n", "-c", &cmd]).status().unwrap().success(), "{cmd}");
+        assert!(cmd.contains("--size extras") && cmd.contains("--no-wm") && cmd.contains("--no-console"), "{cmd}");
+        assert!(cmd.contains("install-tetron-wm-suite.sh"), "{cmd}");
+        assert!(cmd.contains("read _"), "the window stays until Enter: {cmd}");
     }
 }
