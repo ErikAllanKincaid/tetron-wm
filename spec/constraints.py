@@ -62,3 +62,19 @@ class SuiteAppListGenerated(Constraint):
     """
     constraint_id = "CON-WD05"
     enforcement_logic = "{{ suite_apps.current }}"
+
+
+class NoPlanningNotesInCommittedFiles(Constraint):
+    """CONSTRAINT-ID: CON-WD06
+
+    Committed files explain the code; decisions, who made them, dates and
+    plans belong in the private planning notes and the changelog. So no
+    tracked file outside an allowlist (the changelog, lock files, generated
+    catalogs, license text, .gitignore, the agent guide) names the
+    project owner by the uppercase placeholder, points into the private
+    planning directory, or carries a date in a comment; files under spec/
+    carry no date at all.
+    ENFORCEMENT (reconcile.py): planning_notes.count equals 0.
+    """
+    constraint_id = "CON-WD06"
+    enforcement_logic = "{{ planning_notes.count == 0 }}"

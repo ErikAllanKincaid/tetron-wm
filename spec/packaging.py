@@ -1,5 +1,4 @@
-"""Packaging requirements for tetron-wm (WMDEB-*). Plan:
-DO-NOT-COMMIT/PLAN_tetron-wm_deb_packaging_dpkg_aware_updater_theme_fallback_and_desktop_metapackage.md
+"""Packaging and install requirements for tetron-wm (WMDEB-*, WMINST-*).
 Only packaging lives here; the rest of tetron-wm follows CLAUDE.md."""
 from libspec import Requirement
 
@@ -10,8 +9,7 @@ class MissingToolAudit(Requirement):
     Every outside program tetron-wm runs is checked before use or fails
     visibly: no crash, no hang of the render loop, no menu item that fails
     silently. Every spawn goes through `run_capped`/`run_capped_status` or
-    runs off the render loop. Audit: DO-NOT-COMMIT/AUDIT_tetron-wm_missing_tool_behavior_2026-10-31.md.
-    Done 2026-10-31.
+    runs off the render loop.
     """
 
 
@@ -102,14 +100,11 @@ class DesktopMetapackage(Requirement):
     13 and Ubuntu 22.04 and 24.04 (apt installs Recommends by default, so
     `apt install tetron-wm-desktop` brings the full set). Services
     (pipewire, wireplumber, network-manager, bluez), kmscon and fbi are
-    Suggests, as are btop, age and openssh-server (USER review
-    2026-10-31: an SSH server must never start just because the desktop
-    set was installed). Tools Debian does not package (carbonyl, fresh,
+    Suggests, as are btop, age and openssh-server (an SSH server must never
+    start just because the desktop set was installed). Tools Debian does not package (carbonyl, fresh,
     casttui, catt, uv, opencode, a symbols Nerd Font) stay with the
     installer scripts; catt and casttui join the suite script's desktop
-    tier (WMDEB-008). The package lists come from USER's review list
-    (DO-NOT-COMMIT/LIST_tetron-wm_deb_default_packages_review.md) until the
-    app catalog generates them. Release CI builds it once, on the amd64 job, and tests it by
+    tier (WMDEB-008). Release CI builds it once, on the amd64 job, and tests it by
     installing it together with that job's tetron-wm .deb in a clean
     container, Recommends included.
     """
@@ -120,8 +115,8 @@ class ExtrasMetapackage(Requirement):
 
     `tetron-wm-extras` (`packaging/extras.toml`, a metapackage, Architecture
     all) Depends `tetron-wm-desktop (>= {minor})` and Recommends the
-    nice-to-have apps tetron-wm does not need for its own features (USER
-    review: fbi, git). Three sizes result: tetron-wm (nothing else),
+    nice-to-have apps tetron-wm does not need for its own features (fbi,
+    git). Three sizes result: tetron-wm (nothing else),
     tetron-wm-desktop (every feature), tetron-wm-extras (every feature plus
     the extra apps). Release CI builds it once next to tetron-wm-desktop
     and checks its Recommends install together with the other two debs.
@@ -140,8 +135,7 @@ class SuiteScriptOnDpkgHost(Requirement):
 class AppListSingleSource(Requirement):
     """REQUIREMENT-ID: WMINST-001
 
-    The app sets are defined once (plan: PLAN_tetron-wm_install_methods_
-    sizes_console_matrix.md). `packaging/desktop.toml` and
+    The app sets are defined once. `packaging/desktop.toml` and
     `packaging/extras.toml` define the desktop and extras sizes by Debian
     name. `packaging/os-names.toml` gives, per Debian name, the check that
     tells it is present (a command, `font=NAME`, or `consolefonts`) and the
@@ -193,8 +187,8 @@ class SuiteScriptSizes(Requirement):
       the built-in list when the listing fails; never overwrites a file.
     - Skips gpm on a Linux machine without a mouse device
       (/dev/input/mice): Debian's gpm fails to configure there and leaves a
-      broken package (USER 2026-10-31: gpm stays a desktop Recommends, the
-      suite installer guards it). One by one it is left out; through the
+      broken package (gpm stays a desktop Recommends; the suite installer
+      guards it). One by one it is left out; through the
       metapackage it is excluded with `gpm-` in the same apt command. Systems > Add Remote
       installs gpm on a remote only when it has a mouse device too (over
       ssh the mouse comes from the local terminal, not gpm).
@@ -215,8 +209,7 @@ class InstallShBinaryOnly(Requirement):
     When it installs or upgrades the tetron-wm deb and tetron-wm-desktop or
     tetron-wm-extras is installed, the release's matching metapackage debs
     are checked against their .sha256 and installed in the same apt
-    command, so a release's new Recommends reach existing machines (USER
-    2026-10-31). Systems > Add Remote no longer sets
+    command, so a release's new Recommends reach existing machines. Systems > Add Remote no longer sets
     TETRON_WM_INSTALL_DEPS.
     """
 
