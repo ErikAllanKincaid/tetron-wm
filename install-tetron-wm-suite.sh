@@ -784,7 +784,15 @@ do_uninstall() {
 
   # 4. optional: binary + config
   if [ "$PURGE" = 1 ]; then
-    if [ -x "$wm" ] && confirm "Remove the tetron-wm binary ($wm)?" n; then
+    if deb_host && wm_packaged; then
+      # apt owns it: removing the file by hand would leave a broken package.
+      if confirm "Remove the tetron-wm package and its desktop/extras packages with apt?" n; then
+        # shellcheck disable=SC2046
+        $SUDO apt-get remove -y $(for p in tetron-wm-extras tetron-wm-desktop tetron-wm; do
+          dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null | grep -qx installed && echo "$p"; done) \
+          && log "removed the tetron-wm packages (apt autoremove removes the apps they brought)"
+      fi
+    elif [ -x "$wm" ] && confirm "Remove the tetron-wm binary ($wm)?" n; then
       rm -f "$wm" 2>/dev/null || $SUDO rm -f "$wm"; log "removed $wm"
     fi
     if [ -d "$HOME/.config/tetron-wm" ] && confirm "Delete ~/.config/tetron-wm (config and themes)?" n; then
