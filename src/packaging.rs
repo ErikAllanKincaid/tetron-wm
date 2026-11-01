@@ -59,6 +59,87 @@ pub fn running_is_packaged() -> bool {
     })
 }
 
+/// How much of the app set is installed (WMINST-005): the suite script's
+/// sizes, the same as the tetron-wm / tetron-wm-desktop / tetron-wm-extras debs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Size {
+    Minimal,
+    Desktop,
+    Extras,
+}
+
+impl Size {
+    pub fn name(self) -> &'static str {
+        match self {
+            Size::Minimal => "minimal",
+            Size::Desktop => "desktop",
+            Size::Extras => "extras",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Size> {
+        match s.trim() {
+            "minimal" => Some(Size::Minimal),
+            "desktop" => Some(Size::Desktop),
+            "extras" => Some(Size::Extras),
+            _ => None,
+        }
+    }
+}
+
+/// Whether dpkg has package `name` installed: its file list exists (dpkg
+/// deletes it when the package is removed).
+fn dpkg_has(info_dir: &Path, name: &str) -> bool {
+    info_dir.join(format!("{name}.list")).is_file()
+}
+
+/// The last `key=value` for `key` in the suite script's state file.
+pub fn state_value(state: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}=");
+    state.lines().rev().find_map(|l| l.strip_prefix(&prefix)).map(str::to_string)
+}
+
+/// The installed size: the metapackages dpkg has, else the suite script's
+/// record, else minimal.
+pub fn size_from(info_dir: &Path, state: &str) -> Size {
+    if dpkg_has(info_dir, "tetron-wm-extras") {
+        Size::Extras
+    } else if dpkg_has(info_dir, "tetron-wm-desktop") {
+        Size::Desktop
+    } else {
+        state_value(state, "size").and_then(|s| Size::parse(&s)).unwrap_or(Size::Minimal)
+    }
+}
+
+/// How tetron-wm was installed, for Settings > About.
+pub fn method_name(packaged: bool, exe: &Path) -> &'static str {
+    if packaged {
+        "apt package"
+    } else if exe.parent().and_then(|d| d.parent()).and_then(|r| r.file_name()).is_some_and(|n| n == ".cargo") {
+        "cargo"
+    } else {
+        "binary"
+    }
+}
+
+fn suite_state_text() -> String {
+    crate::config::config_dir()
+        .and_then(|d| std::fs::read_to_string(d.join("suite-state")).ok())
+        .unwrap_or_default()
+}
+
+/// The installed size on this machine (reads dpkg's records and the suite
+/// state each call: cheap file checks, so the Settings row stays current).
+pub fn installed_size() -> Size {
+    size_from(Path::new(DPKG_INFO), &suite_state_text())
+}
+
+/// The install method of the running binary.
+pub fn install_method() -> &'static str {
+    let exe = std::env::current_exe().unwrap_or_default();
+    method_name(running_is_packaged(), &exe)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +190,26 @@ mod tests {
         std::fs::write(d.join("tetron-wm:amd64.list"), "/usr/bin/tetron-wm\n").unwrap();
         assert!(owned_in(&d, Path::new("/usr/bin/tetron-wm")));
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn size_prefers_dpkg_then_suite_state_then_minimal() {
+        let d = tmp("size");
+        assert_eq!(size_from(&d, ""), Size::Minimal);
+        assert_eq!(size_from(&d, "vt=1\nsize=desktop\nsize=extras\n"), Size::Extras, "last value wins");
+        assert_eq!(size_from(&d, "size=bogus\n"), Size::Minimal);
+        std::fs::write(d.join("tetron-wm-desktop.list"), "/.\n").unwrap();
+        assert_eq!(size_from(&d, "size=minimal\n"), Size::Desktop, "dpkg wins over the record");
+        std::fs::write(d.join("tetron-wm-extras.list"), "/.\n").unwrap();
+        assert_eq!(size_from(&d, ""), Size::Extras);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn method_from_ownership_and_path() {
+        assert_eq!(method_name(true, Path::new("/usr/bin/tetron-wm")), "apt package");
+        assert_eq!(method_name(false, Path::new("/home/u/.cargo/bin/tetron-wm")), "cargo");
+        assert_eq!(method_name(false, Path::new("/usr/local/bin/tetron-wm")), "binary");
+        assert_eq!(method_name(false, Path::new("tetron-wm")), "binary");
     }
 }

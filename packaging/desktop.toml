@@ -35,11 +35,12 @@ recommends = [
   "python3", "curl", "openssh-client", "unzip", "console-setup-linux",
   "htop", "sshfs", "mc", "vim",
 ]
+# kmscon (>= 9.1): Debian 12 ships 9.0.0, without truecolor and mouse passthrough.
 # openssh-server stays a Suggests (USER review): Debian starts the SSH server
 # on install, which must never happen just because this package was installed.
 suggests = [
   "btop", "age",
-  "pipewire", "wireplumber", "network-manager", "bluez", "kmscon",
+  "pipewire", "wireplumber", "network-manager", "bluez", "kmscon (>= 9.1)",
   "openssh-server", "openssh-sftp-server",
 ]
 files = []

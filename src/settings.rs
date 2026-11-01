@@ -187,6 +187,14 @@ pub struct Settings {
     themes_status: String,
     /// A theme download is running (Enter on the row does nothing meanwhile).
     themes_busy: bool,
+    /// About: how tetron-wm was installed and the size (WMINST-005), read on
+    /// open and on entering About, never per frame.
+    install_info: String,
+}
+
+/// "apt package, size desktop" for Settings > About.
+fn install_info() -> String {
+    format!("{}, size {}", crate::packaging::install_method(), crate::packaging::installed_size().name())
 }
 
 /// Whether the config file is on disk.
@@ -203,7 +211,7 @@ impl Settings {
             edit: None, text: None, stage_bg, stage_fg, previewing: false, colors_live: true,
             sound: None, outputs: Vec::new(), in_sidebar: false, wallpaper_note: None,
             waiter: crate::fullscreen::service_state(), cfg_exists: config_file_exists(), reset_armed: false,
-            themes_status: String::new(), themes_busy: false,
+            themes_status: String::new(), themes_busy: false, install_info: install_info(),
         }.with_wallpaper_note()
     }
 
@@ -270,6 +278,8 @@ impl Settings {
             self.waiter = crate::fullscreen::service_state();
         } else if i == GENERAL {
             self.cfg_exists = config_file_exists();
+        } else if i == SECTIONS.len() - 1 {
+            self.install_info = install_info();
         }
     }
 
@@ -1040,6 +1050,7 @@ impl Settings {
                     ("Version", format!("{} (git {sha})", crate::VERSION)),
                     ("Session", crate::protocol::session_name()),
                     ("App server", format!("protocol v{}", crate::apphost::proto::PROTO_VERSION)),
+                    ("Installed", self.install_info.clone()),
                     ("Config", "~/.config/tetron-wm/config.toml".to_string()),
                     ("Log", "~/tetron-wm-debug.log".to_string()),
                     ("Clipboard", "~/.local/share/tetron-wm/clipboard-history.jsonl".to_string()),
@@ -1984,5 +1995,14 @@ mod tests {
         assert!(screen(&s).contains("GitHub rate limit"));
         s.toggle();
         assert_eq!(s.take_action(), Some(SettingsAction::GetThemes));
+    }
+
+    #[test]
+    fn about_shows_how_it_was_installed() {
+        let mut s = Settings::new(Config::default());
+        s.enter_section(SECTIONS.len() - 1);
+        let text = screen(&s);
+        assert!(text.contains("Installed"), "{text}");
+        assert!(text.contains(", size "), "{text}");
     }
 }
