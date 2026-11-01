@@ -102,11 +102,29 @@ class DesktopMetapackage(Requirement):
     13 and Ubuntu 22.04 and 24.04 (apt installs Recommends by default, so
     `apt install tetron-wm-desktop` brings the full set). Services
     (pipewire, wireplumber, network-manager, bluez), kmscon and fbi are
-    Suggests. Tools Debian does not package (carbonyl, fresh, casttui,
-    catt, uv, opencode, a symbols Nerd Font) stay with the installer
-    scripts. Release CI builds it once, on the amd64 job, and tests it by
+    Suggests, as are btop, age and openssh-server (USER review
+    2026-10-31: an SSH server must never start just because the desktop
+    set was installed). Tools Debian does not package (carbonyl, fresh,
+    casttui, catt, uv, opencode, a symbols Nerd Font) stay with the
+    installer scripts; catt and casttui join the suite script's desktop
+    tier (WMDEB-008). The package lists come from USER's review list
+    (DO-NOT-COMMIT/LIST_tetron-wm_deb_default_packages_review.md) until the
+    app catalog generates them. Release CI builds it once, on the amd64 job, and tests it by
     installing it together with that job's tetron-wm .deb in a clean
     container, Recommends included.
+    """
+
+
+class ExtrasMetapackage(Requirement):
+    """REQUIREMENT-ID: WMDEB-009
+
+    `tetron-wm-extras` (`packaging/extras.toml`, a metapackage, Architecture
+    all) Depends `tetron-wm-desktop (>= {minor})` and Recommends the
+    nice-to-have apps tetron-wm does not need for its own features (USER
+    review: fbi, git). Three sizes result: tetron-wm (nothing else),
+    tetron-wm-desktop (every feature), tetron-wm-extras (every feature plus
+    the extra apps). Release CI builds it once next to tetron-wm-desktop
+    and checks its Recommends install together with the other two debs.
     """
 
 

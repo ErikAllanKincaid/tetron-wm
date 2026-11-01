@@ -43,7 +43,9 @@ class DesktopIsAMetapackageOnTetronWm(Constraint):
     """CONSTRAINT-ID: CON-WD04
 
     `packaging/desktop.toml` is a metapackage (no files entry with src
-    binary or asset) and its depends names tetron-wm (WMDEB-007).
+    binary or asset) and its depends names tetron-wm (WMDEB-007);
+    `packaging/extras.toml` is a metapackage whose depends names
+    tetron-wm-desktop (WMDEB-009).
     ENFORCEMENT (reconcile.py): desktop_deb.ok is true.
     """
     constraint_id = "CON-WD04"
