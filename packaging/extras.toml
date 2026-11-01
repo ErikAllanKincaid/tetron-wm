@@ -1,0 +1,22 @@
+# tetron-wm-extras: a metapackage for mkdeb (no binary, Architecture all).
+# Built once per release by the build-deb action. Spec: spec/packaging.py (WMDEB-009).
+#
+# The third size: tetron-wm (nothing else), tetron-wm-desktop (every feature),
+# tetron-wm-extras (every feature plus apps tetron-wm itself does not need).
+# The list follows USER's review (`X` rows in
+# DO-NOT-COMMIT/LIST_tetron-wm_deb_default_packages_review.md, 2026-10-31).
+name = "tetron-wm-extras"
+description = "tetron-wm desktop with extra terminal apps"
+long_description = """
+Installs tetron-wm-desktop (tetron-wm and the tools its features use) and
+adds apps that tetron-wm does not need for its own features: full screen
+images on the framebuffer (fbi) and git.
+
+Each is a Recommends, so it can be removed later without removing this
+package."""
+section = "metapackages"
+license = "MIT"
+homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
+depends = ["tetron-wm-desktop (>= {minor})"]
+recommends = ["fbi", "git"]
+files = []

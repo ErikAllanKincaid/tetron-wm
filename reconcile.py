@@ -40,13 +40,17 @@ def check_lean_deb() -> dict:
 
 
 def check_desktop_deb() -> dict:
-    p = Path("packaging/desktop.toml")
-    if not p.exists():
-        return {"ok": False, "problems": ["packaging/desktop.toml missing"]}
-    d = tomllib.loads(p.read_text())
-    problems = [f"{p}: has a binary file entry" for f in d.get("files", []) if f.get("src") in BUILT]
-    if not any(dep.split()[0] == "tetron-wm" for dep in d.get("depends", [])):
-        problems.append(f"{p}: depends does not name tetron-wm")
+    """CON-WD04: desktop and extras are metapackages on the next size down."""
+    problems = []
+    for file, base in (("packaging/desktop.toml", "tetron-wm"), ("packaging/extras.toml", "tetron-wm-desktop")):
+        p = Path(file)
+        if not p.exists():
+            problems.append(f"{p} missing")
+            continue
+        d = tomllib.loads(p.read_text())
+        problems += [f"{p}: has a binary file entry" for f in d.get("files", []) if f.get("src") in BUILT]
+        if not any(dep.split()[0] == base for dep in d.get("depends", [])):
+            problems.append(f"{p}: depends does not name {base}")
     return {"ok": not problems, "problems": problems}
 
 

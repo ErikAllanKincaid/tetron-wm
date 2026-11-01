@@ -26,7 +26,7 @@ suggests = [
   "python3",                    # tetron-wm-startpage, tetron-aimode
   "curl",                       # Settings > Updates, Get more themes
   "chafa", "mpv", "poppler-utils", "mupdf-tools", "w3m", "fbi",
-  "sshpass", "openssh-client", "unzip", "7zip", "age", "gpg",
+  "sshpass", "openssh-client", "sshfs", "unzip", "7zip", "age", "gpg",
   "htop", "btop", "upower", "alsa-utils", "khal",
   "xclip", "wl-clipboard", "gpm", "console-setup-linux", "fonts-dejavu-core",
   "pipewire", "wireplumber", "network-manager", "bluez",
