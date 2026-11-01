@@ -226,3 +226,19 @@ class InstallMethodAndSize(Requirement):
     both. `packaging/desktop.toml` suggests `kmscon (>= 9.1)`, since Debian
     12 ships kmscon 9.0.0 without truecolor and mouse passthrough.
     """
+
+
+class SettingsAppsRow(Requirement):
+    """REQUIREMENT-ID: WMINST-007
+
+    Depends on WMINST-002 and WMINST-005. Settings > General has an Apps
+    row showing the installed size. Left and Right pick a larger size
+    (from minimal: desktop or extras; from desktop: extras); at extras the
+    only choice is a check that reruns the suite script for extras, adding
+    anything a release added. Enter opens a terminal window running
+    `install-tetron-wm-suite.sh --size <size>` fetched from the branch,
+    limited to apps (no tetron-wm, config, theme, conversion or console
+    steps), so the sudo prompt and the output are visible; the window waits
+    for Enter. The row re-reads the size when General is entered. Without
+    curl the row says it is needed and Enter does nothing.
+    """
