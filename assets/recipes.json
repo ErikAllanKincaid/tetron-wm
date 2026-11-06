@@ -1550,7 +1550,7 @@
   "verified": true
  },
  "carbonyl": {
-  "install": "npm install --global carbonyl",
+  "install": "npm install --global carbonyl@0.0.3-next.ab80a27",
   "method": "npm",
   "os": [
    "macos",

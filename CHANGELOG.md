@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Fixed
+- The Store installs carbonyl as `carbonyl@0.0.3-next.ab80a27`. The npm `latest` tag still points to an older build (0.0.2-next.bacf3db) that keeps one CPU core at 100% even when idle; upstream fixed this in 0.0.3.
+
 ## [0.15.0] — 2026-10-31
 
 ### Added
