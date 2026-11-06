@@ -22,7 +22,7 @@ Your apps run in the background, so you can close the terminal, drop an ssh conn
 Prebuilt binary for Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). No Rust needed.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash
 ```
 
 It asks how much to install (minimal: tetron-wm only; desktop: plus the tools its features use, the default; extras: plus fbi and git) and what kind of machine this is, then installs. On Debian and Ubuntu it uses the `.deb` packages once a release carries them, so apt manages tetron-wm and the apps. Every way to install, what each size brings, and how to update and remove: [docs/INSTALL_tetron-wm_methods_and_sizes.md](docs/INSTALL_tetron-wm_methods_and_sizes.md).
@@ -60,7 +60,7 @@ Install suite.
 [tetron](https://github.com/tetronos/tetron)
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/tetronos/tetron/main/contrib/install-tetron-suite.sh | bash
+curl -fsSL https://tetronos.github.io/tetron/install.sh | bash
 ```
 
 tetron-wm has first-class, optional support for [tetron](https://github.com/tetronos/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tetron-wm works identically with or without tetron present.
@@ -134,7 +134,7 @@ Common first changes:
 tetron-wm draws everything as cells, so it also runs on a raw Linux console. For colors and mouse there, use the maintained [kmscon](https://github.com/Aetf/kmscon) fork. One script can set it all up, including starting tetron-wm after you log in, and optionally autologin (never the default):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash
 ```
 
 It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` (a login prompt, you start tetron-wm) or `login` (a login prompt, tetron-wm starts after you log in); it then asks "Do you want to log in automatically?" (default no, `--autologin` to say yes), and use `--dry-run` to preview the plan.

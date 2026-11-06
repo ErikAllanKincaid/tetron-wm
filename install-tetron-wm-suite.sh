@@ -5,7 +5,7 @@
 # into a console that boots straight into the desktop. Every step is opt-in and
 # prompted (or chosen with flags); nothing happens without a yes. Pipe it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
+#   curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash
 #
 # Common setups (pick one from the menu, or pass --profile):
 #   gui        a machine with a desktop: tetron-wm in a terminal window.
