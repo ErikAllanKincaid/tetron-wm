@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""tetron-wm-startpage: render a bookmarks file to a static HTML start page for text browsers (tetron-browser, carbonyl, w3m).
-Usage: tetron-wm-startpage                          regenerate the page, then open it in tetron-browser (else carbonyl, else w3m)
+"""tetron-wm-startpage: render a bookmarks file to a static HTML start page for text browsers (tetron-browser, w3m).
+Usage: tetron-wm-startpage                          regenerate the page, then open it in tetron-browser (else w3m; never carbonyl, it crashes)
        tetron-wm-startpage build                    regenerate the page only
        tetron-wm-startpage add TITLE URL [SECTION]  append a bookmark (default section: Links) and regenerate
        tetron-wm-startpage list                     print the bookmarks file
@@ -89,9 +89,9 @@ def main():
     render()
     if a:
         return print("wrote", OUT)
-    browser = shutil.which("tetron-browser") or shutil.which("carbonyl") or shutil.which("w3m")
+    browser = shutil.which("tetron-browser") or shutil.which("w3m")
     if not browser:
-        sys.exit("wrote %s; install tetron-browser, carbonyl or w3m to view it" % OUT)
+        sys.exit("wrote %s; install tetron-browser or w3m to view it" % OUT)
     os.execv(browser, [browser, "file://" + OUT])
 
 

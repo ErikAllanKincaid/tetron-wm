@@ -4345,7 +4345,7 @@
   "name": "Start Page",
   "bin": "tetron-wm-startpage",
   "category": "Web",
-  "description": "Your bookmarks (~/.config/tetron-wm/bookmarks.txt) as a start page with a search box, opened in tetron-browser, carbonyl or w3m. `tetron-wm-startpage add TITLE URL [SECTION]` adds one.",
+  "description": "Your bookmarks (~/.config/tetron-wm/bookmarks.txt) as a start page with a search box, opened in tetron-browser, else w3m. `tetron-wm-startpage add TITLE URL [SECTION]` adds one.",
   "homepage": "https://github.com/ErikAllanKincaid/tetron-wm/tree/main/scripts"
  },
  {
