@@ -21,7 +21,7 @@ Chromecast casting, any OS, with [uv](https://docs.astral.sh/uv/) (Fedora, Arch 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is missing
 uv tool install catt
-uv tool install git+https://github.com/ErikAllanKincaid/casttui
+uv tool install git+https://github.com/tetronos/casttui
 ```
 
 The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md#install)) installs these for you after a prompt, only the ones that are missing, with apt, dnf, pacman or Homebrew. It asks twice: once for the recommended tools (chafa, mpv, poppler, fresh, sshpass, htop, btop, upower, alsa-utils, the DejaVu Sans Mono font, uv (its official installer on Debian and Ubuntu), catt and casttui with `uv tool install`, w3m, tetron-wm's own `tetron-wm-startpage` and `tetron-aimode` from `scripts/` into `~/.local/bin`, and xclip or wl-clipboard on a desktop), default yes, and once for the system services PipeWire (`wireplumber`), NetworkManager and BlueZ, default no, because those change how the machine manages sound, network and Bluetooth. Flags: `--extras` / `--no-extras` and `--services` / `--no-services`. Its tetron-wm step also offers gpm and the Nerd Font, and, with kmscon, the optional full screen helper (`--fullscreen` / `--no-fullscreen`, default no).
@@ -37,7 +37,7 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | PDFs in the built-in viewer | `pdftoppm`, `pdfinfo`, `pdftotext` (package `poppler-utils`; `poppler` on Arch and Homebrew) | PDFs offer only the apps you have installed | Renders one page at a time into the image viewer (characters on any terminal, the real page with Kitty graphics); the text view uses `pdftotext`. Optional: `tdf` and `timg` (Store) appear in Open with…, and `fbgs` (with fbi and ghostscript) gives full screen on a plain console. |
 | Cast to Chromecast (right-click on video, audio and images) | `catt` | No Cast to Chromecast item | Serves the file from this machine until playback ends; pick the device with `cast_device`. Not in distro repositories: `uv tool install catt`. [catt](https://github.com/skorokithakis/catt) |
 | Compress and Encrypt (right-click on files and folders) | `7z` (package `p7zip-full`, `7zip` or `p7zip`; `7zz` and `7za` also work), optional `age`, `gpg`, `zip` | Compress offers `.tar.gz` (and `.zip` with zip); Encrypt offers only what age or gpg can write, or is hidden | 7-Zip writes the default encrypted format, `.7z` with AES-256 and hidden file names, which opens on Linux, Windows and macOS. Also opens AES zips that unzip can not. 7z derives its key quickly, so use a long password. [7-Zip](https://www.7-zip.org/), [age](https://github.com/FiloSottile/age) |
-| Cast remote control (Open with… on video and audio) | `casttui` | Not listed in Open with… | Play/pause, seek, volume and stop for the cast, and converts codecs a Chromecast can not play. `uv tool install git+https://github.com/ErikAllanKincaid/casttui`. [casttui](https://github.com/ErikAllanKincaid/casttui) |
+| Cast remote control (Open with… on video and audio) | `casttui` | Not listed in Open with… | Play/pause, seek, volume and stop for the cast, and converts codecs a Chromecast can not play. `uv tool install git+https://github.com/tetronos/casttui`. [casttui](https://github.com/tetronos/casttui) |
 | Installing catt and casttui | `uv` | Install them another way (pipx) | Python tool installer; `uv tool install` puts each tool in its own environment under `~/.local/bin`. Fedora, Arch, Homebrew: package `uv`; Debian and Ubuntu: `curl -LsSf https://astral.sh/uv/install.sh \| sh`. [uv](https://docs.astral.sh/uv/) |
 | Start Page in the launcher (Web) | `tetron-wm-startpage`, `tetron-browser` or `w3m` | No Start Page entry | Renders `~/.config/tetron-wm/bookmarks.txt` to `start.html` with a search box and opens it in tetron-browser, else w3m (never carbonyl, which crashes). `tetron-wm-startpage add TITLE URL [SECTION]`, `tetron-wm-startpage edit`. A stdlib Python 3 script from `scripts/tetron-wm-startpage`. |
 | AI Mode in the launcher (AI) | `tetron-aimode`, a Gemini API key | No AI Mode entry | Gemini questions in a full screen terminal app. Free key: https://aistudio.google.com/apikey, the first run asks for it and saves it to `~/.config/aimode/key` (mode 600), `tetron-aimode --key` replaces it, or set `GEMINI_API_KEY`; `--search` (Google Search grounding) needs billing. A stdlib Python 3 script from `scripts/tetron-aimode`. |
@@ -58,7 +58,7 @@ The suite installer (`install-tetron-wm-suite.sh`, see the [README](../README.md
 | Real images in windows | A terminal with the Kitty graphics protocol (Kitty, Ghostty, WezTerm) | Images are drawn as cells instead | |
 | AI assistant (✦) | `opencode`, or `hermes` | Settings → Assistant marks the agent "(not installed)" | Switch in Settings → Assistant. [opencode](https://opencode.ai) |
 | Updates from Settings | `curl`; `cargo` for the dev channel | Update manually with the install command | The main channel downloads a prebuilt release. |
-| Mesh VPN segment | `tetron` and `tetron-tui` | No VPN segment | [tetron-tui](https://github.com/ErikAllanKincaid/tetron-tui). Optional companion. |
+| Mesh VPN segment | `tetron` and `tetron-tui` | No VPN segment | [tetron-tui](https://github.com/tetronos/tetron-tui). Optional companion. |
 
 ## Store installs
 

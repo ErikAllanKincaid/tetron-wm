@@ -12,7 +12,7 @@ how = "uv tool install catt"
 
 [script.casttui]
 size = "desktop"
-how = "uv tool install from github.com/ErikAllanKincaid/casttui"
+how = "uv tool install from github.com/tetronos/casttui"
 
 [script.nerd-font]
 size = "desktop"

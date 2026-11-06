@@ -1,7 +1,7 @@
 #!/bin/sh
 # tetron-wm installer — downloads the latest prebuilt binary for your platform.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install.sh | sh
 #
 # The default install dir is /usr/local/bin (system-wide, already on PATH), which
 # needs root — the script uses sudo when the dir is not writable. For a no-sudo,
@@ -20,7 +20,7 @@ set -eu
 
 # Prebuilt binaries come from the tetron-wm release repo. The binary is named
 # `tetron-wm` and installs to its own paths, so it collides with nothing else.
-REPO="ErikAllanKincaid/tetron-wm"
+REPO="tetronos/tetron-wm"
 PKG="tetron-wm"
 BIN_DIR="${TETRON_WM_BIN_DIR:-/usr/local/bin}"
 # Release downloads and the tag can be overridden (tests serve a local release).

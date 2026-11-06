@@ -1393,7 +1393,7 @@ impl SessionCore {
                 // Settings > General > Apps (WMINST-007): the suite installer for
                 // that size in a window, so sudo asks where the user can answer.
                 crate::dbg_log(&format!("apps: install the {} size with the suite installer", size.name()));
-                let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
+                let raw = "https://raw.githubusercontent.com/tetronos/tetron-wm";
                 let cmd = crate::packaging::apps_install_command(raw, size);
                 // "install:" titles rescan $PATH when the window closes (reap_dead).
                 self.launch(format!("install: {} apps", size.name()), "sh".into(), vec!["-lc".into(), cmd]);
@@ -6628,7 +6628,7 @@ fn update_command(branch: &str, packaged: bool) -> String {
     let branch = sanitize_branch(branch);
     let branch = branch.as_str();
     let repo = crate::REPO_URL;
-    let raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm";
+    let raw = "https://raw.githubusercontent.com/tetronos/tetron-wm";
     // Keep the new binary where the running one lives (cargo bin, /usr/local/bin,
     // or a user dir). install.sh sudo-escalates when that dir needs root.
     let exe_dir = std::env::current_exe()

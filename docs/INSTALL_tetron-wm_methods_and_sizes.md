@@ -7,7 +7,7 @@ Three separate choices make up an install. **How** tetron-wm arrives (the suite 
 For most people, one command, then answer two questions (the size, then what kind of machine this is):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 Press Enter at each question to take the default: the desktop size, and the setup that suits the machine. Running it again later is safe; it only adds what is missing.
@@ -31,10 +31,10 @@ The sizes are the same everywhere: the suite installer's list, the `tetron-wm-de
 **`install.sh`** installs tetron-wm only: the `.deb` on Debian and Ubuntu when the release has one, otherwise the prebuilt binary in `/usr/local/bin` (or `TETRON_WM_BIN_DIR`). When it finishes it prints the suite installer command for the apps.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install.sh | sh
 ```
 
-**The `.deb` packages**, from the [releases page](https://github.com/ErikAllanKincaid/tetron-wm/releases), for Debian 12 and later and Ubuntu 22.04 and later:
+**The `.deb` packages**, from the [releases page](https://github.com/tetronos/tetron-wm/releases), for Debian 12 and later and Ubuntu 22.04 and later:
 
 | Package | What it installs |
 |---|---|
@@ -48,7 +48,7 @@ sudo apt install ./tetron-wm_<version>_amd64.deb ./tetron-wm-desktop_<version>_a
 
 This gives the same packages as the suite installer, without the apps no distribution packages (fresh, uv, catt, casttui, the Nerd Font) and without the console setup. On a machine with no mouse device (`/dev/input/mice` missing: headless servers, many VMs), add `gpm-` to that command: Debian's gpm, the console mouse, fails to install there. The suite installer does this for you, and Systems > Add Remote installs gpm on a remote only when it has a mouse device. Over ssh the mouse comes from your own terminal, so a remote never needs gpm for that.
 
-**From source**, with a [Rust toolchain](https://rustup.rs) 1.95 or newer: `cargo install --git https://github.com/ErikAllanKincaid/tetron-wm`. tetron-wm only.
+**From source**, with a [Rust toolchain](https://rustup.rs) 1.95 or newer: `cargo install --git https://github.com/tetronos/tetron-wm`. tetron-wm only.
 
 ## Console setups (Debian and Ubuntu)
 

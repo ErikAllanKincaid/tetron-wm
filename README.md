@@ -1,6 +1,6 @@
 # tetron-wm
 
-**Website: [erikallankincaid.github.io/tetron-wm](https://erikallankincaid.github.io/tetron-wm/)**
+**Website: [tetronos.github.io/tetron-wm](https://tetronos.github.io/tetron-wm/)**
 
 **A TUI desktop. A graphical tmux.** Floating windows, a taskbar, a launcher, an app store and a mouse, all drawn as text inside the terminal you already have.
 
@@ -22,7 +22,7 @@ Your apps run in the background, so you can close the terminal, drop an ssh conn
 Prebuilt binary for Linux (x86_64, aarch64) and macOS (Apple silicon, Intel). No Rust needed.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 It asks how much to install (minimal: tetron-wm only; desktop: plus the tools its features use, the default; extras: plus fbi and git) and what kind of machine this is, then installs. On Debian and Ubuntu it uses the `.deb` packages once a release carries them, so apt manages tetron-wm and the apps. Every way to install, what each size brings, and how to update and remove: [docs/INSTALL_tetron-wm_methods_and_sizes.md](docs/INSTALL_tetron-wm_methods_and_sizes.md).
@@ -30,13 +30,13 @@ It asks how much to install (minimal: tetron-wm only; desktop: plus the tools it
 Only tetron-wm, nothing else (the suite installer, or Settings > General > Apps, adds the apps later). It installs to `/usr/local/bin` with `sudo`; for your home instead:
 
 ```sh
-TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+TETRON_WM_BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install.sh | sh
 ```
 
 Or build from source with a [Rust toolchain](https://rustup.rs) (1.95 or newer):
 
 ```sh
-cargo install --git https://github.com/ErikAllanKincaid/tetron-wm
+cargo install --git https://github.com/tetronos/tetron-wm
 ```
 
 ### Recommended extras
@@ -47,7 +47,7 @@ tetron-wm works on its own; the desktop size adds the tools that make the most o
 sudo apt install mpv chafa poppler-utils upower w3m gpm xclip wl-clipboard alsa-utils sshpass fonts-dejavu-core 7zip gnupg python3 curl openssh-client unzip console-setup-linux htop sshfs mc vim
 ```
 
-The suite installer above installs them for you with the desktop size (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper and images in the image viewer on any terminal (chafa), video in a window (mpv), PDFs in the viewer (poppler), a friendly terminal editor ([fresh](https://github.com/sinelaw/fresh), from its own installer on Linux, `brew install fresh-editor` on macOS), casting to a Chromecast ([catt](https://github.com/skorokithakis/catt) and [casttui](https://github.com/ErikAllanKincaid/casttui), installed with [uv](https://docs.astral.sh/uv/)), a bookmarks **Start Page** for tetron-browser or w3m (`tetron-wm-startpage`) and **AI Mode** for Gemini questions (`tetron-aimode`, needs a free [Gemini API key](https://aistudio.google.com/apikey) that it asks for on first run), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md). It also downloads the extra themes (nord, dracula, dawn, newmoon and the high-contrast `contrast`, each with its wallpaper) into `~/.config/tetron-wm/themes/` without overwriting anything you have (`--no-themes` skips it).
+The suite installer above installs them for you with the desktop size (only the missing ones; the system services PipeWire, NetworkManager and BlueZ are a separate question that defaults to no). They add the image wallpaper and images in the image viewer on any terminal (chafa), video in a window (mpv), PDFs in the viewer (poppler), a friendly terminal editor ([fresh](https://github.com/sinelaw/fresh), from its own installer on Linux, `brew install fresh-editor` on macOS), casting to a Chromecast ([catt](https://github.com/skorokithakis/catt) and [casttui](https://github.com/tetronos/casttui), installed with [uv](https://docs.astral.sh/uv/)), a bookmarks **Start Page** for tetron-browser or w3m (`tetron-wm-startpage`) and **AI Mode** for Gemini questions (`tetron-aimode`, needs a free [Gemini API key](https://aistudio.google.com/apikey) that it asks for on first run), volume and output switching (PipeWire `wpctl`), Wi-Fi, Bluetooth and battery details, desktop clipboard sync, password-based Add Remote, and better tray tools. On a bare console add `gpm` for the mouse, or kmscon for colors and mouse. What each one does, what happens without it, and the macOS equivalents: [docs/DEPENDENCIES_tetron-wm_recommended_installs.md](docs/DEPENDENCIES_tetron-wm_recommended_installs.md). It also downloads the extra themes (nord, dracula, dawn, newmoon and the high-contrast `contrast`, each with its wallpaper) into `~/.config/tetron-wm/themes/` without overwriting anything you have (`--no-themes` skips it).
 
 Want a bare Linux machine that boots straight into the desktop? Use the suite installer, which can also set up the kmscon console, autologin and autostart, and can undo all of it. See [Bare console](#bare-console-no-x11-or-wayland).
 
@@ -57,17 +57,17 @@ Want a bare Linux machine that boots straight into the desktop? Use the suite in
 
 Install suite.
 
-[tetron](https://github.com/ErikAllanKincaid/tetron)
+[tetron](https://github.com/tetronos/tetron)
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron/main/contrib/install-tetron-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron/main/contrib/install-tetron-suite.sh | bash
 ```
 
-tetron-wm has first-class, optional support for [tetron](https://github.com/ErikAllanKincaid/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tetron-wm works identically with or without tetron present.
+tetron-wm has first-class, optional support for [tetron](https://github.com/tetronos/tetron), the P2P mesh VPN it ships alongside in the tetron-os image (below), right in the menubar tray. The integration is self-effacing: the tray talks to the tetron daemon over its own Unix IPC socket using `tetron-proto` (the shared wire protocol, the same crate tetron-systray and tetron-webui speak), and if no daemon answers (tetron not installed, or not running) the segment simply hides. There is nothing to configure, and tetron-wm works identically with or without tetron present.
 
 - **Status at a glance.** The tray shows `⇄<peers>` with a connection-quality dot: `●` when at least one network has a direct path, `○` when every connection is relay-only, and `off` when tetron is reachable but in standby. It is read-only, a background poll that bounds every call so a stuck daemon can never hang the tray.
 - **On/off from the popover.** Click the segment for a popover with a global **Tetron [on/off]** toggle plus one row per network. Each network row toggles just that network's data plane (**Resume** / **Standby**) with its own `●`/`○` direct-or-relay indicator; the global toggle moves them all at once. These map to tetron's own `Resume`/`Standby` IPC messages, the same effect as `tetron resume` / `tetron standby` from the CLI.
-- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/ErikAllanKincaid/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in the cli or tetron-tui, not in the tray.
+- **Open terminal.** An action row at the bottom of the popover opens a terminal into tetron: it launches [`tetron-tui`](https://github.com/tetronos/tetron-tui) (the full-screen tetron dashboard) when that is installed, and otherwise prints `tetron status` and drops you into an interactive shell with the full `tetron` CLI. Invites and joining a network live in the cli or tetron-tui, not in the tray.
 
 ## First five minutes
 
@@ -110,7 +110,7 @@ tetron-wm reload
 
 - [config.example.toml](config.example.toml) is a ready-to-copy file with every option at its default and a note on each.
 - [docs/CONFIG.md](docs/CONFIG.md) is the full reference plus copy-paste recipes: tiling grids, themes, wallpaper, launcher entries, clipboard, servers that must stay up, and more.
-- [The theming guide](https://erikallankincaid.github.io/tetron-wm/tetron-wm_theming_guide.html) teaches you to make your own theme: every color key shown on a picture of the desktop, screenshots of the built-in themes, and a step-by-step walkthrough.
+- [The theming guide](https://tetronos.github.io/tetron-wm/tetron-wm_theming_guide.html) teaches you to make your own theme: every color key shown on a picture of the desktop, screenshots of the built-in themes, and a step-by-step walkthrough.
 - Many options are also in the app under **Settings** (`Ctrl+Space`, then `,`). It opens on **Appearance**, where **Get more themes** downloads the themes new on GitHub. **General → Config file** opens the file in your editor, creates it from the example, resets it to defaults (the old file is kept as `config.toml.bak`) or reloads it after a hand edit.
 
 Common first changes:
@@ -134,13 +134,13 @@ Common first changes:
 tetron-wm draws everything as cells, so it also runs on a raw Linux console. For colors and mouse there, use the maintained [kmscon](https://github.com/Aetf/kmscon) fork. One script can set it all up, including starting tetron-wm after you log in, and optionally autologin (never the default):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 It asks before every step, is safe to re-run, and `--uninstall` puts your login console back. Choose `--profile gui`, `console` (a login prompt, you start tetron-wm) or `login` (a login prompt, tetron-wm starts after you log in); it then asks "Do you want to log in automatically?" (default no, `--autologin` to say yes), and use `--dry-run` to preview the plan.
 
 - Step-by-step: [docs/SETUP_tetron-wm_bare_console_kmscon.md](docs/SETUP_tetron-wm_bare_console_kmscon.md)
-- Why each piece is needed, with diagrams: [the bare console guide](https://erikallankincaid.github.io/tetron-wm/tetron-wm_bare_console_guide.html)
+- Why each piece is needed, with diagrams: [the bare console guide](https://tetronos.github.io/tetron-wm/tetron-wm_bare_console_guide.html)
 - Just kmscon: [install-kmscon.sh](install-kmscon.sh)
 - Mouse on a plain Linux VT comes from the `gpm` service (`sudo apt install gpm`). Without a mouse, every window can still be switched (leader `Tab`, leader `f`) and moved or resized (leader `w`) from the keyboard, and the right-click menu of a file opens with leader `.`.
 

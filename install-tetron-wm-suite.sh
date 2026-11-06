@@ -5,7 +5,7 @@
 # into a console that boots straight into the desktop. Every step is opt-in and
 # prompted (or chosen with flags); nothing happens without a yes. Pipe it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
 #
 # Common setups (pick one from the menu, or pass --profile):
 #   gui        a machine with a desktop: tetron-wm in a terminal window.
@@ -79,11 +79,11 @@
 #   --purge          with --uninstall: also remove the binary and ~/.config/tetron-wm
 #   -h, --help       show this help
 #
-# Env overrides: REPO (default ErikAllanKincaid/tetron-wm), BRANCH (default main),
+# Env overrides: REPO (default tetronos/tetron-wm), BRANCH (default main),
 # and anything install.sh honours (TETRON_WM_BIN_DIR, TETRON_WM_RELEASES_URL, TETRON_WM_TAG).
 set -euo pipefail
 
-REPO="${REPO:-ErikAllanKincaid/tetron-wm}"
+REPO="${REPO:-tetronos/tetron-wm}"
 BRANCH="${BRANCH:-main}"
 RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
 # Release downloads and the tag can be overridden (tests serve a local release);
@@ -483,7 +483,7 @@ install_uv() {
 # with… casttui). Python tools in no distro repository, installed with
 # `uv tool install` into ~/.local/bin. Offered with the extras when missing.
 # The archive, not git+https: that needs git, which a minimal host lacks.
-CASTTUI_SRC="https://github.com/ErikAllanKincaid/casttui/archive/refs/heads/main.tar.gz"
+CASTTUI_SRC="https://github.com/tetronos/casttui/archive/refs/heads/main.tar.gz"
 cast_tools_missing() {
   local out=""
   have_tool catt || out="catt"
@@ -526,7 +526,7 @@ install_cast_tools() {
   fi
   if ! have_tool casttui; then
     log "installing casttui: $uv tool install $CASTTUI_SRC"
-    "$uv" tool install "$CASTTUI_SRC" || warn "casttui did not install; see https://github.com/ErikAllanKincaid/casttui"
+    "$uv" tool install "$CASTTUI_SRC" || warn "casttui did not install; see https://github.com/tetronos/casttui"
   fi
 }
 

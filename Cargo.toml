@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.95"
 license = "MIT"
 description = "A TUI desktop environment for the terminal"
-repository = "https://github.com/ErikAllanKincaid/tetron-wm"
+repository = "https://github.com/tetronos/tetron-wm"
 
 [dependencies]
 crossterm = "0.29"
@@ -28,7 +28,7 @@ memchr = "2"
 # truth shared with tetron-systray and tetron-webui. We only read Status, framed
 # ourselves synchronously (4-byte BE length + msgpack) so we avoid tetron-proto's
 # async/tokio client helpers in the poller. rmp-serde does that framing.
-tetron-proto = { git = "https://github.com/ErikAllanKincaid/tetron" }
+tetron-proto = { git = "https://github.com/tetronos/tetron" }
 rmp-serde = "1"
 
 [lib]

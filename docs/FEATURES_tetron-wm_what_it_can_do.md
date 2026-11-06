@@ -94,7 +94,7 @@ Sessions in detail: `tetron-wm --help`, and the Recipes in [CONFIG.md](CONFIG.md
 
 ## tetron mesh VPN
 
-If [tetron](https://github.com/ErikAllanKincaid/tetron) is installed, a tray segment shows its status (`⇄` with a peer count and a direct or relay dot). Its popover toggles tetron or single networks on and off and opens a terminal into the tetron CLI or [tetron-tui](https://github.com/ErikAllanKincaid/tetron-tui). If tetron is absent or not running, the segment hides and nothing else changes.
+If [tetron](https://github.com/tetronos/tetron) is installed, a tray segment shows its status (`⇄` with a peer count and a direct or relay dot). Its popover toggles tetron or single networks on and off and opens a terminal into the tetron CLI or [tetron-tui](https://github.com/tetronos/tetron-tui). If tetron is absent or not running, the segment hides and nothing else changes.
 
 ## Configuration
 
