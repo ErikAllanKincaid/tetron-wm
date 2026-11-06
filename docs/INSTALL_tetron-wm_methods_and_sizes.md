@@ -7,7 +7,7 @@ Three separate choices make up an install. **How** tetron-wm arrives (the suite 
 For most people, one command, then answer two questions (the size, then what kind of machine this is):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash
 ```
 
 Press Enter at each question to take the default: the desktop size, and the setup that suits the machine. Running it again later is safe; it only adds what is missing.

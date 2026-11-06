@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install.sh 
 Installs tetron-wm only: the apt package on Debian and Ubuntu once releases carry a `.deb`, otherwise the prebuilt binary in `/usr/local/bin` (using `sudo`). The tools its features use (chafa, gpm, sshpass, the Nerd Font and the rest) come with the suite script's desktop size; `install.sh` prints that command when it finishes:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash
 ```
 
 For a no-sudo install set `TETRON_WM_BIN_DIR="$HOME/.local/bin"`, and put
