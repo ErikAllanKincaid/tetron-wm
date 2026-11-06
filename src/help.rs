@@ -61,7 +61,7 @@ pub fn help_sections() -> &'static [HelpSection] {
                 ("c / v", "copy selection / paste clipboard (p also pastes)"),
             ],
             notes: &[
-                "Copying out of w3m, carbonyl or vim (they grab the mouse):",
+                "Copying out of w3m, tetron-browser or vim (they grab the mouse):",
                 "  Ctrl+Space x, drag over the text, then Ctrl+Space C to pick",
                 "  it, or Ctrl+Space v to paste it into another window.",
             ],

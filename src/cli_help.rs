@@ -201,7 +201,7 @@ CONFIG KEYS (config.toml):\n",
         s += &format!("  {action:<11} {:<16} {desc}\n", keys.join(" "));
     }
     s += "\x20 (fixed)     1-9              send the focused window to grid cell N\n\
-\x20 Copying out of w3m, carbonyl or vim (they grab the mouse): leader x, drag over the text,\n\
+\x20 Copying out of w3m, tetron-browser or vim (they grab the mouse): leader x, drag over the text,\n\
 \x20 then leader C to pick it, or leader v to paste it into another window.\n";
     s += "\nENVIRONMENT:\n";
     let w = ENV_VARS.iter().map(|e| e.0.len()).max().unwrap_or(0);

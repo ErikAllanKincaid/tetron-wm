@@ -212,8 +212,9 @@ pub fn is_web_page(path: &Path) -> bool {
 }
 
 /// The installed terminal web browsers, for a web page's "Open with…" list.
+/// tetron-browser (the maintained continuation of carbonyl) comes first.
 pub fn browsers() -> Vec<String> {
-    ["carbonyl", "w3m", "lynx", "links", "elinks", "browsh"]
+    ["tetron-browser", "carbonyl", "w3m", "lynx", "links", "elinks", "browsh"]
         .into_iter()
         .filter(|b| crate::catalog::is_installed(b))
         .map(String::from)

@@ -4335,10 +4335,17 @@
   "homepage": "https://github.com/fathyb/carbonyl"
  },
  {
+  "name": "tetron-browser",
+  "bin": "tetron-browser",
+  "category": "Web",
+  "description": "Chromium running inside your terminal: the maintained continuation of carbonyl (TetronOS package tetron-browser)",
+  "homepage": "https://github.com/ErikAllanKincaid/tetron-browser"
+ },
+ {
   "name": "Start Page",
   "bin": "tetron-wm-startpage",
   "category": "Web",
-  "description": "Your bookmarks (~/.config/tetron-wm/bookmarks.txt) as a start page with a search box, opened in carbonyl or w3m. `tetron-wm-startpage add TITLE URL [SECTION]` adds one.",
+  "description": "Your bookmarks (~/.config/tetron-wm/bookmarks.txt) as a start page with a search box, opened in tetron-browser, carbonyl or w3m. `tetron-wm-startpage add TITLE URL [SECTION]` adds one.",
   "homepage": "https://github.com/ErikAllanKincaid/tetron-wm/tree/main/scripts"
  },
  {

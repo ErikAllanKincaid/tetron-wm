@@ -6,6 +6,9 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+### Added
+- tetron-browser, the maintained continuation of carbonyl (the TetronOS web browser), comes first in a web page's **Open with…** list, is what the Start Page opens (then carbonyl, then w3m), and has its own catalog entry.
+
 ### Fixed
 - The Store installs carbonyl as `carbonyl@0.0.3-next.ab80a27`. The npm `latest` tag still points to an older build (0.0.2-next.bacf3db) that keeps one CPU core at 100% even when idle; upstream fixed this in 0.0.3.
 
