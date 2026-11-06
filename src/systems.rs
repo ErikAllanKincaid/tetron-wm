@@ -164,7 +164,7 @@ pub fn switch_script(spec: &SwitchSpec) -> String {
             "curl -fsSL {repo_raw}/main/install.sh | sh; rc=$?; \
 [ \"$rc\" = 0 ] || [ \"$rc\" = 3 ] || {{ command -v cargo >/dev/null 2>&1 && cargo install --git {repo}; }}",
             repo = crate::REPO_URL,
-            repo_raw = "https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm",
+            repo_raw = "https://raw.githubusercontent.com/tetronos/tetron-wm",
         ));
         let gpm = sh_quote(
             // Only with a mouse device: gpm serves the remote's own text console

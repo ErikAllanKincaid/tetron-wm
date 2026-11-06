@@ -72,7 +72,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GIT_SHA: &str = env!("TETRON_WM_GIT_SHA");
 /// Repository the in-app updater checks/installs from (the tetron-wm release
 /// repo). The updater must only ever point here.
-pub const REPO_URL: &str = "https://github.com/ErikAllanKincaid/tetron-wm";
+pub const REPO_URL: &str = "https://github.com/tetronos/tetron-wm";
 
 /// Max size of `~/tetron-wm-debug.log` before it's reset, so a long-running session
 /// can't grow it without bound.

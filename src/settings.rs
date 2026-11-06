@@ -1087,7 +1087,7 @@ impl Settings {
                     buf.write_str(cx, 5 + i as i32, &format!("{k:<12}{v}"), pal_fg(), pal_bg());
                 }
                 buf.write_str(cx, 13, "Shortcuts: leader ?   Info menu: leader i", pal_dim(), pal_bg());
-                buf.write_str(cx, 14, "github.com/ErikAllanKincaid/tetron-wm", pal_dim(), pal_bg());
+                buf.write_str(cx, 14, "github.com/tetronos/tetron-wm", pal_dim(), pal_bg());
             }
         }
         buf

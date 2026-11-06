@@ -149,7 +149,7 @@ jobs:
       - name: Build .deb
         id: deb
         if: matrix.deb_arch != ''
-        uses: ErikAllanKincaid/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
+        uses: tetronos/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
         with:
           binary: target/${{ matrix.target }}/release/tetron-wm
           deb-toml: packaging/deb.toml
@@ -177,7 +177,7 @@ jobs:
       - name: Build tetron-wm-desktop .deb
         id: desktop
         if: matrix.deb_arch == 'amd64'
-        uses: ErikAllanKincaid/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
+        uses: tetronos/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
         with:
           deb-toml: packaging/desktop.toml
           version: ${{ needs.decide.outputs.tag }}
@@ -188,7 +188,7 @@ jobs:
       - name: Build tetron-wm-extras .deb
         id: extras
         if: matrix.deb_arch == 'amd64'
-        uses: ErikAllanKincaid/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
+        uses: tetronos/tetron-packaging@87d8405791a0e679af6deb720fe932410f38feb5
         with:
           deb-toml: packaging/extras.toml
           version: ${{ needs.decide.outputs.tag }}

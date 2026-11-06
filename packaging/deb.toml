@@ -1,4 +1,4 @@
-# Package description for mkdeb (https://github.com/ErikAllanKincaid/tetron-packaging).
+# Package description for mkdeb (https://github.com/tetronos/tetron-packaging).
 # Built in release CI by the build-deb action. Spec: spec/packaging.py (WMDEB-006).
 # Paths are relative to this file.
 #
@@ -18,7 +18,7 @@ network and Bluetooth controls) appear when that tool is installed. The
 tetron-wm-desktop package installs the recommended set."""
 section = "utils"
 license = "MIT"
-homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
+homepage = "https://github.com/tetronos/tetron-wm"
 # Debian package names, each present in Debian 13. Not listed
 # because trixie does not package them: kmscon, catt. tetron and tetron-tui are
 # our own .debs.

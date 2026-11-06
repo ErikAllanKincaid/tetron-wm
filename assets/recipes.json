@@ -5882,7 +5882,7 @@
   "verified": true
  },
  "AI Mode": {
-  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/scripts/tetron-aimode -o ~/.local/bin/tetron-aimode && chmod +x ~/.local/bin/tetron-aimode",
+  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/scripts/tetron-aimode -o ~/.local/bin/tetron-aimode && chmod +x ~/.local/bin/tetron-aimode",
   "method": "script",
   "os": [
    "macos",
@@ -5892,7 +5892,7 @@
   "verified": true
  },
  "Start Page": {
-  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/scripts/tetron-wm-startpage -o ~/.local/bin/tetron-wm-startpage && chmod +x ~/.local/bin/tetron-wm-startpage",
+  "install": "mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/scripts/tetron-wm-startpage -o ~/.local/bin/tetron-wm-startpage && chmod +x ~/.local/bin/tetron-wm-startpage",
   "method": "script",
   "os": [
    "macos",

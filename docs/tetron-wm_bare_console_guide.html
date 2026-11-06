@@ -372,15 +372,15 @@
     <figure class="code">
       <figcaption>fetch the latest release binary</figcaption>
       <div class="codebox"><pre><span class="p">$</span> mkdir -p ~/.local/bin
-<span class="p">$</span> tag=$(curl -fsSI https://github.com/ErikAllanKincaid/tetron-wm/releases/latest \
+<span class="p">$</span> tag=$(curl -fsSI https://github.com/tetronos/tetron-wm/releases/latest \
       | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r' | sed 's#.*/tag/##')
 <span class="p">$</span> target=x86_64-unknown-linux-gnu          <span class="c"># ARM64: aarch64-unknown-linux-gnu</span>
-<span class="p">$</span> curl -fsSL "https://github.com/ErikAllanKincaid/tetron-wm/releases/download/$tag/tetron-wm-$target.tar.gz" \
+<span class="p">$</span> curl -fsSL "https://github.com/tetronos/tetron-wm/releases/download/$tag/tetron-wm-$target.tar.gz" \
       | tar -xz -C ~/.local/bin
 <span class="p">$</span> chmod +x ~/.local/bin/tetron-wm</pre></div>
     </figure>
     <p>No binary for your CPU? Build it with <span class="mono-inline">cargo install --git
-      https://github.com/ErikAllanKincaid/tetron-wm</span> (needs Rust 1.95+). Then put it on
+      https://github.com/tetronos/tetron-wm</span> (needs Rust 1.95+). Then put it on
       your PATH:</p>
     <figure class="code">
       <figcaption>add to PATH (zsh; bash uses ~/.bash_profile)</figcaption>
@@ -583,7 +583,7 @@ fi</pre></div>
   <footer>
     <p>Built so the next person can understand it, adapt it, and pass it on.</p>
     <div class="links">
-      tetron-wm · github.com/ErikAllanKincaid/tetron-wm<br>
+      tetron-wm · github.com/tetronos/tetron-wm<br>
       kmscon fork · github.com/Aetf/kmscon · github.com/Aetf/libtsm<br>
       chafa · hpjansson.org/chafa · Nerd Fonts · github.com/ryanoasis/nerd-fonts
     </div>

@@ -34,7 +34,7 @@ mouse) · **chafa** (renders the image wallpaper to cells).
 **Optional:** a **Symbols Nerd Font** (only for `icon_style = "nerd"`; the
 default `ascii` needs no font) · **gpm** (mouse on a raw VT *without* kmscon; not
 needed under kmscon) · **tetron** + **tetron-tui**
-(https://github.com/ErikAllanKincaid/tetron-tui — the mesh-VPN tray segment
+(https://github.com/tetronos/tetron-tui — the mesh-VPN tray segment
 only; the desktop runs fine without them).
 
 kmscon only matters at the physical console. Over SSH your client is the
@@ -54,13 +54,13 @@ steps below are what it automates.
 ### A1. Install tetron-wm
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install.sh | sh
 ```
 
 Installs tetron-wm only: the apt package on Debian and Ubuntu once releases carry a `.deb`, otherwise the prebuilt binary in `/usr/local/bin` (using `sudo`). The tools its features use (chafa, gpm, sshpass, the Nerd Font and the rest) come with the suite script's desktop size; `install.sh` prints that command when it finishes:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ErikAllanKincaid/tetron-wm/main/install-tetron-wm-suite.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetronos/tetron-wm/main/install-tetron-wm-suite.sh | bash
 ```
 
 For a no-sudo install set `TETRON_WM_BIN_DIR="$HOME/.local/bin"`, and put
@@ -96,17 +96,17 @@ Prebuilt binary (resolve the tag via the redirect, not the rate-limited API):
 
 ```sh
 mkdir -p ~/.local/bin
-tag=$(curl -fsSI https://github.com/ErikAllanKincaid/tetron-wm/releases/latest \
+tag=$(curl -fsSI https://github.com/tetronos/tetron-wm/releases/latest \
       | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r' | sed 's#.*/tag/##')
 target=x86_64-unknown-linux-gnu          # ARM64: aarch64-unknown-linux-gnu
-curl -fsSL "https://github.com/ErikAllanKincaid/tetron-wm/releases/download/$tag/tetron-wm-$target.tar.gz" \
+curl -fsSL "https://github.com/tetronos/tetron-wm/releases/download/$tag/tetron-wm-$target.tar.gz" \
   | tar -xz -C ~/.local/bin
 chmod +x ~/.local/bin/tetron-wm
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile   # bash: ~/.bash_profile
 . ~/.zprofile && which tetron-wm
 ```
 
-No binary for your CPU: `cargo install --git https://github.com/ErikAllanKincaid/tetron-wm` (Rust 1.95+).
+No binary for your CPU: `cargo install --git https://github.com/tetronos/tetron-wm` (Rust 1.95+).
 
 ### B2. Install chafa
 

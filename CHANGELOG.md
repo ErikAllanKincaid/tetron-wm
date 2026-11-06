@@ -505,7 +505,7 @@ carry user-visible feature work and the occasional breaking config change.
 - **Install/update now pull from the fork, not upstream.** `install.sh`, the in-app
   updater, and the Systems remote-installer pointed at `jaylfc/tuiui`, so a prebuilt
   install or a Settings → Updates run fetched upstream and dropped the tetron
-  integration. All now target `ErikAllanKincaid/tetron-wm`.
+  integration. All now target `tetronos/tetron-wm`.
 
 ## [0.14.1] — 2026-10-05
 

@@ -25,7 +25,7 @@ and kmscon are only suggested: installing this package never starts a
 network service."""
 section = "metapackages"
 license = "MIT"
-homepage = "https://github.com/ErikAllanKincaid/tetron-wm"
+homepage = "https://github.com/tetronos/tetron-wm"
 depends = ["tetron-wm (>= {minor})"]
 recommends = [
   "mpv", "chafa", "poppler-utils", "upower", "w3m", "gpm",
