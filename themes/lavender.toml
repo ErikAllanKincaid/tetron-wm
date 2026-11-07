@@ -1,0 +1,55 @@
+name = "lavender"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "light"
+
+# Lavender in morning mist: pale aqua windows (not white), sea-glass desktop,
+# dark teal focused title bar, lavender selection, deep purple accent, dark
+# teal text. Its picture is lavender.jpg (lavender sprigs in fog).
+desktop_bg  = "#92b8c1"
+window_bg   = "#c8e1e6"
+title_focus = "#3d5c6d"
+title_blur  = "#65909d"
+title_fg    = "#eef6f7"
+border      = "#3d5c6d"
+shadow      = "#18303a33"
+ctrl_fg     = "#eef6f7"
+close_fg    = "#e8708a"
+menubar_bg  = "#b4d5dc"
+dock_bg     = "#b4d5dc"
+text        = "#18303a"
+dim         = "#3f5f6c"
+accent      = "#52457a"
+active_bg   = "#a99bd3"
+success     = "#2d6a4a"
+error       = "#9a2f4a"
+accent_fg   = "#f4f0fb"
+icon_fg     = "#f4f0fb"
+
+# The 16 colours hosted apps see: muted darker tones that read on pale aqua.
+[ansi]
+black          = "#18303a"
+red            = "#9a2f4a"
+green          = "#2d6a4a"
+yellow         = "#7a5a10"
+blue           = "#2f4f7a"
+magenta        = "#6a4c8f"
+cyan           = "#2f6670"
+white          = "#65909d"
+bright_black   = "#3f5f6c"
+bright_red     = "#b8445e"
+bright_green   = "#3f8a62"
+bright_yellow  = "#94701c"
+bright_blue    = "#3f6a9a"
+bright_magenta = "#766993"
+bright_cyan    = "#3d7f8a"
+bright_white   = "#eef6f7"
+
+# 16-colour console (bare Linux VT): cyan desktop, light grey windows with black
+# text, dark cyan focused title, magenta selection.
+[vt16]
+desktop_bg  = 6
+window_bg   = 7
+title_focus = 6
+title_fg    = 15
+active_bg   = 5
+text        = 0

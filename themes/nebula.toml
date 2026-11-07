@@ -1,0 +1,54 @@
+name = "nebula"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "dark"
+
+# Deep space purples: violet-black windows, plum desktop, purple focused title
+# bar, orchid accent, blush text. Its picture is nebula.jpg (wispy purple and
+# pink gas in a starfield).
+desktop_bg  = "#2a0838"
+window_bg   = "#180327"
+title_focus = "#7b347e"
+title_blur  = "#420d4a"
+title_fg    = "#f4d5e0"
+border      = "#7b347e"
+shadow      = "#00000080"
+ctrl_fg     = "#f4d5e0"
+close_fg    = "#ff7aa2"
+menubar_bg  = "#210535"
+dock_bg     = "#210535"
+text        = "#f4d5e0"
+dim         = "#b08ab4"
+accent      = "#e39ad0"
+active_bg   = "#5c1f63"
+success     = "#8fd6b4"
+error       = "#ff8aa8"
+accent_fg   = "#210535"
+icon_fg     = "#f4d5e0"
+
+# The 16 colours hosted apps see (ls --color, htop, git): soft tones that read
+# on violet-black.
+[ansi]
+black          = "#210535"
+red            = "#ff6b8a"
+green          = "#7fcfa8"
+yellow         = "#f2c879"
+blue           = "#8a9cf0"
+magenta        = "#c774b2"
+cyan           = "#7fd0e0"
+white          = "#d8bfd8"
+bright_black   = "#5c3a6e"
+bright_red     = "#ff9ab0"
+bright_green   = "#a8e6c6"
+bright_yellow  = "#ffe0a3"
+bright_blue    = "#b0bcff"
+bright_magenta = "#e39ad0"
+bright_cyan    = "#a8e8f2"
+bright_white   = "#f4d5e0"
+
+# 16-colour console (bare Linux VT): black desktop and windows, magenta focused
+# title and selection.
+[vt16]
+desktop_bg  = 0
+window_bg   = 0
+title_focus = 5
+active_bg   = 5
