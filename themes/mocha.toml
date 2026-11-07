@@ -1,0 +1,56 @@
+name = "mocha"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "light"
+
+# Between cocoa and latte: tan windows and terminal (not white), caramel desktop,
+# brown highlights (deep brown focused title bar and border, caramel selection,
+# dark brown accent), dark text. Its picture is mocha.jpg.
+desktop_bg  = "#b8936a"
+window_bg   = "#dcbc96"
+title_focus = "#723d08"
+title_blur  = "#c9a57e"
+title_fg    = "#ffd9b3"
+border      = "#723d08"
+shadow      = "#24160c40"
+ctrl_fg     = "#f3d2b0"
+close_fg    = "#9a2e14"
+menubar_bg  = "#c9a57e"
+dock_bg     = "#c9a57e"
+text        = "#24160c"
+dim         = "#5e4128"
+accent      = "#5a2d04"
+active_bg   = "#c08a5a"
+success     = "#2f5f3f"
+error       = "#8a2a10"
+accent_fg   = "#ffd9b3"
+icon_fg     = "#24160c"
+
+# The 16 colours hosted apps see (ls --color, htop, git): dark warm tones that
+# read on tan.
+[ansi]
+black          = "#24160c"
+red            = "#8a2a10"
+green          = "#3a5f28"
+yellow         = "#6e4a00"
+blue           = "#2f4a5c"
+magenta        = "#7d3550"
+cyan           = "#1f5652"
+white          = "#8a6a4a"
+bright_black   = "#5e4128"
+bright_red     = "#a8361a"
+bright_green   = "#4f7a3a"
+bright_yellow  = "#8a6100"
+bright_blue    = "#3f5f73"
+bright_magenta = "#9c4a63"
+bright_cyan    = "#2f6f6a"
+bright_white   = "#f3d2b0"
+
+# 16-colour console (bare Linux VT): brown desktop and focused title, light
+# grey windows with black text, brown selection.
+[vt16]
+desktop_bg  = 3
+window_bg   = 7
+title_focus = 3
+title_fg    = 15
+active_bg   = 3
+text        = 0
