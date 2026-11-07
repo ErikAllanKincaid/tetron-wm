@@ -1,0 +1,60 @@
+name = "hotdog"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "light"
+
+# The famously loud red and yellow scheme of the early 1990s: yellow desktop,
+# red windows, black focused title bar, red inactive ones, white menus, black
+# frames. Text is black so it reads on both red and yellow; the selection is
+# white because tetron-wm draws the black text on it. Its picture is hotdog.png
+# (a pixel-art hotdog stand).
+desktop_bg  = "#ffff00"
+window_bg   = "#ff0000"
+title_focus = "#000000"
+title_blur  = "#ff0000"
+title_fg    = "#ffffff"
+border      = "#000000"
+shadow      = "#00000060"
+ctrl_fg     = "#ffffff"
+close_fg    = "#ffff00"
+menubar_bg  = "#ffffff"
+dock_bg     = "#ffffff"
+text        = "#000000"
+dim         = "#600000"
+accent      = "#000000"
+active_bg   = "#ffffff"
+success     = "#ffff00"
+error       = "#ffffff"
+accent_fg   = "#ffffff"
+icon_fg     = "#ffffff"
+
+# The 16 colours hosted apps see: the classic VGA palette of that era.
+[ansi]
+black          = "#000000"
+red            = "#800000"
+green          = "#008000"
+yellow         = "#808000"
+blue           = "#000080"
+magenta        = "#800080"
+cyan           = "#008080"
+white          = "#c0c0c0"
+bright_black   = "#808080"
+bright_red     = "#ff0000"
+bright_green   = "#00ff00"
+bright_yellow  = "#ffff00"
+bright_blue    = "#0000ff"
+bright_magenta = "#ff00ff"
+bright_cyan    = "#00ffff"
+bright_white   = "#ffffff"
+
+# 16-colour console (bare Linux VT, 8 backgrounds): brown stands in for the
+# yellow desktop; red windows, black focused title, grey selection.
+[vt16]
+desktop_bg  = 3
+window_bg   = 1
+title_focus = 0
+title_blur  = 1
+title_fg    = 15
+active_bg   = 7
+menubar_bg  = 7
+text        = 0
+accent      = 0
