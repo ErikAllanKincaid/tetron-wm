@@ -310,7 +310,7 @@ seed_config() {
 # directory; your own ~/.config/tetron-wm/themes is left to you. A file that
 # exists in either is kept. If the listing fails (GitHub allows 60 requests an
 # hour), the built-in list below is used.
-THEME_PACK="nord.toml nord.jpg dracula.toml dracula.jpg dawn.toml dawn.jpg newmoon.toml contrast.toml"
+THEME_PACK="nord.toml nord.jpg dracula.toml dracula.jpg dawn.toml dawn.jpg newmoon.toml contrast.toml cocoa.toml cocoa.jpg"
 theme_files() {
   local names
   names="$(fetch "https://api.github.com/repos/$REPO/contents/themes?ref=$BRANCH" 2>/dev/null \
