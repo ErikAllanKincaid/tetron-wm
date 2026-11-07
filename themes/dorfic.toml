@@ -5,8 +5,8 @@ appearance = "light"
 # Four flat colours: orange, silver, yellow, red. Silver windows and menus with
 # black text, orange desktop, red focused title bars, grey inactive ones, yellow
 # selection. Title text is black so it also reads where tetron-wm draws it on
-# the yellow selection (the folder picker). Its picture is dorfic.png (1970s
-# style red, orange and yellow bands on silver).
+# the yellow selection (the folder picker). Its picture is dorfic.jpg (glowing
+# orange rings, honeycomb and waves).
 desktop_bg  = "#ff8000"
 window_bg   = "#c0c0c0"
 title_focus = "#ec3333"
