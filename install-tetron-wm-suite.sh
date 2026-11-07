@@ -308,21 +308,26 @@ seed_config() {
 # Get more themes): one GitHub contents API request, then each .toml and picture
 # not already here. Into ~/.local/share/tetron-wm/themes, tetron-wm's download
 # directory; your own ~/.config/tetron-wm/themes is left to you. A file that
-# exists in either is kept. If the listing fails (GitHub allows 60 requests an
-# hour), the built-in list below is used.
-THEME_PACK="nord.toml nord.jpg dracula.toml dracula.jpg dawn.toml dawn.jpg newmoon.toml contrast.toml mocha.toml mocha.jpg hotdog.toml hotdog.png dorfic.toml dorfic.jpg"
+# exists in either is kept. If the listing fails (no network, or GitHub's limit
+# of 60 requests an hour), the themes are skipped with a note: there is no
+# second list to keep in step with the folder.
 theme_files() {
   local names
   names="$(fetch "https://api.github.com/repos/$REPO/contents/themes?ref=$BRANCH" 2>/dev/null \
     | grep -o '"name": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' \
     | grep -iE '^[^./][^/]*\.(toml|jpg|jpeg|png|webp)$' || true)"
-  if [ -n "$names" ]; then printf '%s\n' "$names"; else printf '%s\n' $THEME_PACK; fi
+  [ -z "$names" ] || printf '%s\n' "$names"
 }
 install_themes() {
-  local dir="${XDG_DATA_HOME:-$HOME/.local/share}/tetron-wm/themes" own="$HOME/.config/tetron-wm/themes" f got=0 kept=0
+  local dir="${XDG_DATA_HOME:-$HOME/.local/share}/tetron-wm/themes" own="$HOME/.config/tetron-wm/themes" f files got=0 kept=0
+  files="$(theme_files)"
+  if [ -z "$files" ]; then
+    warn "could not list the themes on GitHub (no network, or its hourly limit); skipped. Get them later in Settings > Appearance > Get more themes."
+    return 0
+  fi
   mkdir -p "$dir"
   log "downloading the themes into $dir…"
-  for f in $(theme_files); do
+  for f in $files; do
     if [ -e "$dir/$f" ] || [ -e "$own/$f" ]; then kept=$((kept + 1)); continue; fi
     if fetch "$RAW/themes/$f" > "$dir/$f.part" 2>/dev/null && [ -s "$dir/$f.part" ]; then
       mv "$dir/$f.part" "$dir/$f"; got=$((got + 1))

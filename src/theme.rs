@@ -1199,9 +1199,9 @@ mod tests {
     }
 
     /// The repo `themes/` folder is what users install: every file must load
-    /// complete, readable, and with the pictures the suite installer promises.
+    /// complete and readable, with the picture its `wallpaper` key names.
     #[test]
-    fn repo_theme_files_are_complete_readable_and_match_the_installer_pack() {
+    fn repo_theme_files_are_complete_and_readable() {
         const ROLES: [&str; 15] = [
             "desktop_bg", "window_bg", "title_focus", "title_blur", "title_fg", "border", "shadow", "ctrl_fg",
             "close_fg", "menubar_bg", "dock_bg", "text", "dim", "accent", "active_bg",
@@ -1229,23 +1229,20 @@ mod tests {
             let stock = stem == "nord" || stem == "dracula" || stem == "contrast";
             let warns: Vec<String> = validate(&theme).into_iter().filter(|w| !(stock && w.contains("inactive titlebar"))).collect();
             assert!(warns.is_empty(), "{stem}: {warns:?}");
+            // A picture a theme names with its `wallpaper` key ships next to it
+            // (keywords such as none, black, default and #rrggbb colours are not files).
+            if let Some(w) = doc.get("wallpaper").and_then(|v| v.as_str()) {
+                let is_picture = Path::new(w).extension().and_then(|e| e.to_str())
+                    .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp"));
+                if is_picture {
+                    assert!(dir.join(w).is_file(), "{stem}: wallpaper themes/{w} is missing");
+                }
+            }
             names.push(stem);
         }
-        let installer = std::fs::read_to_string(root.join("install-tetron-wm-suite.sh")).unwrap();
-        let pack_line = installer.lines().find(|l| l.starts_with("THEME_PACK=")).expect("THEME_PACK in the installer");
-        let pack: Vec<&str> = pack_line.trim_start_matches("THEME_PACK=").trim_matches('"').split_whitespace().collect();
-        assert!(!pack.is_empty());
-        for f in &pack {
-            assert!(dir.join(f).is_file(), "installer lists themes/{f}, which is missing");
-        }
-        for name in ["nord", "dracula", "dawn", "newmoon", "contrast"] {
-            assert!(pack.contains(&format!("{name}.toml").as_str()), "{name} is in the installer pack");
-        }
-        // A picture promised by a pairing or a `wallpaper` file name exists.
-        for name in ["nord", "dracula", "dawn"] {
-            assert!(pack.contains(&format!("{name}.jpg").as_str()), "{name}.jpg is in the installer pack");
-        }
-        assert!(names.contains(&"contrast".to_string()));
+        // The folder is the list: the suite installer and Settings > Appearance >
+        // Get more themes both download whatever is in themes/.
+        assert!(!names.is_empty(), "themes/ has theme files");
     }
 
     #[test]
