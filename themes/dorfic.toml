@@ -1,0 +1,60 @@
+name = "dorfic"
+# base = "midnight"   # unset fields inherit from this built-in
+appearance = "light"
+
+# Four flat colours: orange, silver, yellow, red. Silver windows and menus with
+# black text, orange desktop, red focused title bars, grey inactive ones, yellow
+# selection. Title text is black so it also reads where tetron-wm draws it on
+# the yellow selection (the folder picker). Its picture is dorfic.png (1970s
+# style red, orange and yellow bands on silver).
+desktop_bg  = "#ff8000"
+window_bg   = "#c0c0c0"
+title_focus = "#ec3333"
+title_blur  = "#808080"
+title_fg    = "#000000"
+border      = "#000000"
+shadow      = "#00000060"
+ctrl_fg     = "#000000"
+close_fg    = "#000000"
+menubar_bg  = "#c0c0c0"
+dock_bg     = "#c0c0c0"
+text        = "#000000"
+dim         = "#505050"
+accent      = "#8a1010"
+active_bg   = "#ffec00"
+success     = "#005c00"
+error       = "#9a0000"
+accent_fg   = "#ffffff"
+icon_fg     = "#ffffff"
+
+# The 16 colours hosted apps see: darker tones that read on silver, the
+# palette's own red, orange-yellow and yellow as the bright ones.
+[ansi]
+black          = "#000000"
+red            = "#a01818"
+green          = "#2e6b2e"
+yellow         = "#8a5a00"
+blue           = "#1f4e9c"
+magenta        = "#8e2d7a"
+cyan           = "#1f6670"
+white          = "#606060"
+bright_black   = "#404040"
+bright_red     = "#ec3333"
+bright_green   = "#3f8f3f"
+bright_yellow  = "#ff8000"
+bright_blue    = "#3a6fd0"
+bright_magenta = "#b04a9a"
+bright_cyan    = "#2f8a94"
+bright_white   = "#ffffff"
+
+# 16-colour console (bare Linux VT, 8 backgrounds): brown for the orange
+# desktop, grey windows with black text, red focused title, brown selection.
+[vt16]
+desktop_bg  = 3
+window_bg   = 7
+title_focus = 1
+title_blur  = 0
+title_fg    = 0
+active_bg   = 3
+menubar_bg  = 7
+text        = 0
