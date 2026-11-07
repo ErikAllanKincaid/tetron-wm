@@ -2,28 +2,28 @@ name = "hotdog"
 # base = "midnight"   # unset fields inherit from this built-in
 appearance = "light"
 
-# The famously loud red and yellow scheme of the early 1990s: yellow desktop,
-# red windows, black focused title bar, red inactive ones, white menus, black
-# frames. Text is black so it reads on both red and yellow; the selection is
-# white because tetron-wm draws the black text on it. Its picture is hotdog.png
-# (a pixel-art hotdog stand).
+# The famously loud red and yellow scheme of the early 1990s, made readable:
+# yellow desktop and windows with black text, red highlights (focused title
+# bars and frames with white text, dark red inactive titles, a light red
+# selection so the black text on it stays readable), white menus. Its picture
+# is hotdog.png (a pixel-art hotdog stand).
 desktop_bg  = "#ffff00"
-window_bg   = "#ff0000"
-title_focus = "#000000"
-title_blur  = "#ff0000"
+window_bg   = "#ffff00"
+title_focus = "#ff0000"
+title_blur  = "#800000"
 title_fg    = "#ffffff"
-border      = "#000000"
+border      = "#ff0000"
 shadow      = "#00000060"
 ctrl_fg     = "#ffffff"
-close_fg    = "#ffff00"
+close_fg    = "#000000"
 menubar_bg  = "#ffffff"
 dock_bg     = "#ffffff"
 text        = "#000000"
-dim         = "#600000"
+dim         = "#6e5a00"
 accent      = "#000000"
-active_bg   = "#ffffff"
-success     = "#ffff00"
-error       = "#ffffff"
+active_bg   = "#ff6666"
+success     = "#006000"
+error       = "#c00000"
 accent_fg   = "#ffffff"
 icon_fg     = "#ffffff"
 
@@ -46,15 +46,15 @@ bright_magenta = "#ff00ff"
 bright_cyan    = "#00ffff"
 bright_white   = "#ffffff"
 
-# 16-colour console (bare Linux VT, 8 backgrounds): brown stands in for the
-# yellow desktop; red windows, black focused title, grey selection.
+# 16-colour console (bare Linux VT, 8 backgrounds, no yellow): brown desktop,
+# light grey windows with black text, red focused title, brown selection.
 [vt16]
 desktop_bg  = 3
-window_bg   = 1
-title_focus = 0
-title_blur  = 1
+window_bg   = 7
+title_focus = 1
+title_blur  = 0
 title_fg    = 15
-active_bg   = 7
+active_bg   = 3
 menubar_bg  = 7
 text        = 0
 accent      = 0
