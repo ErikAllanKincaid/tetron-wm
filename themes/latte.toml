@@ -23,7 +23,7 @@ active_bg   = "#ffd9b3"
 success     = "#3d7550"
 error       = "#a8361a"
 accent_fg   = "#fbf1e6"
-icon_fg     = "#2a1e14"
+icon_fg     = "#f7dfd1"   # labels sit on the dark desktop_scrim over the picture
 
 # The 16 colours hosted apps see (ls --color, htop, git): deeper warm tones
 # that read on cream.
