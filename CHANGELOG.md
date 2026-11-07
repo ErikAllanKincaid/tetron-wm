@@ -6,10 +6,14 @@ carry user-visible feature work and the occasional breaking config change.
 
 ## [Unreleased]
 
+## [0.15.1] — 2026-11-06
+
 ### Added
 - tetron-browser, the maintained continuation of carbonyl (the TetronOS web browser), comes first in a web page's **Open with…** list, is what the Start Page opens (else w3m), and has its own catalog entry.
 
 ### Changed
+- The project moved to the tetronos GitHub organization: repository, release, install, catalog and docs links point to `github.com/tetronos/tetron-wm` and `tetronos.github.io/tetron-wm`. Old `github.com/ErikAllanKincaid/...` links keep redirecting; old `erikallankincaid.github.io` links do not (the Start Page's seeded tetron-wm bookmark in an existing `bookmarks.txt` is not rewritten yet).
+- Short install command: `curl -fsSL https://tetronos.github.io/tetron-wm/install.sh | bash`. The docs site is published by a workflow that serves `install-tetron-wm-suite.sh` from the same commit as `/install.sh`; the long raw URL keeps working.
 - The Start Page no longer opens carbonyl, even when it is installed: carbonyl crashes too often for a built-in item. It uses tetron-browser, else w3m.
 
 ### Fixed
