@@ -13,7 +13,7 @@ pub const CONFIG_KEYS: &[(&str, &str, &str)] = &[
     ("tile_gap", "0", "cells of gutter between tiled windows"),
     ("auto_tile", "false", "auto-arrange all windows into the grid"),
     ("launch_maximized", "false", "open new app windows maximized"),
-    ("theme", "midnight", "built-in (midnight, gruvbox, pastoral, windows) or themes/<name>.toml stem (nord, dracula, dawn, newmoon, contrast, cocoa: suite installer --themes)"),
+    ("theme", "midnight", "built-in (midnight, gruvbox, pastoral, windows) or themes/<name>.toml stem (nord, dracula, dawn, newmoon, contrast, cocoa, latte: suite installer --themes)"),
     ("theme_dir", "<config>/themes", "directory of *.toml theme files"),
     ("terminal_bg", "theme", "terminal default background (#rrggbb or name)"),
     ("terminal_fg", "theme", "terminal default foreground (#rrggbb or name)"),
