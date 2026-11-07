@@ -4,7 +4,8 @@ appearance = "light"
 
 # Between cocoa and latte: tan windows and terminal (not white), caramel desktop,
 # brown highlights (deep brown focused title bar and border, caramel selection,
-# dark brown accent), dark text. Its picture is mocha.jpg.
+# dark brown accent), dark text. Its picture is mocha.jpg: latte art (a milk-foam
+# rosetta) in a cup, on cocoa's dark glow.
 desktop_bg  = "#b8936a"
 window_bg   = "#dcbc96"
 title_focus = "#723d08"
@@ -23,7 +24,7 @@ active_bg   = "#c08a5a"
 success     = "#2f5f3f"
 error       = "#8a2a10"
 accent_fg   = "#ffd9b3"
-icon_fg     = "#24160c"
+icon_fg     = "#f7dfd1"   # labels sit on the dark desktop_scrim over the picture
 
 # The 16 colours hosted apps see (ls --color, htop, git): dark warm tones that
 # read on tan.
