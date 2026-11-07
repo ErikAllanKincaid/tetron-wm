@@ -32,6 +32,7 @@
   nav .wrap { display:flex; gap:18px; align-items:center; height:48px; font-family:var(--mono); font-size:.85rem; }
   nav .brand { color:var(--accent); font-weight:700; margin-right:auto; text-decoration:none; }
   nav a { color:var(--muted); text-decoration:none; } nav a:hover { color:var(--fg); }
+  nav .links { display:contents; }
   h1 { font-size:clamp(2.2rem,7vw,4rem); line-height:1.05; letter-spacing:-.03em; margin:0 0 1rem; text-wrap:balance; }
   h1 em { font-style:normal; color:var(--accent); }
   h2 { font-size:clamp(1.5rem,4vw,2.1rem); letter-spacing:-.02em; margin:0 0 .5rem; text-wrap:balance; }
@@ -101,7 +102,7 @@
   .btn { display:inline-block; margin-top:1.6rem; padding:10px 18px; border-radius:8px; background:var(--accent); color:var(--on-accent); font-weight:600; text-decoration:none; }
   .btn.ghost { background:none; color:var(--fg); border:1px solid var(--border); margin-left:8px; }
   footer { border-top:1px solid var(--border); padding:2.5rem 0 3rem; color:var(--muted); font-size:.88rem; }
-  footer a { margin-right:16px; }
+  footer a { margin-right:16px; display:inline-block; white-space:nowrap; }
   @media (max-width:760px) {
     .two, .demo, .vpn { grid-template-columns:1fr; }
     .stage { position:sticky; top:48px; z-index:2; background:var(--bg); padding:8px 0; }
@@ -114,7 +115,7 @@
 <body>
 <nav><div class="wrap">
   <a class="brand" href="#top">tetron-wm</a>
-  <span class="links" style="display:contents"><a href="#why">why</a><a href="#compare">compare</a><a href="#tour">tour</a><a href="#vpn">vpn</a><a href="#themes">themes</a></span>
+  <span class="links"><a href="#why">why</a><a href="#compare">compare</a><a href="#tour">tour</a><a href="#vpn">vpn</a><a href="#themes">themes</a></span>
   <button class="tbtn" id="theme" type="button" aria-label="Switch between light and dark theme">light</button>
 <a href="https://github.com/tetronos/tetron-wm">github</a>
 </div></nav>
@@ -234,14 +235,14 @@ Ctrl+Space q    -> detach
 <section id="themes"><div class="wrap">
   <p class="eyebrow">Themes</p>
   <h2>Same desktop, any mood.</h2>
-  <p class="lede">A theme is a small file: colors, glyph style and an optional wallpaper. Four ship built in.</p>
+  <p class="lede">A theme is a small file: colors, glyph style and an optional wallpaper. Four ship built in, more download from inside the app.</p>
   <div class="themes">
     <figure><img src="images/theme-midnight.png" alt="midnight" loading="lazy"><figcaption>midnight</figcaption></figure>
     <figure><img src="images/theme-gruvbox.png" alt="gruvbox" loading="lazy"><figcaption>gruvbox</figcaption></figure>
     <figure><img src="images/theme-pastoral.png" alt="pastoral" loading="lazy"><figcaption>pastoral</figcaption></figure>
     <figure><img src="images/theme-windows.png" alt="windows" loading="lazy"><figcaption>windows</figcaption></figure>
   </div>
-  <a class="btn" href="tetron-wm_theming_guide.html">Read the theming guide</a><a class="btn ghost" href="CONFIG.md">All config options</a>
+  <a class="btn" href="themes.html">See all themes</a><a class="btn ghost" href="tetron-wm_theming_guide.html">Read the theming guide</a><a class="btn ghost" href="CONFIG.md">All config options</a>
 </div></section>
 
 <section><div class="wrap">
@@ -251,7 +252,7 @@ Ctrl+Space q    -> detach
 </div></section>
 
 <footer><div class="wrap">
-  <a href="https://github.com/tetronos/tetron-wm">GitHub</a><a href="FEATURES_tetron-wm_what_it_can_do.md">Features</a><a href="CONFIG.md">Config</a><a href="KEYS_tetron-wm_leader_key_table.md">Keys</a><a href="tetron-wm_theming_guide.html">Theming</a><a href="tetron-wm_bare_console_guide.html">Bare console</a><a href="https://tetronos.github.io/tetron/">tetron VPN</a>
+  <a href="https://github.com/tetronos/tetron-wm">GitHub</a><a href="themes.html">Themes</a><a href="FEATURES_tetron-wm_what_it_can_do.md">Features</a><a href="CONFIG.md">Config</a><a href="KEYS_tetron-wm_leader_key_table.md">Keys</a><a href="tetron-wm_theming_guide.html">Theming</a><a href="tetron-wm_bare_console_guide.html">Bare console</a><a href="https://tetronos.github.io/tetron/">tetron VPN</a>
   <p>MIT licensed.</p>
 </div></footer>
 
